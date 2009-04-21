@@ -15,6 +15,11 @@
  *       names of its contributors may be used to endorse or promote products
  *       derived from this software without specific prior written permission.
  *
+ * ALTERNATIVELY, this software may be distributed under the terms of the
+ * GNU General Public License ("GPL") as published by the Free Software
+ * Foundation, either version 2 of that License or (at your option) any
+ * later version.
+ *
  * THIS SOFTWARE IS PROVIDED BY Freescale Semiconductor ``AS IS'' AND ANY
  * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -39,5 +44,9 @@
 #define NO_SHOW_DESC 0
 
 int jq_ipsec_esp_no_term(struct device *dev, int showdesc);
+int jq_snow_f8(struct device *dev, int showdesc);
+int jq_snow_f9(struct device *dev, int show);
+int jq_aes_cbc_shared(struct device *dev, int show);
+int jq_aes_cbc_job(struct device *dev, int show);
 
 #endif /* CAAM_JQTEST_H */

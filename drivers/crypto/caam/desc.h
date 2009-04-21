@@ -149,6 +149,7 @@
 
 /* Scatter-Gather Table/Variable Length Field */
 #define KEY_SGF                 0x01000000
+#define KEY_VLF                 0x01000000
 
 /* Immediate - Key follows command in the descriptor */
 #define KEY_IMM                 0x00800000
@@ -183,6 +184,7 @@
  * 1 = class 1 CCB, 2 = class 2 CCB, 3 = DECO
  */
 #define LDST_CLASS_SHIFT        25
+#define LDST_CLASS_MASK         (0x03 << LDST_CLASS_SHIFT)
 #define LDST_CLASS_IND_CCB      (0x00 << LDST_CLASS_SHIFT)
 #define LDST_CLASS_1_CCB        (0x01 << LDST_CLASS_SHIFT)
 #define LDST_CLASS_2_CCB        (0x02 << LDST_CLASS_SHIFT)
@@ -190,21 +192,53 @@
 
 /* Scatter-Gather Table/Variable Length Field */
 #define LDST_SGF                0x01000000
+#define LDST_VLF		LDST_SGF
 
 /* Immediate - Key follows this command in descriptor    */
-#define LDST_IMM                0x00800000
+#define LDST_IMM_MASK           1
+#define LDST_IMM_SHIFT          23
+#define LDST_IMM                (LDST_IMM_MASK << LDST_IMM_SHIFT)
 
 /* SRC/DST - Destination for LOAD, Source for STORE   */
-#define LDST_SRCDST_MASK        0x7f
 #define LDST_SRCDST_SHIFT       16
+#define LDST_SRCDST_MASK        (0x7f << LDST_SRCDST_SHIFT)
+
+#define LDST_SRCDST_BYTE_CONTEXT	(0x20 << LDST_SRCDST_SHIFT)
+#define LDST_SRCDST_BYTE_KEY		(0x40 << LDST_SRCDST_SHIFT)
+#define LDST_SRCDST_BYTE_INFIFO		(0x7c << LDST_SRCDST_SHIFT)
+#define LDST_SRCDST_BYTE_OUTFIFO	(0x7e << LDST_SRCDST_SHIFT)
+
+#define LDST_SRCDST_WORD_MODE_REG	(0x00 << LDST_SRCDST_SHIFT)
+#define LDST_SRCDST_WORD_KEYSZ_REG	(0x01 << LDST_SRCDST_SHIFT)
+#define LDST_SRCDST_WORD_DATASZ_REG	(0x02 << LDST_SRCDST_SHIFT)
+#define LDST_SRCDST_WORD_ICVSZ_REG	(0x03 << LDST_SRCDST_SHIFT)
+#define LDST_SRCDST_WORD_CHACTRL	(0x06 << LDST_SRCDST_SHIFT)
+#define LDST_SRCDST_WORD_DECOCTRL       (0x06 << LDST_SRCDST_SHIFT)
+#define LDST_SRCDST_WORD_IRQCTRL	(0x07 << LDST_SRCDST_SHIFT)
+#define LDST_SRCDST_WORD_DECO_PCLOVRD   (0x07 << LDST_SRCDST_SHIFT)
+#define LDST_SRCDST_WORD_CLRW		(0x08 << LDST_SRCDST_SHIFT)
+#define LDST_SRCDST_WORD_DECO_MATH0     (0x08 << LDST_SRCDST_SHIFT)
+#define LDST_SRCDST_WORD_STAT		(0x09 << LDST_SRCDST_SHIFT)
+#define LDST_SRCDST_WORD_DECO_MATH1     (0x09 << LDST_SRCDST_SHIFT)
+#define LDST_SRCDST_WORD_DECO_MATH2     (0x0a << LDST_SRCDST_SHIFT)
+#define LDST_SRCDST_WORD_DECO_AAD_SZ    (0x0b << LDST_SRCDST_SHIFT)
+#define LDST_SRCDST_WORD_DECO_MATH3     (0x0b << LDST_SRCDST_SHIFT)
+#define LDST_SRCDST_WORD_CLASS1_ICV_SZ  (0x0c << LDST_SRCDST_SHIFT)
+#define LDST_SRCDST_WORD_ALTDS_CLASS1   (0x0f << LDST_SRCDST_SHIFT)
+#define LDST_SRCDST_WORD_PKHA_A_SZ      (0x10 << LDST_SRCDST_SHIFT)
+#define LDST_SRCDST_WORD_PKHA_B_SZ      (0x11 << LDST_SRCDST_SHIFT)
+#define LDST_SRCDST_WORD_PKHA_N_SZ      (0x12 << LDST_SRCDST_SHIFT)
+#define LDST_SRCDST_WORD_PKHA_E_SZ      (0x13 << LDST_SRCDST_SHIFT)
+#define LDST_SRCDST_WORD_DESCBUF        (0x40 << LDST_SRCDST_SHIFT)
+#define LDST_SRCDST_WORD_INFO_FIFO      (0x7a << LDST_SRCDST_SHIFT)
 
 /* Offset in source/destination                        */
-#define LDST_OFFSET_MASK        0xff
 #define LDST_OFFSET_SHIFT       8
+#define LDST_OFFSET_MASK        (0xff << LDST_OFFSET_SHIFT)
 
 /* Data length in bytes                                 */
-#define LDST_LEN_MASK           0xff
 #define LDST_LEN_SHIFT          0
+#define LDST_LEN_MASK           (0xff << LDST_LEN_SHIFT)
 
 /*
  * FIFO_LOAD/FIFO_STORE/SEQ_FIFO_LOAD/SEQ_FIFO_STORE
@@ -217,35 +251,55 @@
  * Store Source: 0 = normal, 1 = Class1key, 2 = Class2key
  */
 #define FIFOLD_CLASS_SHIFT      25
+#define FIFOLD_CLASS_MASK       (0x03 << FIFOLD_CLASS_SHIFT)
 #define FIFOLD_CLASS_SKIP       (0x00 << FIFOLD_CLASS_SHIFT)
 #define FIFOLD_CLASS_CLASS1     (0x01 << FIFOLD_CLASS_SHIFT)
 #define FIFOLD_CLASS_CLASS2     (0x02 << FIFOLD_CLASS_SHIFT)
 #define FIFOLD_CLASS_BOTH       (0x03 << FIFOLD_CLASS_SHIFT)
 
-#define FIFOST_CLASS_NORMAL     (0x00 << FIFOLD_CLASS_SHIFT)
-#define FIFOST_CLASS_CLASS1KEY  (0x01 << FIFOLD_CLASS_SHIFT)
-#define FIFOST_CLASS_CLASS2KEY  (0x02 << FIFOLD_CLASS_SHIFT)
+#define FIFOST_CLASS_SHIFT      25
+#define FIFOST_CLASS_MASK       (0x03 << FIFOST_CLASS_SHIFT)
+#define FIFOST_CLASS_NORMAL     (0x00 << FIFOST_CLASS_SHIFT)
+#define FIFOST_CLASS_CLASS1KEY  (0x01 << FIFOST_CLASS_SHIFT)
+#define FIFOST_CLASS_CLASS2KEY  (0x02 << FIFOST_CLASS_SHIFT)
 
 /*
  * Scatter-Gather Table/Variable Length Field
  * If set for FIFO_LOAD, refers to a SG table. Within
  * SEQ_FIFO_LOAD, is variable input sequence
  */
-#define FIFOLDST_SGF            0x01000000
+#define FIFOLDST_SGF_SHIFT      24
+#define FIFOLDST_SGF_MASK       (1 << FIFOLDST_SGF_SHIFT)
+#define FIFOLDST_VLF_MASK       (1 << FIFOLDST_SGF_SHIFT)
+#define FIFOLDST_SGF            (1 << FIFOLDST_SGF_SHIFT)
+#define FIFOLDST_VLF            (1 << FIFOLDST_SGF_SHIFT)
 
 /* Immediate - Key follows command in descriptor */
-#define FIFOLDST_IMM            0x00800000
+#define FIFOLD_IMM_SHIFT      23
+#define FIFOLD_IMM_MASK       (1 << FIFOLD_IMM_SHIFT)
+#define FIFOLD_IMM            (1 << FIFOLD_IMM_SHIFT)
+
+/* Continue - Not the last FIFO store to come */
+#define FIFOST_CONT_SHIFT     23
+#define FIFOST_CONT_MASK      (1 << FIFOST_CONT_SHIFT)
+#define FIFOST_CONT_MASK      (1 << FIFOST_CONT_SHIFT)
 
 /*
  * Extended Length - use 32-bit extended length that
  * follows the pointer field. Illegal with IMM set
  */
-#define FIFOLDST_EXT            0x00400000
+#define FIFOLDST_EXT_SHIFT      22
+#define FIFOLDST_EXT_MASK       (1 << FIFOLDST_EXT_SHIFT)
+#define FIFOLDST_EXT            (1 << FIFOLDST_EXT_SHIFT)
 
 /* Input data type.*/
 #define FIFOLD_TYPE_SHIFT       16
+#define FIFOLD_TYPE_MASK        (0x3f << FIFOLD_TYPE_SHIFT)
 
 /* PK types */
+#define FIFOLD_TYPE_PK          (0x00 << FIFOLD_TYPE_SHIFT)
+#define FIFOLD_TYPE_PK_MASK     (0x30 << FIFOLD_TYPE_SHIFT)
+#define FIFOLD_TYPE_PK_TYPEMASK (0x0f << FIFOLD_TYPE_SHIFT)
 #define FIFOLD_TYPE_PK_A0       (0x00 << FIFOLD_TYPE_SHIFT)
 #define FIFOLD_TYPE_PK_A1       (0x01 << FIFOLD_TYPE_SHIFT)
 #define FIFOLD_TYPE_PK_A2       (0x02 << FIFOLD_TYPE_SHIFT)
@@ -259,6 +313,7 @@
 #define FIFOLD_TYPE_PK_B        (0x0d << FIFOLD_TYPE_SHIFT)
 
 /* Other types. Need to OR in last/flush bits as desired */
+#define FIFOLD_TYPE_MSG_MASK    (0x38 << FIFOLD_TYPE_SHIFT)
 #define FIFOLD_TYPE_MSG         (0x10 << FIFOLD_TYPE_SHIFT)
 #define FIFOLD_TYPE_MSG1OUT2    (0x18 << FIFOLD_TYPE_SHIFT)
 #define FIFOLD_TYPE_IV          (0x20 << FIFOLD_TYPE_SHIFT)
@@ -267,6 +322,7 @@
 #define FIFOLD_TYPE_ICV         (0x38 << FIFOLD_TYPE_SHIFT)
 
 /* Last/Flush bits for use with "other" types above */
+#define FIFOLD_TYPE_ACT_MASK    (0x07 << FIFOLD_TYPE_SHIFT)
 #define FIFOLD_TYPE_NOACTION    (0x00 << FIFOLD_TYPE_SHIFT)
 #define FIFOLD_TYPE_FLUSH1      (0x01 << FIFOLD_TYPE_SHIFT)
 #define FIFOLD_TYPE_LAST1       (0x02 << FIFOLD_TYPE_SHIFT)
@@ -275,6 +331,39 @@
 #define FIFOLD_TYPE_LAST2FLUSH1 (0x05 << FIFOLD_TYPE_SHIFT)
 #define FIFOLD_TYPE_LASTBOTH    (0x06 << FIFOLD_TYPE_SHIFT)
 #define FIFOLD_TYPE_LASTBOTHFL  (0x07 << FIFOLD_TYPE_SHIFT)
+
+#define FIFOLDST_LEN_MASK       0xffff
+#define FIFOLDST_EXT_LEN_MASK   0xffffffff
+
+/* Output data types */
+#define FIFOST_TYPE_SHIFT       16
+#define FIFOST_TYPE_MASK        (0x3f << FIFOST_TYPE_SHIFT)
+
+#define FIFOST_TYPE_PKHA_A0      (0x00 << FIFOST_TYPE_SHIFT)
+#define FIFOST_TYPE_PKHA_A1      (0x01 << FIFOST_TYPE_SHIFT)
+#define FIFOST_TYPE_PKHA_A2      (0x02 << FIFOST_TYPE_SHIFT)
+#define FIFOST_TYPE_PKHA_A3      (0x03 << FIFOST_TYPE_SHIFT)
+#define FIFOST_TYPE_PKHA_B0      (0x04 << FIFOST_TYPE_SHIFT)
+#define FIFOST_TYPE_PKHA_B1      (0x05 << FIFOST_TYPE_SHIFT)
+#define FIFOST_TYPE_PKHA_B2      (0x06 << FIFOST_TYPE_SHIFT)
+#define FIFOST_TYPE_PKHA_B3      (0x07 << FIFOST_TYPE_SHIFT)
+#define FIFOST_TYPE_PKHA_N       (0x08 << FIFOST_TYPE_SHIFT)
+#define FIFOST_TYPE_PKHA_A       (0x0c << FIFOST_TYPE_SHIFT)
+#define FIFOST_TYPE_PKHA_B       (0x0d << FIFOST_TYPE_SHIFT)
+#define FIFOST_TYPE_AF_SBOX_JKEK (0x10 << FIFOST_TYPE_SHIFT)
+#define FIFOST_TYPE_AF_SBOX_TKEK (0x21 << FIFOST_TYPE_SHIFT)
+#define FIFOST_TYPE_PKHA_E_JKEK  (0x22 << FIFOST_TYPE_SHIFT)
+#define FIFOST_TYPE_PKHA_E_TKEK  (0x23 << FIFOST_TYPE_SHIFT)
+#define FIFOST_TYPE_KEY_KEK      (0x24 << FIFOST_TYPE_SHIFT)
+#define FIFOST_TYPE_KEY_TKEK     (0x25 << FIFOST_TYPE_SHIFT)
+#define FIFOST_TYPE_SPLIT_KEK    (0x26 << FIFOST_TYPE_SHIFT)
+#define FIFOST_TYPE_SPLIT_TKEK   (0x27 << FIFOST_TYPE_SHIFT)
+#define FIFOST_TYPE_OUTFIFO_KEK  (0x28 << FIFOST_TYPE_SHIFT)
+#define FIFOST_TYPE_OUTFIFO_TKEK (0x29 << FIFOST_TYPE_SHIFT)
+#define FIFOST_TYPE_MESSAGE_DATA (0x30 << FIFOST_TYPE_SHIFT)
+#define FIFOST_TYPE_RNGSTORE     (0x34 << FIFOST_TYPE_SHIFT)
+#define FIFOST_TYPE_RNGFIFO      (0x35 << FIFOST_TYPE_SHIFT)
+#define FIFOST_TYPE_SKIP         (0x3f << FIFOST_TYPE_SHIFT)
 
 /*
  * OPERATION Command Constructs
@@ -302,6 +391,12 @@
 #define OP_PCLID_TLS10_PRF      (0x09 << OP_PCLID_SHIFT)
 #define OP_PCLID_TLS11_PRF      (0x0a << OP_PCLID_SHIFT)
 #define OP_PCLID_DTLS10_PRF     (0x0c << OP_PCLID_SHIFT)
+#define OP_PCLID_PRF            (0x06 << OP_PCLID_SHIFT)
+#define OP_PCLID_BLOB           (0x0d << OP_PCLID_SHIFT)
+#define OP_PCLID_SECRETKEY      (0x11 << OP_PCLID_SHIFT)
+#define OP_PCLID_PUBLICKEYPAIR  (0x14 << OP_PCLID_SHIFT)
+#define OP_PCLID_DSASIGN        (0x15 << OP_PCLID_SHIFT)
+#define OP_PCLID_DSAVERIFY      (0x16 << OP_PCLID_SHIFT)
 
 /* Assuming OP_TYPE = OP_TYPE_DECAP_PROTOCOL/ENCAP_PROTOCOL */
 #define OP_PCLID_IPSEC          (0x01 << OP_PCLID_SHIFT)
@@ -314,14 +409,6 @@
 #define OP_PCLID_TLS11          (0x0a << OP_PCLID_SHIFT)
 #define OP_PCLID_TLS12          (0x0b << OP_PCLID_SHIFT)
 #define OP_PCLID_DTLS           (0x0c << OP_PCLID_SHIFT)
-
-/* Assuming OP_TYPE = other... */
-#define OP_PCLID_PRF            (0x06 << OP_PCLID_SHIFT)
-#define OP_PCLID_BLOB           (0x0d << OP_PCLID_SHIFT)
-#define OP_PCLID_SECRETKEY      (0x11 << OP_PCLID_SHIFT)
-#define OP_PCLID_PUBLICKEYPAIR  (0x14 << OP_PCLID_SHIFT)
-#define OP_PCLID_DSASIGN        (0x15 << OP_PCLID_SHIFT)
-#define OP_PCLID_DSAVERIFY      (0x16 << OP_PCLID_SHIFT)
 
 /*
  * ProtocolInfo selectors
@@ -949,6 +1036,175 @@
 #define OP_PCL_DTLS_AES_256_CBC_SHA384           0xff63
 #define OP_PCL_DTLS_AES_256_CBC_SHA512           0xff65
 
+/* 802.16 WiMAX protinfos */
+#define OP_PCL_WIMAX_OFDM                        0x0201
+#define OP_PCL_WIMAX_OFDMA                       0x0231
+
+/* 802.11 WiFi protinfos */
+#define OP_PCL_WIFI                              0xac04
+
+/* MacSec protinfos */
+#define OP_PCL_MACSEC                            0x0001
+
+/* PKI unidirectional protocol protinfo bits */
+#define OP_PCL_PKPROT_TEST                       0x0008
+#define OP_PCL_PKPROT_DECRYPT                    0x0004
+#define OP_PCL_PKPROT_ECC                        0x0002
+#define OP_PCL_PKPROT_F2M                        0x0001
+
+/* For non-protocol/alg-only op commands */
+#define OP_ALG_TYPE_SHIFT  24
+#define OP_ALG_TYPE_MASK   (0x7 << OP_ALG_TYPE_SHIFT)
+#define OP_ALG_TYPE_CLASS1 2
+#define OP_ALG_TYPE_CLASS2 4
+
+#define OP_ALG_ALGSEL_SHIFT   16
+#define OP_ALG_ALGSEL_MASK    (0xff << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_AES     (0x10 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_DES     (0x20 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_3DES    (0x21 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_ARC4    (0x30 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_MD5     (0x40 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_SHA1    (0x41 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_SHA224  (0x42 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_SHA256  (0x43 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_SHA384  (0x44 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_SHA512  (0x45 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_RNG     (0x50 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_SNOW    (0x60 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_KASUMI  (0x70 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_CRC     (0x90 << OP_ALG_ALGSEL_SHIFT)
+
+#define OP_ALG_AAI_SHIFT	4
+#define OP_ALG_AAI_MASK		(0x1ff << OP_ALG_AAI_SHIFT)
+
+/* blockcipher AAI set */
+#define OP_ALG_AAI_CTR_MOD128	(0x00 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_CTR_MOD8	(0x01 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_CTR_MOD16	(0x02 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_CTR_MOD24	(0x03 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_CTR_MOD32	(0x04 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_CTR_MOD40	(0x05 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_CTR_MOD48	(0x06 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_CTR_MOD56	(0x07 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_CTR_MOD64	(0x08 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_CTR_MOD72	(0x09 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_CTR_MOD80	(0x0a << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_CTR_MOD88	(0x0b << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_CTR_MOD96	(0x0c << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_CTR_MOD104	(0x0d << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_CTR_MOD112	(0x0e << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_CTR_MOD120	(0x0f << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_CBC		(0x10 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_ECB		(0x20 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_CFB		(0x30 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_OFB		(0x40 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_XTS		(0x50 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_CMAC		(0x60 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_XCBC_MAC	(0x70 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_CCM		(0x80 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_GCM		(0x90 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_CBC_XCBCMAC	(0xa0 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_CTR_XCBCMAC	(0xb0 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_CHECKODD	(0x80 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_DK		(0x100 << OP_ALG_AAI_SHIFT)
+
+/* randomizer AAI set */
+#define OP_ALG_AAI_RNG		(0x00 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_RNG_NOZERO	(0x10 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_RNG_ODD	(0x20 << OP_ALG_AAI_SHIFT)
+
+/* hmac/smac AAI set */
+#define OP_ALG_AAI_HASH		(0x00 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_HMAC		(0x01 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_SMAC		(0x02 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_HMAC_PRECOMP	(0x04 << OP_ALG_AAI_SHIFT)
+
+/* CRC AAI set*/
+#define OP_ALG_AAI_802		(0x01 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_3385		(0x02 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_CUST_POLY	(0x04 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_DIS		(0x10 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_DOS		(0x20 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_DOC		(0x40 << OP_ALG_AAI_SHIFT)
+
+/* Kasumi/SNOW AAI set */
+#define OP_ALG_AAI_F8		(0xc0 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_F9		(0xc8 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_GSM		(0x10 << OP_ALG_AAI_SHIFT)
+#define OP_ALG_AAI_EDGE		(0x20 << OP_ALG_AAI_SHIFT)
+
+
+#define OP_ALG_AS_SHIFT		2
+#define OP_ALG_AS_MASK		(0x3 << OP_ALG_AS_SHIFT)
+#define OP_ALG_AS_UPDATE	(0 << OP_ALG_AS_SHIFT)
+#define OP_ALG_AS_INIT		(1 << OP_ALG_AS_SHIFT)
+#define OP_ALG_AS_FINALIZE	(2 << OP_ALG_AS_SHIFT)
+#define OP_ALG_AS_INITFINAL	(3 << OP_ALG_AS_SHIFT)
+
+#define OP_ALG_ICV_SHIFT	1
+#define OP_ALG_ICV_MASK		(1 << OP_ALG_ICV_SHIFT)
+#define OP_ALG_ICV_OFF		(0 << OP_ALG_ICV_SHIFT)
+#define OP_ALG_ICV_ON		(1 << OP_ALG_ICV_SHIFT)
+
+#define OP_ALG_DIR_SHIFT	0
+#define OP_ALG_DIR_MASK		1
+#define OP_ALG_DECRYPT		0
+#define OP_ALG_ENCRYPT		1
+
+/* PKHA algorithm type set */
+#define OP_ALG_PK                    0x00800000
+
+/* PKHA mode clear memory functions */
+#define OP_ALG_PKMODE_A_RAM          0x80000
+#define OP_ALG_PKMODE_B_RAM          0x40000
+#define OP_ALG_PKMODE_E_RAM          0x20000
+#define OP_ALG_PKMODE_N_RAM          0x10000
+#define OP_ALG_PKMODE_CLEARMEM       0x00001
+
+/* PKHA mode modular-arithmetic functions */
+#define OP_ALG_PKMODE_MOD_IN_MONTY   0x80000
+#define OP_ALG_PKMODE_MOD_OUT_MONTY  0x40000
+#define OP_ALG_PKMODE_MOD_F2M        0x20000
+#define OP_ALG_PKMODE_MOD_R2_IN      0x10000
+#define OP_ALG_PKMODE_PRJECTV        0x00800
+#define OP_ALG_PKMODE_TIME_EQ        0x400
+#define OP_ALG_PKMODE_OUT_B          0x000
+#define OP_ALG_PKMODE_OUT_A          0x100
+#define OP_ALG_PKMODE_MOD_ADD        0x002
+#define OP_ALG_PKMODE_MOD_SUB_AB     0x003
+#define OP_ALG_PKMODE_MOD_SUB_BA     0x004
+#define OP_ALG_PKMODE_MOD_MULT       0x005
+#define OP_ALG_PKMODE_MOD_EXPO       0x006
+#define OP_ALG_PKMODE_MOD_REDUCT     0x007
+#define OP_ALG_PKMODE_MOD_INV        0x008
+#define OP_ALG_PKMODE_MOD_ECC_ADD    0x009
+#define OP_ALG_PKMODE_MOD_ECC_DBL    0x00a
+#define OP_ALG_PKMODE_MOD_ECC_MULT   0x00b
+#define OP_ALG_PKMODE_MOD_MONT_CNST  0x00c
+#define OP_ALG_PKMODE_MOD_CRT_CNST   0x00d
+#define OP_ALG_PKMODE_MOD_GCD        0x00e
+#define OP_ALG_PKMODE_MOD_PRIMALITY  0x00f
+
+/* PKHA mode copy-memory functions */
+#define OP_ALG_PKMODE_SRC_REG_A      0x00000
+#define OP_ALG_PKMODE_SRC_REG_B      0x20000
+#define OP_ALG_PKMODE_SRC_REG_N      0x60000
+#define OP_ALG_PKMODE_DST_REG_A      0x00000
+#define OP_ALG_PKMODE_DST_REG_B      0x04000
+#define OP_ALG_PKMODE_DST_REG_E      0x08000
+#define OP_ALG_PKMODE_DST_REG_N      0x0c000
+#define OP_ALG_PKMODE_SRC_SEG_0      0x00000
+#define OP_ALG_PKMODE_SRC_SEG_1      0x01000
+#define OP_ALG_PKMODE_SRC_SEG_2      0x02000
+#define OP_ALG_PKMODE_SRC_SEG_3      0x03000
+#define OP_ALG_PKMODE_DST_SEG_0      0x00000
+#define OP_ALG_PKMODE_DST_SEG_1      0x00400
+#define OP_ALG_PKMODE_DST_SEG_2      0x00800
+#define OP_ALG_PKMODE_DST_SEG_3      0x00c00
+#define OP_ALG_PKMODE_CPYMEM_N_SZ    0x00080
+#define OP_ALG_PKMODE_CPYMEM_SRC_SZ  0x00081
+
 /*
  * SEQ_IN_PTR Command Constructs
  */
@@ -1003,10 +1259,14 @@
  */
 
 #define MOVE_AUX_SHIFT          25
+#define MOVE_AUX_MASK           (3 << MOVE_AUX_SHIFT)
 
-#define MOVE_WAITCOMP           0x01000000
+#define MOVE_WAITCOMP_SHIFT     24
+#define MOVE_WAITCOMP_MASK      (1 << MOVE_WAITCOMP_SHIFT)
+#define MOVE_WAITCOMP           (1 << MOVE_WAITCOMP_SHIFT)
 
 #define MOVE_SRC_SHIFT          20
+#define MOVE_SRC_MASK           (0x0f << MOVE_SRC_SHIFT)
 #define MOVE_SRC_CLASS1CTX      (0x00 << MOVE_SRC_SHIFT)
 #define MOVE_SRC_CLASS2CTX      (0x01 << MOVE_SRC_SHIFT)
 #define MOVE_SRC_OUTFIFO        (0x02 << MOVE_SRC_SHIFT)
@@ -1018,6 +1278,7 @@
 #define MOVE_SRC_INFIFO         (0x08 << MOVE_SRC_SHIFT)
 
 #define MOVE_DEST_SHIFT         16
+#define MOVE_DEST_MASK          (0x0f << MOVE_DEST_SHIFT)
 #define MOVE_DEST_CLASS1CTX     (0x00 << MOVE_DEST_SHIFT)
 #define MOVE_DEST_CLASS2CTX     (0x01 << MOVE_DEST_SHIFT)
 #define MOVE_DEST_OUTFIFO       (0x02 << MOVE_DEST_SHIFT)
@@ -1033,20 +1294,30 @@
 #define MOVE_DEST_CLASS2KEY     (0x0e << MOVE_DEST_SHIFT)
 
 #define MOVE_OFFSET_SHIFT       8
-#define MOVE_OFFSET_MASK        0xff
+#define MOVE_OFFSET_MASK        (0xff << MOVE_OFFSET_SHIFT)
 
-#define MOVE_LEN_MASK           0xff
+#define MOVE_LEN_SHIFT           0
+#define MOVE_LEN_MASK           (0xff << MOVE_LEN_SHIFT)
 
 /*
  * MATH Command Constructs
  */
 
-#define MATH_IFB                0x04000000
-#define MATH_NFU                0x02000000
-#define MATH_STL                0x01000000
+#define MATH_IFB_SHIFT          26
+#define MATH_IFB_MASK           (1 << MATH_IFB_SHIFT)
+#define MATH_IFB                (1 << MATH_IFB_SHIFT)
+
+#define MATH_NFU_SHIFT          25
+#define MATH_NFU_MASK           (1 << MATH_NFU_SHIFT)
+#define MATH_NFU                (1 << MATH_NFU_SHIFT)
+
+#define MATH_STL_SHIFT          24
+#define MATH_STL_MASK           (1 << MATH_STL_SHIFT)
+#define MATH_STL                (1 << MATH_STL_SHIFT)
 
 /* Function selectors */
 #define MATH_FUN_SHIFT          20
+#define MATH_FUN_MASK           (0x0f << MATH_FUN_SHIFT)
 #define MATH_FUN_ADD            (0x00 << MATH_FUN_SHIFT)
 #define MATH_FUN_ADDC           (0x01 << MATH_FUN_SHIFT)
 #define MATH_FUN_SUB            (0x02 << MATH_FUN_SHIFT)
@@ -1060,6 +1331,7 @@
 
 /* Source 0 selectors */
 #define MATH_SRC0_SHIFT         16
+#define MATH_SRC0_MASK          (0x0f << MATH_SRC0_SHIFT)
 #define MATH_SRC0_REG0          (0x00 << MATH_SRC0_SHIFT)
 #define MATH_SRC0_REG1          (0x01 << MATH_SRC0_SHIFT)
 #define MATH_SRC0_REG2          (0x02 << MATH_SRC0_SHIFT)
@@ -1073,6 +1345,7 @@
 
 /* Source 1 selectors */
 #define MATH_SRC1_SHIFT         12
+#define MATH_SRC1_MASK          (0x0f << MATH_SRC1_SHIFT)
 #define MATH_SRC1_REG0          (0x00 << MATH_SRC1_SHIFT)
 #define MATH_SRC1_REG1          (0x01 << MATH_SRC1_SHIFT)
 #define MATH_SRC1_REG2          (0x02 << MATH_SRC1_SHIFT)
@@ -1084,6 +1357,7 @@
 
 /* Destination selectors */
 #define MATH_DEST_SHIFT         8
+#define MATH_DEST_MASK          (0x0f << MATH_DEST_SHIFT)
 #define MATH_DEST_REG0          (0x00 << MATH_DEST_SHIFT)
 #define MATH_DEST_REG1          (0x01 << MATH_DEST_SHIFT)
 #define MATH_DEST_REG2          (0x02 << MATH_DEST_SHIFT)
@@ -1095,6 +1369,8 @@
 #define MATH_DEST_NONE          (0x0f << MATH_DEST_SHIFT)
 
 /* Length selectors */
+#define MATH_LEN_SHIFT          0
+#define MATH_LEN_MASK           (0x0f << MATH_LEN_SHIFT)
 #define MATH_LEN_1BYTE          0x01
 #define MATH_LEN_2BYTE          0x02
 #define MATH_LEN_4BYTE          0x04
@@ -1106,38 +1382,46 @@
 
 #define JUMP_CLASS_SHIFT        25 /* General class selectors OK */
 
-#define JUMP_JSL                0x01000000
+#define JUMP_JSL_SHIFT          24
+#define JUMP_JSL_MASK           (1 << JUMP_JSL_SHIFT)
+#define JUMP_JSL                (1 << JUMP_JSL_SHIFT)
 
 #define JUMP_TYPE_SHIFT         22
+#define JUMP_TYPE_MASK          (0x03 << JUMP_TYPE_SHIFT)
 #define JUMP_TYPE_LOCAL         (0x00 << JUMP_TYPE_SHIFT)
 #define JUMP_TYPE_NONLOCAL      (0x01 << JUMP_TYPE_SHIFT)
 #define JUMP_TYPE_HALT          (0x02 << JUMP_TYPE_SHIFT)
 #define JUMP_TYPE_HALT_USER     (0x03 << JUMP_TYPE_SHIFT)
 
 #define JUMP_TEST_SHIFT         16
+#define JUMP_TEST_MASK          (0x03 << JUMP_TEST_SHIFT)
 #define JUMP_TEST_ALL           (0x00 << JUMP_TEST_SHIFT)
 #define JUMP_TEST_INVALL        (0x01 << JUMP_TEST_SHIFT)
 #define JUMP_TEST_ANY           (0x02 << JUMP_TEST_SHIFT)
 #define JUMP_TEST_INVANY        (0x03 << JUMP_TEST_SHIFT)
 
-/* If JUMP_JSL clear, these condition codes apply */
-#define JUMP_COND_PK_0          0x00008000
-#define JUMP_COND_PK_GCD_1      0x00004000
-#define JUMP_COND_PK_PRIME      0x00002000
-#define JUMP_COND_MATH_N        0x00000800
-#define JUMP_COND_MATH_Z        0x00000400
-#define JUMP_COND_MATH_C        0x00000200
-#define JUMP_COND_MATH_NV       0x00000100
+/* Condition codes. JSL bit is factored in */
+#define JUMP_COND_SHIFT         8
+#define JUMP_COND_MASK          (0x100ff << JUMP_COND_SHIFT)
+#define JUMP_COND_PK_0          (0x80 << JUMP_COND_SHIFT)
+#define JUMP_COND_PK_GCD_1      (0x40 << JUMP_COND_SHIFT)
+#define JUMP_COND_PK_PRIME      (0x20 << JUMP_COND_SHIFT)
+#define JUMP_COND_MATH_N        (0x08 << JUMP_COND_SHIFT)
+#define JUMP_COND_MATH_Z        (0x04 << JUMP_COND_SHIFT)
+#define JUMP_COND_MATH_C        (0x02 << JUMP_COND_SHIFT)
+#define JUMP_COND_MATH_NV       (0x01 << JUMP_COND_SHIFT)
 
-/* If JUMP_JSL set, these condition codes apply */
-#define JUMP_COND_JQP           0x00008000
-#define JUMP_COND_SHRD          0x00004000
-#define JUMP_COND_SELF          0x00002000
-#define JUMP_COND_CALM          0x00001000
-#define JUMP_COND_NIP           0x00000800
-#define JUMP_COND_NIFP          0x00000400
-#define JUMP_COND_NOP           0x00000200
-#define JUMP_COND_NCP           0x00000100
+#define JUMP_COND_JQP           ((0x80 << JUMP_COND_SHIFT) | JUMP_JSL)
+#define JUMP_COND_SHRD          ((0x40 << JUMP_COND_SHIFT) | JUMP_JSL)
+#define JUMP_COND_SELF          ((0x20 << JUMP_COND_SHIFT) | JUMP_JSL)
+#define JUMP_COND_CALM          ((0x10 << JUMP_COND_SHIFT) | JUMP_JSL)
+#define JUMP_COND_NIP           ((0x08 << JUMP_COND_SHIFT) | JUMP_JSL)
+#define JUMP_COND_NIFP          ((0x04 << JUMP_COND_SHIFT) | JUMP_JSL)
+#define JUMP_COND_NOP           ((0x02 << JUMP_COND_SHIFT) | JUMP_JSL)
+#define JUMP_COND_NCP           ((0x01 << JUMP_COND_SHIFT) | JUMP_JSL)
+
+#define JUMP_OFFSET_SHIFT       0
+#define JUMP_OFFSET_MASK        (0xff << JUMP_OFFSET_SHIFT)
 
 /*
  * PDB internal definitions
