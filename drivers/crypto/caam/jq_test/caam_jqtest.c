@@ -15,6 +15,11 @@
  *       names of its contributors may be used to endorse or promote products
  *       derived from this software without specific prior written permission.
  *
+ * ALTERNATIVELY, this software may be distributed under the terms of the
+ * GNU General Public License ("GPL") as published by the Free Software
+ * Foundation, either version 2 of that License or (at your option) any
+ * later version.
+ *
  * THIS SOFTWARE IS PROVIDED BY Freescale Semiconductor ``AS IS'' AND ANY
  * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
  * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -29,6 +34,8 @@
 
 
 #include "caam_jqtest.h"
+
+#define JQTEST_CYCLES 100
 
 wait_queue_head_t jqtest_wq;
 wait_queue_t jqtest_wqentry;
@@ -76,12 +83,38 @@ static int __init caam_jqtest(void)
 	printk(KERN_INFO "caam_jqtest: running cases on %d available queues\n",
 	       owned_queues);
 	for (q = 0; q < owned_queues; q++) {
-		for (i = 0; i < 300; i++) {
+		for (i = 0; i < JQTEST_CYCLES; i++) {
+
 			stat = jq_ipsec_esp_no_term(qdev[q], NO_SHOW_DESC);
 			if (stat)
 				printk(KERN_INFO
-				       "jq_ipsec_esp_noterm: fail queue %d\n",
+				"jq_ipsec_esp_noterm: fail on queue %d\n",
+				qid[q]);
+
+			stat = jq_aes_cbc_shared(qdev[q], NO_SHOW_DESC);
+			if (stat)
+				printk(KERN_INFO
+				       "jq_aes_cbc_shared: fail on queue %d\n",
 				       qid[q]);
+
+			stat = jq_aes_cbc_job(qdev[q], NO_SHOW_DESC);
+			if (stat)
+				printk(KERN_INFO
+				       "jq_aes_cbc_job: fail on queue %d\n",
+				       qid[q]);
+
+			stat = jq_snow_f8(qdev[q], NO_SHOW_DESC);
+			if (stat)
+				printk(KERN_INFO
+				       "jq_snow_f8: fail on queue %d\n",
+				       qid[q]);
+
+			stat = jq_snow_f9(qdev[q], NO_SHOW_DESC);
+			if (stat)
+				printk(KERN_INFO
+				       "jq_snow_f9: fail on queue %d\n",
+				       qid[q]);
+
 		}
 		printk(KERN_INFO "caam_jqtest: %d cycles on queue %d\n", i, q);
 	}
@@ -101,6 +134,6 @@ static void __exit caam_jqtest_remove(void)
 module_init(caam_jqtest);
 module_exit(caam_jqtest_remove);
 
-MODULE_LICENSE("BSD");
+MODULE_LICENSE("Dual BSD/GPL");
 MODULE_DESCRIPTION("FSL CAAM JobQ Test Module");
 MODULE_AUTHOR("Freescale Semiconductor - NMG/STC");
