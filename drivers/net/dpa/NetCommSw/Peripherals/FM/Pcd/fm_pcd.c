@@ -773,6 +773,10 @@ t_Error FM_PCD_DeleteNetEnvCharacteristics(t_Handle h_FmPcd, t_Handle h_NetEnv)
 
     p_FmPcd->netEnvs[netEnvId].used= FALSE;
 
+    memset(p_FmPcd->netEnvs[netEnvId].units, 0, sizeof(t_FmPcdIntDistinctionUnit)*FM_PCD_MAX_NUM_OF_DISTINCTION_UNITS);
+    memset(p_FmPcd->netEnvs[netEnvId].unitsVectors, 0, sizeof(uint32_t)*FM_PCD_MAX_NUM_OF_DISTINCTION_UNITS);
+    memset(p_FmPcd->netEnvs[netEnvId].lcvs, 0, sizeof(uint32_t)*FM_PCD_PRS_NUM_OF_HDRS);
+
     RELEASE_LOCK(p_FmPcd->netEnvs[netEnvId].lock);
 
     return E_OK;

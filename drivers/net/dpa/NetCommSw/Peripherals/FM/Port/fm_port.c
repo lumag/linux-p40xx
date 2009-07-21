@@ -1652,7 +1652,7 @@ t_Error          FmPortPcdKgSwBindClsPlanGrp (t_Handle h_FmPort, bool useClsPlan
     return E_OK;
 }
 
-void FmPortGetPortSchemeBindParams(t_Handle h_FmPort, t_FmPcdKgInterModuleBindPortToSchemes *p_SchemeBind)
+void FmPortGetPortSchemeBindParams(t_Handle h_FmPort, t_FmPcdKgInterModuleBindPortToSchemes *p_SchemeBind, bool clear)
 {
     t_FmPort                    *p_FmPort = (t_FmPort*)h_FmPort;
     uint32_t                    walking1Mask = 0x80000000, tmp;
@@ -1677,6 +1677,9 @@ void FmPortGetPortSchemeBindParams(t_Handle h_FmPort, t_FmPcdKgInterModuleBindPo
             idx++;
         }
     }
+
+    if (clear)
+        p_FmPort->schemesPerPortVector = tmp;
 }
 
 uint8_t FmPortGetNetEnvId(t_Handle h_FmPort)
@@ -3447,8 +3450,6 @@ t_Error FM_PORT_DeletePCD(t_Handle h_FmPort)
     t_FmPort                                *p_FmPort = (t_FmPort*)h_FmPort;
 #ifndef CONFIG_MULTI_PARTITION_SUPPORT
     t_Error                                 err = E_OK;
-    uint32_t                                walking1Mask = 0x80000000;
-    uint8_t                                 idx = 0;
     t_FmPcdKgInterModuleBindPortToSchemes   schemeBind;
 #endif /* !CONFIG_MULTI_PARTITION_SUPPORT */
 
@@ -3461,27 +3462,8 @@ t_Error FM_PORT_DeletePCD(t_Handle h_FmPort)
 #else
     if(p_FmPort->pcdEngines & FM_PCD_KG)
     {
-        schemeBind.netEnvId = p_FmPort->netEnvId;
-        schemeBind.hardwarePortId = p_FmPort->hardwarePortId;
-
         /* unbind all schemes */
-        schemeBind.numOfSchemes =0;
-        if(p_FmPort->schemesPerPortVector)
-        {
-            while (p_FmPort->schemesPerPortVector)
-            {
-                if(p_FmPort->schemesPerPortVector & walking1Mask)
-                {
-                    schemeBind.schemesIds[schemeBind.numOfSchemes] = idx;
-                    schemeBind.numOfSchemes++;
-                    p_FmPort->schemesPerPortVector &= ~walking1Mask;
-                }
-                walking1Mask >>= 1;
-                idx++;
-            }
-        }
-
-        ASSERT_COND(!p_FmPort->schemesPerPortVector);
+        FmPortGetPortSchemeBindParams(p_FmPort, &schemeBind, TRUE);
 
         err = FmPcdKgUnbindPortToSchemes(p_FmPort->h_FmPcd, &schemeBind);
         if(err)

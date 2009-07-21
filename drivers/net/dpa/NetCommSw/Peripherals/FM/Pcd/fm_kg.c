@@ -941,7 +941,6 @@ void FmPcdKgIncSchemeOwners(t_Handle h_FmPcd , t_FmPcdKgInterModuleBindPortToSch
     }
 }
 
-
 void FmPcdKgDecSchemeOwners(t_Handle h_FmPcd , t_FmPcdKgInterModuleBindPortToSchemes *p_BindPort)
 {
     t_FmPcd             *p_FmPcd = (t_FmPcd*)h_FmPcd;
@@ -958,7 +957,6 @@ void FmPcdKgDecSchemeOwners(t_Handle h_FmPcd , t_FmPcdKgInterModuleBindPortToSch
         p_Scheme->owners--;
     }
 }
-
 
 #ifdef FM_MASTER_PARTITION
 t_Error  FmPcdKgAllocSchemes(t_Handle h_FmPcd, uint8_t numOfSchemes, uint8_t partitionId, uint8_t *p_SchemesIds)
@@ -2407,7 +2405,7 @@ t_Error FM_PCD_KgDeleteEmptyClsPlanGrp(t_Handle h_FmPcd)
    t_Error  err;
 
     SANITY_CHECK_RETURN_ERROR(p_FmPcd, E_INVALID_HANDLE);
-    SANITY_CHECK_RETURN_ERROR(p_FmPcd->p_FmPcdDriverParam, E_INVALID_HANDLE);
+    SANITY_CHECK_RETURN_ERROR(!p_FmPcd->p_FmPcdDriverParam, E_INVALID_HANDLE);
     SANITY_CHECK_RETURN_ERROR(p_FmPcd->p_FmPcdKg, E_INVALID_HANDLE);
 
     p_FmPcd->p_FmPcdKg->isDriverEmptyClsPlanGrp = FALSE;

@@ -190,7 +190,7 @@ t_Error     FmHcPortDeletePCD(t_Handle h_FmHc, t_Handle h_FmPort);
 
 t_Error     FmHcPortPcdKgModifyClsPlanGrp (t_Handle h_FmHc, t_Handle h_FmPort, bool useClsPlan, t_Handle h_NewClsPlanGrp);
 t_Error     FmHcPortPcdKgBindSchemes(t_Handle h_FmHc , t_Handle h_FmPort, t_FmPcdPortSchemesParams *p_PortScheme);
-t_Error     FmHcPortPcdKgUnbindSchemes(t_Handle h_FmHc , t_Handle h_FmPort, t_FmPcdPortSchemesParams *p_PortScheme);
+t_Error     FmHcPortPcdKgUnbindSchemes(t_Handle h_FmHc , t_Handle h_FmPort);
 
 
 static t_Error KgHcSetClsPlan(t_FmHc *p_FmHc, t_FmPcdKgInterModuleClsPlanSet *p_Set)
@@ -357,7 +357,7 @@ static t_Error HcPortPcdKgBindSchemes(t_FmHc *p_FmHc , t_Handle h_FmPort,t_FmPcd
     int                                     i;
 
     /* we use this routine just to get the port parameters such as HW id, netEnv etc. */
-    FmPortGetPortSchemeBindParams(h_FmPort, &schemeBind);
+    FmPortGetPortSchemeBindParams(h_FmPort, &schemeBind, FALSE);
 
     /* overwrite port params with the schemes we want removed */
     schemeBind.numOfSchemes = p_PortScheme->numOfSchemes;
@@ -1235,21 +1235,15 @@ t_Error FmHcPortPcdKgBindSchemes(t_Handle h_FmHc , t_Handle h_FmPort,t_FmPcdPort
     return HcPortPcdKgBindSchemes(h_FmHc, h_FmPort, p_PortScheme);
 }
 
-t_Error FmHcPortPcdKgUnbindSchemes(t_Handle h_FmHc , t_Handle h_FmPort,t_FmPcdPortSchemesParams *p_PortScheme)
+t_Error FmHcPortPcdKgUnbindSchemes(t_Handle h_FmHc , t_Handle h_FmPort)
 {
     t_FmHc                                  *p_FmHc = (t_FmHc*)h_FmHc;
     uint32_t                                spReg;
     t_Error                                 err;
     t_FmPcdKgInterModuleBindPortToSchemes   schemeBind;
-    int                                     i;
 
     /* we use this routine just to get the port parameters such as HW id, netEnv etc. */
-    FmPortGetPortSchemeBindParams(h_FmPort, &schemeBind);
-
-    /* overwrite port params with the schemes we want removed */
-    schemeBind.numOfSchemes = p_PortScheme->numOfSchemes;
-    for (i=0; i<schemeBind.numOfSchemes; i++)
-        schemeBind.schemesIds[i] = (uint8_t)(CAST_POINTER_TO_UINT32(p_PortScheme->h_Schemes[i])-1);
+    FmPortGetPortSchemeBindParams(h_FmPort, &schemeBind, TRUE);
 
     err = FmPcdKgBuildBindPortToSchemes(p_FmHc->h_FmPcd, &schemeBind, &spReg, FALSE);
     if(err)
@@ -1268,7 +1262,7 @@ t_Error FmHcPortSetPCD(t_Handle h_FmHc, t_Handle h_FmPort, t_FmPortPcdParams *p_
 {
     t_FmHc                                  *p_FmHc = (t_FmHc*)h_FmHc;
     t_Error                                 err = E_OK;
-    t_FmPcdPortSchemesParams                schemeBind;
+    t_FmPcdPortSchemesParams                currentSchemes;
     uint32_t                                cppReg;
     uint8_t                                 i;
 
@@ -1278,10 +1272,10 @@ t_Error FmHcPortSetPCD(t_Handle h_FmHc, t_Handle h_FmPort, t_FmPortPcdParams *p_
 
     if(FmPortGetPcdEngines(h_FmPort) & FM_PCD_KG)
     {
-        schemeBind.numOfSchemes = p_PcdParams->p_KgParams->numOfSchemes;
-        for(i = 0;i<schemeBind.numOfSchemes;i++)
-            schemeBind.h_Schemes[i] = p_PcdParams->p_KgParams->h_Schemes[i];
-        err = HcPortPcdKgBindSchemes(h_FmHc ,h_FmPort, &schemeBind);
+        currentSchemes.numOfSchemes = p_PcdParams->p_KgParams->numOfSchemes;
+        for(i = 0;i<currentSchemes.numOfSchemes;i++)
+            currentSchemes.h_Schemes[i] = p_PcdParams->p_KgParams->h_Schemes[i];
+        err = HcPortPcdKgBindSchemes(h_FmHc ,h_FmPort, &currentSchemes);
         if(err)
         {
             FmPortDeletePcd(h_FmPort);
@@ -1293,8 +1287,8 @@ t_Error FmHcPortSetPCD(t_Handle h_FmHc, t_Handle h_FmPort, t_FmPortPcdParams *p_
         err = KgHcWriteCpp(p_FmHc, FmPortGetHardwarePortId(h_FmPort), cppReg);
         if(err)
         {
+            FmHcPortPcdKgUnbindSchemes(p_FmHc->h_FmPcd, h_FmPort);
             FmPortDeletePcd(h_FmPort);
-            FmHcPortPcdKgUnbindSchemes(p_FmHc->h_FmPcd, h_FmPort, &schemeBind);
             RETURN_ERROR(MINOR, err, NO_MSG);
         }
     }
@@ -1308,20 +1302,10 @@ t_Error FmHcPortDeletePCD(t_Handle h_FmHc, t_Handle h_FmPort)
 {
     t_FmHc                                  *p_FmHc = (t_FmHc*)h_FmHc;
     t_Error                                 err = E_OK;
-    t_FmPcdKgInterModuleBindPortToSchemes   schemeBind;
-    t_FmPcdPortSchemesParams                currentSchemes;
-    int                                     i;
 
     if(FmPortGetPcdEngines(h_FmPort) & FM_PCD_KG)
     {
-        /* read port schemes params - we will use here only the schemes */
-        FmPortGetPortSchemeBindParams(h_FmPort, &schemeBind);
-
-        currentSchemes.numOfSchemes = schemeBind.numOfSchemes;
-        for (i=0; i<schemeBind.numOfSchemes; i++)
-            currentSchemes.h_Schemes[i] = CAST_UINT32_TO_POINTER(schemeBind.schemesIds[i]+1);
-
-        err = FmHcPortPcdKgUnbindSchemes(h_FmHc , h_FmPort, &currentSchemes);
+        err = FmHcPortPcdKgUnbindSchemes(h_FmHc , h_FmPort);
         if(err)
             RETURN_ERROR(MAJOR, err, NO_MSG);
 
