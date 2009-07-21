@@ -598,7 +598,7 @@ t_Error     FmPortDeletePcd(t_Handle h_FmPort);
 uint8_t     FmPortGetNetEnvId(t_Handle h_FmPort);
 uint8_t     FmPortGetHardwarePortId(t_Handle h_FmPort);
 uint32_t    FmPortGetPcdEngines(t_Handle h_FmPort);
-void        FmPortGetPortSchemeBindParams(t_Handle h_FmPort, t_FmPcdKgInterModuleBindPortToSchemes *p_SchemeBind);
+void        FmPortGetPortSchemeBindParams(t_Handle h_FmPort, t_FmPcdKgInterModuleBindPortToSchemes *p_SchemeBind, bool clear);
 uint8_t     FmPortGetClsPlanId(t_Handle h_FmPort);
 t_Error     FmPortPcdKgSwBindClsPlanGrp (t_Handle h_FmPort, bool useClsPlan, uint8_t newClsPlanGrpId);
 void        FmPortPcdKgSwUnbindClsPlanGrp (t_Handle h_FmPort);

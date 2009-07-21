@@ -145,18 +145,6 @@ static int __devinit __cold init(struct mac_device *mac_dev)
 		}
 	}
 
-#ifdef CONFIG_FSL_FMAN_TEST
-	if ((param.enetMode == e_ENET_MODE_XGMII_10000) || param.macId) {
-		err = FM_MAC_ConfigLoopback(priv->mac, true);
-		_errno = -GET_ERROR_TYPE(err);
-		if (unlikely(_errno < 0)) {
-			cpu_dev_err(mac_dev->dev, "%s:%hu:%s(): FM_MAC_ConfigLoopback() = 0x%08x\n",
-				    __file__, __LINE__, __func__, err);
-			goto _return_fm_mac_free;
-		}
-	}
-#endif /* CONFIG_FSL_FMAN_TEST */
-
 	err = FM_MAC_Init(priv->mac);
 	_errno = -GET_ERROR_TYPE(err);
 	if (unlikely(_errno < 0)) {

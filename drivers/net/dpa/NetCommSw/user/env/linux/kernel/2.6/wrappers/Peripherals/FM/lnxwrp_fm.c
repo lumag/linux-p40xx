@@ -377,7 +377,7 @@ typedef _Packed struct {
     int     i;
     uint8_t physPortId[] = {0x8,0x9,0xa,0xb,0x10};
 
-    p_Plr = (t_Plr *)(p_LnxWrpFmDev->fmBaseAddr+FM_DMA_PLR_OFFSET);
+    p_Plr = CAST_UINT64_TO_POINTER_TYPE(t_Plr, (p_LnxWrpFmDev->fmBaseAddr+FM_DMA_PLR_OFFSET));
 #ifdef MODULE
     for (i=0;i<FM_MAX_NUM_OF_PARTITIONS/2;i++)
         p_Plr->plr[i] = 0;
@@ -388,7 +388,7 @@ typedef _Packed struct {
             (p_Plr->plr[i/2] & DMA_LOW_LIODN_MASK) :
             ((p_Plr->plr[i/2] & DMA_HIGH_LIODN_MASK) >> DMA_LIODN_SHIFT);
 
-    p_Ppids = (t_Ppids *)(p_LnxWrpFmDev->fmBaseAddr+FM_BMI_PPIDS_OFFSET);
+    p_Ppids = CAST_UINT64_TO_POINTER_TYPE(t_Ppids, (p_LnxWrpFmDev->fmBaseAddr+FM_BMI_PPIDS_OFFSET));
 
     for (i=0; i<FM_MAX_NUM_OF_RX_PORTS; i++)
         p_LnxWrpFmDev->rxPorts[i].settings.param.specificParams.rxParams.rxPartitionId =
@@ -474,7 +474,7 @@ static struct qe_firmware *FindFmanMicrocode(void)
 static t_LnxWrpFmDev * ReadFmDevTreeNode (struct of_device *of_dev)
 {
     t_LnxWrpFmDev       *p_LnxWrpFmDev;
-    struct device_node  *fm_node, *dev_node, *dpaa_node;
+    struct device_node  *fm_node, *dev_node;
     struct of_device_id name;
     struct resource     res;
     const uint32_t      *uint32_prop;
@@ -580,19 +580,6 @@ static t_LnxWrpFmDev * ReadFmDevTreeNode (struct of_device *of_dev)
     for_each_child_of_node(fm_node, dev_node)
         if (likely(of_match_node(&name, dev_node) != NULL))
             p_LnxWrpFmDev->plcrActive = TRUE;
-
-    memset(&name, 0, sizeof(struct of_device_id));
-    BUG_ON(strlen("fsl,dpaa") >= sizeof(name.compatible));
-    strcpy(name.compatible, "fsl,dpaa");
-    for_each_matching_node(dpaa_node, &name) {
-        struct of_device    *of_dev = of_find_device_by_node(dpaa_node);
-        if (unlikely(of_dev == NULL)) {
-            REPORT_ERROR(MAJOR, E_INVALID_VALUE, ("of_address_to_resource() = %d", _errno));
-            return NULL;
-        }
-        p_LnxWrpFmDev->dpaa_dev = &of_dev->dev;
-        break;
-    }
 
     if (p_LnxWrpFmDev->prsActive || p_LnxWrpFmDev->kgActive ||
         p_LnxWrpFmDev->ccActive || p_LnxWrpFmDev->plcrActive)
@@ -834,7 +821,7 @@ static t_Error ConfigureFmDev(t_LnxWrpFmDev  *p_LnxWrpFmDev)
     if (unlikely(p_LnxWrpFmDev->res == NULL))
         RETURN_ERROR(MAJOR, E_INVALID_STATE, ("request_mem_region() failed"));
 
-    p_LnxWrpFmDev->fmBaseAddr = (uint32_t)devm_ioremap(p_LnxWrpFmDev->dev, p_LnxWrpFmDev->fmBaseAddr, p_LnxWrpFmDev->fmMemSize);
+    p_LnxWrpFmDev->fmBaseAddr = CAST_POINTER_TO_UINT64(devm_ioremap(p_LnxWrpFmDev->dev, p_LnxWrpFmDev->fmBaseAddr, p_LnxWrpFmDev->fmMemSize));
     if (unlikely(p_LnxWrpFmDev->fmBaseAddr == 0))
         RETURN_ERROR(MAJOR, E_INVALID_STATE, ("devm_ioremap() failed"));
 
@@ -843,7 +830,7 @@ static t_Error ConfigureFmDev(t_LnxWrpFmDev  *p_LnxWrpFmDev)
     if (unlikely(dev_res == NULL))
         RETURN_ERROR(MAJOR, E_INVALID_STATE, ("__devm_request_region() failed"));
 
-    p_LnxWrpFmDev->fmMuramBaseAddr = (uint32_t)devm_ioremap(p_LnxWrpFmDev->dev, p_LnxWrpFmDev->fmMuramBaseAddr, p_LnxWrpFmDev->fmMuramMemSize);
+    p_LnxWrpFmDev->fmMuramBaseAddr = CAST_POINTER_TO_UINT64(devm_ioremap(p_LnxWrpFmDev->dev, p_LnxWrpFmDev->fmMuramBaseAddr, p_LnxWrpFmDev->fmMuramMemSize));
     if (unlikely(p_LnxWrpFmDev->fmMuramBaseAddr == 0))
         RETURN_ERROR(MAJOR, E_INVALID_STATE, ("devm_ioremap() failed"));
 
@@ -875,7 +862,7 @@ static t_Error ConfigureFmPortDev(t_LnxWrpFmPortDev *p_LnxWrpFmPortDev)
     dev_res = __devm_request_region(p_LnxWrpFmDev->dev, p_LnxWrpFmDev->res, p_LnxWrpFmPortDev->baseAddr, p_LnxWrpFmPortDev->memSize, "fman-port-hc");
     if (unlikely(dev_res == NULL))
         RETURN_ERROR(MAJOR, E_INVALID_STATE, ("__devm_request_region() failed"));
-    p_LnxWrpFmPortDev->baseAddr = (uint32_t)devm_ioremap(p_LnxWrpFmDev->dev, p_LnxWrpFmPortDev->baseAddr, p_LnxWrpFmPortDev->memSize);
+    p_LnxWrpFmPortDev->baseAddr = CAST_POINTER_TO_UINT64(devm_ioremap(p_LnxWrpFmDev->dev, p_LnxWrpFmPortDev->baseAddr, p_LnxWrpFmPortDev->memSize));
     if (unlikely(p_LnxWrpFmPortDev->baseAddr == 0))
         REPORT_ERROR(MAJOR, E_INVALID_STATE, ("devm_ioremap() failed"));
 
@@ -968,6 +955,9 @@ static t_Error InitFmDev(t_LnxWrpFmDev  *p_LnxWrpFmDev)
 
     if ((p_LnxWrpFmDev->h_Dev = FM_Config(&p_LnxWrpFmDev->fmDevSettings.param)) == NULL)
         RETURN_ERROR(MAJOR, E_INVALID_HANDLE, ("FM"));
+
+    if (FM_ConfigResetOnInit(p_LnxWrpFmDev->h_Dev, TRUE) != E_OK)
+        RETURN_ERROR(MAJOR, E_INVALID_STATE, ("FM"));
 
     if (FM_Init(p_LnxWrpFmDev->h_Dev) != E_OK)
         RETURN_ERROR(MAJOR, E_INVALID_STATE, ("FM"));
@@ -1154,10 +1144,10 @@ static void FreeFmDev(t_LnxWrpFmDev  *p_LnxWrpFmDev)
         FM_MURAM_Free(p_LnxWrpFmDev->h_MuramDev);
 
     SYS_UnregisterIoMap((uint64_t)p_LnxWrpFmDev->fmMuramBaseAddr);
-    devm_iounmap(p_LnxWrpFmDev->dev, (void*)p_LnxWrpFmDev->fmMuramBaseAddr);
+    devm_iounmap(p_LnxWrpFmDev->dev, CAST_UINT64_TO_POINTER(p_LnxWrpFmDev->fmMuramBaseAddr));
     __devm_release_region(p_LnxWrpFmDev->dev, p_LnxWrpFmDev->res, p_LnxWrpFmDev->fmMuramBaseAddr, p_LnxWrpFmDev->fmMuramMemSize);
     SYS_UnregisterIoMap((uint64_t)p_LnxWrpFmDev->fmBaseAddr);
-    devm_iounmap(p_LnxWrpFmDev->dev, (void*)p_LnxWrpFmDev->fmBaseAddr);
+    devm_iounmap(p_LnxWrpFmDev->dev, CAST_UINT64_TO_POINTER(p_LnxWrpFmDev->fmBaseAddr));
     release_mem_region(p_LnxWrpFmDev->fmBaseAddr, p_LnxWrpFmDev->fmMemSize);
 //    devm_release_mem_region(p_LnxWrpFmDev->dev, p_LnxWrpFmDev->fmBaseAddr, p_LnxWrpFmDev->fmMemSize);
 }
@@ -1171,7 +1161,7 @@ static void FreeFmPortDev(t_LnxWrpFmPortDev *p_LnxWrpFmPortDev)
 
     if (p_LnxWrpFmPortDev->h_Dev)
         FM_PORT_Free(p_LnxWrpFmPortDev->h_Dev);
-    devm_iounmap(p_LnxWrpFmDev->dev, (void*)p_LnxWrpFmPortDev->baseAddr);
+    devm_iounmap(p_LnxWrpFmDev->dev, CAST_UINT64_TO_POINTER(p_LnxWrpFmPortDev->baseAddr));
     __devm_release_region(p_LnxWrpFmDev->dev, p_LnxWrpFmDev->res, p_LnxWrpFmPortDev->baseAddr, p_LnxWrpFmPortDev->memSize);
 }
 

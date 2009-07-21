@@ -73,7 +73,7 @@ typedef struct {
     uint8_t                     id;
     bool                        active;
     bool                        initialized;
-    uint32_t                    baseAddr;
+    uint64_t                    baseAddr;
     uint32_t                    memSize;
     t_WrpFmPortDevSettings      settings;
     uint8_t                     totalNumOfSchemes;
@@ -95,7 +95,7 @@ typedef struct {
 typedef struct {
     uint8_t                     id;
     bool                        active;
-    uint32_t                    baseAddr;
+    uint64_t                    baseAddr;
     uint32_t                    memSize;
     t_WrpFmMacDevSettings       settings;
     t_Handle                    h_Dev;
@@ -116,9 +116,9 @@ typedef struct {
     uint8_t                     sharedSchemesBase;
     uint8_t                     numOfSchemesUsed;
     uint8_t                     defNetEnvId;
-    uint32_t                    fmBaseAddr;
+    uint64_t                    fmBaseAddr;
     uint32_t                    fmMemSize;
-    uint32_t                    fmMuramBaseAddr;
+    uint64_t                    fmMuramBaseAddr;
     uint32_t                    fmMuramMemSize;
     int                         irq1;
     int                         irq2;
@@ -141,7 +141,6 @@ typedef struct {
     struct proc_dir_entry       *proc_fm;
     struct proc_dir_entry       *proc_fm_regs;
     struct proc_dir_entry       *proc_fm_stats;
-    struct device               *dpaa_dev;
     struct qman_fq              *hc_tx_conf_fq, *hc_tx_err_fq, *hc_tx_fq;
 } t_LnxWrpFmDev;
 

@@ -100,6 +100,7 @@ typedef struct {
     struct fm_port      *p_RxPort;
     t_Handle            h_RxFmPortDev;
     t_Handle            h_Mac;
+    uint64_t            fmPhysBaseAddr;
     t_List              rxFrmsQ;
 
     int                 numOfTxQs;
@@ -114,6 +115,79 @@ typedef struct {
 
 static t_FmTest fmTest;
 
+
+static t_Error SetMacLoopback(t_FmTestPort *p_FmTestPort, bool en)
+{
+#define FM_1GMAC0_OFFSET                0x000e0000
+#define FM_1GMAC1_OFFSET                0x000e2000
+#define FM_1GMAC2_OFFSET                0x000e4000
+#define FM_1GMAC3_OFFSET                0x000e6000
+#define FM_10GMAC0_OFFSET               0x000f0000
+
+#define FM_1GMAC_CMD_CONF_CTRL_OFFSET   0x100
+#define FM_10GMAC_CMD_CONF_CTRL_OFFSET  0x8
+
+#define MACCFG1_LOOPBACK                0x00000100
+#define CMD_CFG_LOOPBACK_EN             0x00000400
+
+    uint64_t    tmpAddr = p_FmTestPort->fmPhysBaseAddr;
+    uint32_t    tmpVal;
+
+    if (p_FmTestPort->portType == e_IOC_FMT_PORT_T_RXTX)
+    switch (p_FmTestPort->id)
+    {
+        case 0:
+            tmpAddr += FM_1GMAC0_OFFSET;
+            break;
+        case 1:
+            tmpAddr += FM_1GMAC1_OFFSET;
+            break;
+        case 2:
+            tmpAddr += FM_1GMAC2_OFFSET;
+            break;
+        case 3:
+            tmpAddr += FM_1GMAC3_OFFSET;
+            break;
+        case 4:
+            tmpAddr += FM_10GMAC0_OFFSET;
+            break;
+        default:
+            RETURN_ERROR(MINOR, E_INVALID_VALUE, ("fm-port-test id!"));
+    }
+
+    tmpAddr = CAST_POINTER_TO_UINT64(ioremap(tmpAddr, 0x1000));
+
+    switch (p_FmTestPort->id)
+    {
+        case 0:
+        case 1:
+        case 2:
+        case 3:
+            tmpAddr += FM_1GMAC_CMD_CONF_CTRL_OFFSET;
+            tmpVal = GET_UINT32(*CAST_UINT64_TO_POINTER_TYPE(uint32_t,tmpAddr));
+            if (en)
+                tmpVal |= MACCFG1_LOOPBACK;
+            else
+                tmpVal &= ~MACCFG1_LOOPBACK;
+            WRITE_UINT32(*CAST_UINT64_TO_POINTER_TYPE(uint32_t,tmpAddr), tmpVal);
+            break;
+        case 4:
+            tmpAddr += FM_10GMAC_CMD_CONF_CTRL_OFFSET;
+            tmpVal = GET_UINT32(*CAST_UINT64_TO_POINTER_TYPE(uint32_t,tmpAddr));
+            if (en)
+                tmpVal |= CMD_CFG_LOOPBACK_EN;
+            else
+                tmpVal &= ~CMD_CFG_LOOPBACK_EN;
+            WRITE_UINT32(*CAST_UINT64_TO_POINTER_TYPE(uint32_t,tmpAddr), tmpVal);
+            break;
+        default:
+            break;
+    }
+
+    iounmap(CAST_UINT64_TO_POINTER(tmpAddr));
+
+    return E_OK;
+}
 
 static void EnqueueFrameToRxQ(t_FmTestPort *p_FmTestPort, t_FmTestFrame *p_FmTestFrame)
 {
@@ -216,7 +290,7 @@ static t_Error PortInit (t_FmTestPort *p_FmTestPort, ioc_fmt_port_param_t *p_Par
     struct of_device_id name;
     struct device_node  *fm_node, *fm_port_node;
     const uint32_t      *uint32_prop;
-    int                 lenp;
+    int                 _errno=0, lenp;
     uint32_t            i;
 
     INIT_LIST(&p_FmTestPort->rxFrmsQ);
@@ -235,6 +309,14 @@ static t_Error PortInit (t_FmTestPort *p_FmTestPort, ioc_fmt_port_param_t *p_Par
         }
         BUG_ON(lenp != sizeof(uint32_t));
         if (*uint32_prop == p_Params->fm_id) {
+            struct resource     res;
+            /* Get the FM address */
+            _errno = of_address_to_resource(fm_node, 0, &res);
+            if (unlikely(_errno < 0))
+                RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("of_address_to_resource() = %d", _errno));
+
+            p_FmTestPort->fmPhysBaseAddr = res.start;
+
             for_each_child_of_node(fm_node, fm_port_node) {
                 struct of_device    *of_dev;
                 uint32_prop = (uint32_t *)of_get_property(fm_port_node, "cell-index", &lenp);
@@ -317,6 +399,8 @@ static t_Error PortInit (t_FmTestPort *p_FmTestPort, ioc_fmt_port_param_t *p_Par
         if (IS_ERR(p_FmTestPort->p_TxFqs[i]))
             RETURN_ERROR(MAJOR, E_INVALID_HANDLE, ("Tx FQs!"));
     }
+
+    SetMacLoopback(p_FmTestPort, TRUE);
 
     p_FmTestPort->valid     = TRUE;
 
@@ -434,6 +518,8 @@ static int fm_test_close(struct inode *inode, struct file *file)
         return -ENODEV;
 
     p_FmTestPort->valid = FALSE;
+
+    SetMacLoopback(p_FmTestPort, FALSE);
 
     /* Complete!!! */
     return err;
