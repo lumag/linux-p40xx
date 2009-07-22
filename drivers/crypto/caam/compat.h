@@ -51,6 +51,7 @@
 #include <linux/in.h>
 #include <linux/slab.h>
 #include <linux/types.h>
+#include <net/xfrm.h>
 
 #include <crypto/algapi.h>
 #include <crypto/aes.h>
