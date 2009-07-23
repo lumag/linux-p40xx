@@ -57,10 +57,6 @@ struct scan_ctx {
 	struct qm_fd result_fd;
 };
 
-static struct bman_pool *pool;
-static u32 pme_bpid;
-static void *bman_buffers_virt_base;
-static dma_addr_t bman_buffers_phys_base;
 static DECLARE_COMPLETION(scan_comp);
 
 static void scan_cb(struct pme_ctx *ctx, const struct qm_fd *fd,
@@ -72,6 +68,13 @@ static void scan_cb(struct pme_ctx *ctx, const struct qm_fd *fd,
 	memcpy(&my_ctx->result_fd, fd, sizeof(*fd));
 	complete(&scan_comp);
 }
+
+#ifdef CONFIG_FSL_PME2_TEST_SCAN_WITH_BPID
+
+static struct bman_pool *pool;
+static u32 pme_bpid;
+static void *bman_buffers_virt_base;
+static dma_addr_t bman_buffers_phys_base;
 
 static void release_buffer(dma_addr_t addr)
 {
@@ -94,7 +97,7 @@ static void empty_buffer(void)
 			pr_info("st: Acquired buffer\n");
 	} while (!ret);
 }
-
+#endif /*CONFIG_FSL_PME2_TEST_SCAN_WITH_BPID*/
 
 void pme2_test_scan(void)
 {
@@ -198,7 +201,7 @@ void pme2_test_scan(void)
 	BUG_ON(ret);
 
 	/* Check with bman */
-#if CONFIG_FSL_PME2_TEST_SCAN_WITH_BPID
+#ifdef CONFIG_FSL_PME2_TEST_SCAN_WITH_BPID
 	/* reconfigure */
 	ret = pme_ctx_reconfigure_tx(&a_scan_ctx.base_ctx, pme_bpid, 5);
 	BUG_ON(ret);
@@ -423,7 +426,7 @@ void pme2_test_scan(void)
 static int pme2_test_scan_init(void)
 {
 	int big_loop = 2;
-#if CONFIG_FSL_PME2_TEST_SCAN_WITH_BPID
+#ifdef CONFIG_FSL_PME2_TEST_SCAN_WITH_BPID
 	u32 bpid_size = CONFIG_FSL_PME2_TEST_SCAN_WITH_BPID_SIZE;
 
 	struct bman_pool_params pparams = {
@@ -435,12 +438,13 @@ static int pme2_test_scan_init(void)
 			0
 		}
 	};
-	pr_info("st: About to allocate bpool\n");
-	pool = bman_new_pool(&pparams);
-	if (!pool) {
-		pr_err("st: can't allocate buffer pool, not the ctrl-plane\n");
+	if (!pme2_have_control()) {
+		pr_err("st: Not the ctrl-plane\n");
 		return 0;
 	}
+
+	pr_info("st: About to allocate bpool\n");
+	pool = bman_new_pool(&pparams);
 	BUG_ON(!pool);
 	pme_bpid = bman_get_params(pool)->bpid;
 	pr_info("st: Allocate buffer pool id %d\n", pme_bpid);
@@ -459,9 +463,14 @@ static int pme2_test_scan_init(void)
 	pme_attr_set(pme_attr_bsc(pme_bpid), bpid_size);
 	/* realease to the specified buffer pool */
 #endif
+	if (!pme2_have_control()) {
+		pr_err("st: Not the ctrl-plane\n");
+		return 0;
+	}
+
 	while (big_loop--)
 		pme2_test_scan();
-#if CONFIG_FSL_PME2_TEST_SCAN_WITH_BPID
+#ifdef CONFIG_FSL_PME2_TEST_SCAN_WITH_BPID
 	pme_attr_set(pme_attr_bsc(pme_bpid), 0);
 	empty_buffer();
 	bman_free_pool(pool);

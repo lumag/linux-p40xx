@@ -563,6 +563,9 @@ int pme_ctx_pmtcc(struct pme_ctx *ctx, u32 flags, struct qm_fd *fd,
 int pme_ctx_exclusive_inc(struct pme_ctx *ctx, u32 flags);
 void pme_ctx_exclusive_dec(struct pme_ctx *ctx);
 
+/* Does pme have access to ccsr */
+int pme2_have_control(void);
+
 /**************************/
 /* control-plane only API */
 /**************************/
@@ -642,7 +645,7 @@ enum pme_attr {
 #define pme_attr_bsc(n) (pme_attr_bsc_first + (n))
 /* Get/set driver attributes */
 int pme_attr_set(enum pme_attr attr, u32 val);
-u32 pme_attr_get(enum pme_attr attr);
+int pme_attr_get(enum pme_attr attr, u32 *val);
 #endif /* defined(CONFIG_FSL_PME2_CTRL) */
 
 #endif /* __KERNEL__ */
