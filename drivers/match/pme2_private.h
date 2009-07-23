@@ -131,9 +131,9 @@ union pme_cmd {
 struct qman_fq *slabfq_alloc(void);
 void slabfq_free(struct qman_fq *fq);
 
-/* Hook from pme2_high to pme2_driver */
+/* Hook from pme2_high to pme2_ctrl */
 int pme2_exclusive_set(struct qman_fq *fq);
-void pme2_exclusive_unset(void);
+int pme2_exclusive_unset(void);
 
 /* Hook from pme2_low to pme2_sample_db */
 void pme2_sample_db(void);

@@ -239,8 +239,14 @@ static ssize_t pme_generic_store(const char *buf, size_t count,
 
 static ssize_t pme_generic_show(char *buf, enum pme_attr attr, const char *fmt)
 {
-	u32 data = pme_attr_get(attr);
-	return snprintf(buf, PAGE_SIZE, fmt, data);
+	u32 data;
+	int ret;
+
+	ret =  pme_attr_get(attr, &data);
+	if (!ret)
+		return snprintf(buf, PAGE_SIZE, fmt, data);
+	else
+		return ret;
 }
 
 static ssize_t pme_generic_stat_show(char *buf, enum pme_attr attr)
@@ -317,6 +323,10 @@ static ssize_t pme_store_update_interval(struct device_driver *pme,
 {
 	unsigned long val;
 
+	if (!pme2_have_control()) {
+		PMEPRERR("not on ctrl-plane\n");
+		return -ENODEV;
+	}
 	if (strict_strtoul(buf, 0, &val)) {
 		pr_err("pme: invalid input %s\n", buf);
 		return -EINVAL;
@@ -331,6 +341,8 @@ static ssize_t pme_store_update_interval(struct device_driver *pme,
 }
 static ssize_t pme_show_update_interval(struct device_driver *pme, char *buf)
 {
+	if (!pme2_have_control())
+		return -ENODEV;
 	return snprintf(buf, PAGE_SIZE, "%u\n", pme_stat_interval);
 }
 static DRIVER_ATTR(update_interval, (S_IRUSR | S_IWUSR),
@@ -778,25 +790,35 @@ module_exit(pme2_ctrl_exit);
  * sysfs attributes.
  */
 
+int pme2_have_control(void)
+{
+	return global_pme ? 1 : 0;
+}
+EXPORT_SYMBOL(pme2_have_control);
+
 int pme2_exclusive_set(struct qman_fq *fq)
 {
-	if (!global_pme)
+	if (!pme2_have_control())
 		return -ENODEV;
 	pme_out(global_pme, EFQC, PME_EFQC(1, qman_fq_fqid(fq)));
 	return 0;
 }
-EXPORT_SYMBOL(pme2_exclusive_set);
 
-void pme2_exclusive_unset(void)
+int pme2_exclusive_unset(void)
 {
+	if (!pme2_have_control())
+		return -ENODEV;
 	pme_out(global_pme, EFQC, PME_EFQC(0, 0));
+	return 0;
 }
-EXPORT_SYMBOL(pme2_exclusive_unset);
 
 int pme_attr_set(enum pme_attr attr, u32 val)
 {
 	u32 mask;
 	u32 attr_val;
+
+	if (!pme2_have_control())
+		return -ENODEV;
 
 	/* Check if Buffer size configuration */
 	if (attr >= pme_attr_bsc_first && attr <= pme_attr_bsc_last) {
@@ -1009,10 +1031,13 @@ int pme_attr_set(enum pme_attr attr, u32 val)
 }
 EXPORT_SYMBOL(pme_attr_set);
 
-u32 pme_attr_get(enum pme_attr attr)
+int pme_attr_get(enum pme_attr attr, u32 *val)
 {
 	u32 mask;
 	u32 attr_val;
+
+	if (!pme2_have_control())
+		return -ENODEV;
 
 	/* Check if Buffer size configuration */
 	if (attr >= pme_attr_bsc_first && attr <= pme_attr_bsc_last) {
@@ -1026,7 +1051,8 @@ u32 pme_attr_get(enum pme_attr attr)
 		attr_val = pme_in(global_pme, BSC0 + ((bsc_pool_id/8)*4));
 		attr_val = attr_val >> ((7-bsc_pool_offset)*4);
 		attr_val = attr_val & 0x0000000F;
-		return attr_val;
+		*val = attr_val;
+		return 0;
 	}
 
 	switch (attr) {
@@ -1320,9 +1346,10 @@ u32 pme_attr_get(enum pme_attr attr)
 
 	default:
 		pr_err("pme: Unknown attr %u\n", attr);
-		return 0;
+		return -EINVAL;
 	};
-	return attr_val;
+	*val = attr_val;
+	return 0;
 }
 EXPORT_SYMBOL(pme_attr_get);
 
@@ -1361,6 +1388,7 @@ int pme_stat_get(enum pme_attr *stat, u64 *value, int reset)
 {
 	int i, ret = 0;
 	int value_set = 0;
+	u32 val;
 
 	spin_lock_irq(&stat_lock);
 	if (stat == NULL || value == NULL) {
@@ -1369,7 +1397,9 @@ int pme_stat_get(enum pme_attr *stat, u64 *value, int reset)
 	} else {
 		for (i = 0; i < sizeof(stat_list)/sizeof(enum pme_attr); i++) {
 			if (stat_list[i] == *stat) {
-				pme_stats[i] += pme_attr_get(stat_list[i]);
+				ret = pme_attr_get(stat_list[i], &val);
+				/* Do I need to check ret */
+				pme_stats[i] += val;
 				*value = pme_stats[i];
 				value_set = 1;
 				if (reset)
@@ -1403,13 +1433,16 @@ static void accumulator_update_interval(u32 interval)
 
 static void accumulator_update(struct work_struct *work)
 {
-	int i;
+	int i, ret;
 	u32 local_interval;
+	u32 val;
 
 	spin_lock_irq(&stat_lock);
 	local_interval = pme_stat_interval;
-	for (i = 0; i < sizeof(stat_list)/sizeof(enum pme_attr); i++)
-		pme_stats[i] += pme_attr_get(stat_list[i]);
+	for (i = 0; i < sizeof(stat_list)/sizeof(enum pme_attr); i++) {
+		ret = pme_attr_get(stat_list[i], &val);
+		pme_stats[i] += val;
+	}
 	spin_unlock_irq(&stat_lock);
 	if (local_interval)
 		schedule_delayed_work(&accumulator_work,

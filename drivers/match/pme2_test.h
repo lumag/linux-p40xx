@@ -39,7 +39,6 @@
 #include <linux/interrupt.h>
 #include <linux/delay.h>
 #include <linux/completion.h>
-
 #include <linux/fsl_pme.h>
 #include <linux/fsl_bman.h>
 

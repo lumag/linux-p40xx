@@ -274,7 +274,7 @@ static int ioctl_sre_reset(unsigned long arg)
 {
 	struct pme_db_sre_reset reset_vals;
 	int i;
-	int srrr_val;
+	u32 srrr_val;
 	int ret = 0;
 
 	if (copy_from_user(&reset_vals, (struct pme_db_sre_reset __user *)arg,
@@ -314,9 +314,14 @@ static int ioctl_sre_reset(unsigned long arg)
 	pme_attr_set(pme_attr_srrr, reset_vals.rule_repetitions);
 	do {
 		mdelay(PME_PMFA_SRE_POLL_MS);
-		srrr_val = pme_attr_get(pme_attr_srrr);
+		ret = pme_attr_get(pme_attr_srrr, &srrr_val);
+		if (!ret) {
+			PMEPRCRIT("pme2: Error reading srrr\n");
+			/* bail */
+			break;
+		}
 		/* Check for error */
-		if (srrr_val & 0x10000000) {
+		else if (srrr_val & 0x10000000) {
 			PMEPRERR("pme2: Error in SRRR\n");
 			ret = -EIO;
 		}
@@ -442,6 +447,10 @@ static int __init fsl_pme2_db_init(void)
 	int err = 0;
 
 	pr_info("Freescale pme2 db driver\n");
+	if (!pme2_have_control()) {
+		PMEPRERR("not on ctrl-plane\n");
+		return -ENODEV;
+	}
 	err = misc_register(&fsl_pme2_db_dev);
 	if (err) {
 		PMEPRERR("cannot register device\n");
