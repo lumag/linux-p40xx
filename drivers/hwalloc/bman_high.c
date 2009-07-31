@@ -464,10 +464,6 @@ static struct bm_rcr_entry *try_rel_start(struct bman_portal **p)
 {
 	struct bm_rcr_entry *r;
 	*p = get_affine_portal();
-	if (unlikely(!*p)) {
-		put_affine_portal();
-		return NULL;
-	}
 	local_irq_disable();
 	if (bm_rcr_get_avail((*p)->p) < RCR_THRESH)
 		bm_rcr_cci_update((*p)->p);

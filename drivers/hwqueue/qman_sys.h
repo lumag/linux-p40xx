@@ -55,11 +55,15 @@ struct qman_rbtree {
 };
 #define QMAN_RBTREE { .root = RB_ROOT }
 
+static inline void qman_rbtree_init(struct qman_rbtree *tree)
+{
+	tree->root = RB_ROOT;
+}
+
 #define IMPLEMENT_QMAN_RBTREE(name, type, node_field, val_field) \
 static inline int name##_push(struct qman_rbtree *tree, type *obj) \
 { \
 	struct rb_node *parent = NULL, **p = &tree->root.rb_node; \
-	int ret = -EBUSY; \
 	while (*p) { \
 		u32 item; \
 		parent = *p; \
@@ -69,7 +73,7 @@ static inline int name##_push(struct qman_rbtree *tree, type *obj) \
 		else if (obj->val_field > item) \
 			p = &parent->rb_right; \
 		else \
-			return ret; \
+			return -EBUSY; \
 	} \
 	rb_link_node(&obj->node_field, parent, p); \
 	rb_insert_color(&obj->node_field, &tree->root); \
@@ -90,9 +94,7 @@ static inline type *name##_find(struct qman_rbtree *tree, u32 val) \
 		else if (val > ret->val_field) \
 			p = p->rb_right; \
 		else \
-			break; \
+			return ret; \
 	} \
-	if (!p) \
-		ret = NULL; \
-	return ret; \
+	return NULL; \
 }

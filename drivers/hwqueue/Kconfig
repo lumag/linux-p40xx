@@ -59,6 +59,10 @@ config FSL_QMAN_FQRANGE
 	  provides a s/w allocator implementation that supports allocating
 	  and deallocating FQID ranges, with control over alignment.
 
+config FSL_QMAN_POLL_LIMIT
+	int
+	default 15
+
 config FSL_QMAN_CONFIG
 	bool "Qman device management"
 	default y

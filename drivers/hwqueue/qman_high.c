@@ -177,10 +177,6 @@ static inline struct qman_fq *table_find_fq(u32 fqid)
 #define SLOW_POLL_BUSY   10
 static u32 __poll_portal_slow(struct qman_portal *p, u32 is);
 static void __poll_portal_fast(struct qman_portal *p);
-/* For fast-path handling, the DQRR cursor chases ring entries around the ring
- * until it runs out of valid things to process. This decrementer constant
- * places a cap on how much it'll process in a single invocation. */
-#define FAST_POLL        16
 
 /* Portal interrupt handler */
 static irqreturn_t portal_isr(int irq, void *ptr)
@@ -412,6 +408,14 @@ void qman_destroy_portal(struct qman_portal *qm)
 	kfree(qm);
 }
 
+void qman_get_null_cb(struct qman_fq_cb *null_cb)
+{
+	struct qman_portal *p = get_affine_portal();
+	*null_cb = p->null_cb;
+	put_affine_portal();
+}
+EXPORT_SYMBOL(qman_get_null_cb);
+
 void qman_set_null_cb(const struct qman_fq_cb *null_cb)
 {
 	struct qman_portal *p = get_affine_portal();
@@ -531,14 +535,14 @@ mr_loop:
 					panic("unexpected FQ retirement");
 				fq_state_change(fq, msg, verb);
 				if (fq->cb.fqs)
-					fq->cb.fqs(p, (void *)fq, msg);
+					fq->cb.fqs(p, fq, msg);
 			} else if (likely(fq)) {
 				/* As per the header note, this is the way to
 				 * determine if it's a s/w ERN or not. */
 				if (likely(!(verb & QM_MR_VERB_DC_ERN)))
-					fq->cb.ern(p, (void *)fq, msg);
+					fq->cb.ern(p, fq, msg);
 				else
-					fq->cb.dc_ern(p, (void *)fq, msg);
+					fq->cb.dc_ern(p, fq, msg);
 			} else {
 				/* use portal default handlers for 'null's */
 				if (likely(!(verb & QM_MR_VERB_DC_ERN)))
@@ -598,7 +602,7 @@ dqrr_loop:
 	if (qm_dqrr_pvb_update(p->p))
 		qm_dqrr_pvb_prefetch(p->p);
 	dq = qm_dqrr_current(p->p);
-	if (!dq || (num == FAST_POLL))
+	if (!dq || (num == CONFIG_FSL_QMAN_POLL_LIMIT))
 		goto done;
 	fq = (void *)dq->contextB;
 	/* Interpret 'dq' from the owner's perspective. */
@@ -1143,6 +1147,33 @@ int qman_query_fq(struct qman_fq *fq, struct qm_fqd *fqd)
 }
 EXPORT_SYMBOL(qman_query_fq);
 
+int qman_query_fq_np(struct qman_fq *fq, struct qm_mcr_queryfq_np *np)
+{
+	struct qm_mc_command *mcc;
+	struct qm_mc_result *mcr;
+	struct qman_portal *p = get_affine_portal();
+	u8 res;
+
+	local_irq_disable();
+	mcc = qm_mc_start(p->p);
+	mcc->queryfq.fqid = fq->fqid;
+	qm_mc_commit(p->p, QM_MCC_VERB_QUERYFQ_NP);
+	while (!(mcr = qm_mc_result(p->p)))
+		cpu_relax();
+	QM_ASSERT((mcr->verb & QM_MCR_VERB_MASK) == QM_MCR_VERB_QUERYFQ_NP);
+	res = mcr->result;
+	if (res == QM_MCR_RESULT_OK)
+		*np = mcr->queryfq_np;
+	local_irq_enable();
+	put_affine_portal();
+	if (res != QM_MCR_RESULT_OK) {
+		pr_err("QUERYFQ_NP failed: %s\n", mcr_result_str(res));
+		return -EIO;
+	}
+	return 0;
+}
+EXPORT_SYMBOL(qman_query_fq_np);
+
 /* internal function used as a wait_event() expression */
 static int set_vdqcr(struct qman_portal **p, u32 vdqcr, u16 *v)
 {
@@ -1212,14 +1243,13 @@ static struct qm_eqcr_entry *try_eq_start(struct qman_portal **p)
 {
 	struct qm_eqcr_entry *eq;
 	*p = get_affine_portal();
-	if (qm_eqcr_get_avail((*p)->p) < EQCR_THRESH) {
-		local_irq_disable();
+	local_irq_disable();
+	if (qm_eqcr_get_avail((*p)->p) < EQCR_THRESH)
 		(*p)->eq_cons += qm_eqcr_cci_update((*p)->p);
-		local_irq_enable();
-	}
 	eq = qm_eqcr_start((*p)->p);
 	if (unlikely(!eq)) {
 		eqcr_set_thresh(*p, 1);
+		local_irq_enable();
 		put_affine_portal();
 	}
 	return eq;
@@ -1278,6 +1308,7 @@ static inline void eqcr_commit(struct qman_portal *p, u32 flags, int orp)
 	if ((flags & QMAN_ENQUEUE_FLAG_WAIT_SYNC) ==
 			QMAN_ENQUEUE_FLAG_WAIT_SYNC)
 		eqcr_set_thresh(p, 1);
+	local_irq_enable();
 	put_affine_portal();
 	if ((flags & QMAN_ENQUEUE_FLAG_WAIT_SYNC) !=
 			QMAN_ENQUEUE_FLAG_WAIT_SYNC)
@@ -1295,6 +1326,7 @@ static inline void eqcr_commit(struct qman_portal *p, u32 flags, int orp)
 static inline void eqcr_abort(struct qman_portal *p)
 {
 	qm_eqcr_abort(p->p);
+	local_irq_enable();
 	put_affine_portal();
 }
 
