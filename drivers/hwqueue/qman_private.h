@@ -114,7 +114,9 @@ int __qm_portal_bind(struct qm_portal *portal, u8 iface);
 void __qm_portal_unbind(struct qm_portal *portal, u8 iface);
 
 /* Hooks for driver initialisation */
+#ifdef CONFIG_FSL_QMAN_FQALLOCATOR
 __init int __fqalloc_init(void);
+#endif
 
 /* Hooks between qman_driver.c and qman_high.c */
 extern DEFINE_PER_CPU(struct qman_portal *, qman_affine_portal);

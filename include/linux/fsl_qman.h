@@ -700,7 +700,7 @@ struct qm_mr_entry {
  * originating from direct-connect portals ("dcern") use 0x20 as a verb which
  * would be invalid as a s/w enqueue verb. A s/w ERN can be distinguished from
  * the other MR types by noting if the 0x20 bit is unset. */
-#define QM_MR_VERB_TYPE_MASK		0x23
+#define QM_MR_VERB_TYPE_MASK		0x27
 #define QM_MR_VERB_DC_ERN		0x20
 #define QM_MR_VERB_FQRN			0x21
 #define QM_MR_VERB_FQRNI		0x22
@@ -1297,6 +1297,13 @@ struct qman_fq {
 	/* Portal Management */
 	/* ----------------- */
 /**
+ * qman_get_null_cb - get callbacks currently used for "null" frame queues
+ *
+ * Copies the callbacks used for the affine portal of the current cpu.
+ */
+void qman_get_null_cb(struct qman_fq_cb *null_cb);
+
+/**
  * qman_set_null_cb - set callbacks to use for "null" frame queues
  *
  * Sets the callbacks to use for the affine portal of the current cpu, whenever
@@ -1379,7 +1386,6 @@ u32 qman_static_dequeue_get(void);
  * entry in the first place.
  */
 void qman_dca(struct qm_dqrr_entry *dq, int park_request);
-
 
 	/* FQ management */
 	/* ------------- */
@@ -1521,8 +1527,16 @@ int qman_oos_fq(struct qman_fq *fq);
 /**
  * qman_query_fq - Queries FQD fields (via h/w query command)
  * @fq: the frame queue object to be queried
+ * @fqd: storage for the queried FQD fields
  */
 int qman_query_fq(struct qman_fq *fq, struct qm_fqd *fqd);
+
+/**
+ * qman_query_fq_np - Queries non-programmable FQD fields
+ * @fq: the frame queue object to be queried
+ * @np: storage for the queried FQD fields
+ */
+int qman_query_fq_np(struct qman_fq *fq, struct qm_mcr_queryfq_np *np);
 
 /**
  * qman_volatile_dequeue - Issue a volatile dequeue command
@@ -1617,7 +1631,7 @@ int qman_enqueue_orp(struct qman_fq *fq, const struct qm_fd *fd, u32 flags,
 			struct qman_fq *orp, u16 orp_seqnum);
 
 /**
- * qman_alloc_fq_range - Allocate a contiguous range of FQIDs
+ * qman_alloc_fqid_range - Allocate a contiguous range of FQIDs
  * @result: is set by the API to the base FQID of the allocated range
  * @count: the number of FQIDs required
  * @align: required alignment of the allocated range
@@ -1628,17 +1642,56 @@ int qman_enqueue_orp(struct qman_fq *fq, const struct qm_fd *fd, u32 flags,
  * FQs than requested (though alignment will be as requested). If @partial is
  * zero, the return value will either be 'count' or negative.
  */
-int qman_alloc_fq_range(u32 *result, u32 count, u32 align, int partial);
+int qman_alloc_fqid_range(u32 *result, u32 count, u32 align, int partial);
+static inline int qman_alloc_fqid(u32 *result)
+{
+	return qman_alloc_fqid_range(result, 1, 0, 0);
+}
 
 /**
- * qman_release_fq_range - Release the specified range of frame queue IDs
+ * qman_release_fqid_range - Release the specified range of frame queue IDs
  * @fqid: the base FQID of the range to deallocate
  * @count: the number of FQIDs in the range
  *
  * This function can also be used to seed the allocator with ranges of FQIDs
- * that it can subsequently use.
+ * that it can subsequently use. Returns zero for success.
  */
-void qman_release_fq_range(u32 fqid, unsigned int count);
+void qman_release_fqid_range(u32 fqid, unsigned int count);
+static inline void qman_release_fqid(u32 fqid)
+{
+	qman_release_fqid_range(fqid, 1);
+}
+
+	/* Helpers */
+	/* ------- */
+/**
+ * qman_poll_fq_for_init - Check if an FQ has been initialised from OOS
+ * @fqid: the FQID that will be initialised by other s/w
+ *
+ * In many situations, a FQID is provided for communication between s/w
+ * entities, and whilst the consumer is responsible for initialising and
+ * scheduling the FQ, the producer(s) generally create a wrapper FQ object using
+ * and only call qman_enqueue() (no FQ initialisation, scheduling, etc). Ie;
+ *     qman_create_fq(..., QMAN_FQ_FLAG_NO_MODIFY, ...);
+ * However, data can not be enqueued to the FQ until it is initialised out of
+ * the OOS state - this function polls for that condition. It is particularly
+ * useful for users of IPC functions - each endpoint's Rx FQ is the other
+ * endpoint's Tx FQ, so each side can initialise and schedule their Rx FQ object
+ * and then use this API on the (NO_MODIFY) Tx FQ object in order to
+ * synchronise. The function returns zero for success, +1 if the FQ is still in
+ * the OOS state, or negative if there was an error.
+ */
+static inline int qman_poll_fq_for_init(struct qman_fq *fq)
+{
+	struct qm_mcr_queryfq_np np;
+	int err;
+	err = qman_query_fq_np(fq, &np);
+	if (err)
+		return err;
+	if ((np.state & QM_MCR_NP_STATE_MASK) == QM_MCR_NP_STATE_OOS)
+		return 1;
+	return 0;
+}
 
 #endif /* FSL_QMAN_H */
 

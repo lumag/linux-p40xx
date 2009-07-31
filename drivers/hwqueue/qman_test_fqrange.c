@@ -39,26 +39,26 @@ void qman_test_fqrange(void)
 
 	pr_info("Testing \"FQRANGE\" allocator ...\n");
 	/* Seed the allocator*/
-	qman_release_fq_range(0, 1000);
+	qman_release_fqid_range(0, 1000);
 
-	num = qman_alloc_fq_range(&result1, 100, 4, 0);
+	num = qman_alloc_fqid_range(&result1, 100, 4, 0);
 	BUG_ON(result1 % 4);
 
-	num = qman_alloc_fq_range(&result2, 500, 500, 0);
+	num = qman_alloc_fqid_range(&result2, 500, 500, 0);
 	BUG_ON((num != 500) || (result2 != 500));
 
-	num = qman_alloc_fq_range(&result3, 1000, 0, 0);
+	num = qman_alloc_fqid_range(&result3, 1000, 0, 0);
 	BUG_ON(num >= 0);
 
-	num = qman_alloc_fq_range(&result3, 1000, 0, 1);
+	num = qman_alloc_fqid_range(&result3, 1000, 0, 1);
 	BUG_ON(num < 400);
 
-	qman_release_fq_range(result2, 500);
-	qman_release_fq_range(result1, 100);
-	qman_release_fq_range(result3, num);
+	qman_release_fqid_range(result2, 500);
+	qman_release_fqid_range(result1, 100);
+	qman_release_fqid_range(result3, num);
 
 	/* It should now be possible to drain the allocator empty */
-	num = qman_alloc_fq_range(&result1, 1000, 0, 0);
+	num = qman_alloc_fqid_range(&result1, 1000, 0, 0);
 	BUG_ON(num != 1000);
 	pr_info("                              ... SUCCESS!\n");
 }

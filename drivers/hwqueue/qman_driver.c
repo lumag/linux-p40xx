@@ -349,15 +349,15 @@ bad_cpu_ph:
 		/* TODO: cgrs ?? */
 		affine_portal = qman_create_portal(portal, flags, NULL,
 						&null_cb);
-		if (!affine_portal)
+		if (!affine_portal) {
 			pr_err("Qman portal auto-initialisation failed\n");
-		else {
-			/* default: enable all (available) pool channels */
-			qman_static_dequeue_add_ex(affine_portal, ~0);
-			pr_info("Qman portal %d auto-initialised\n", cfg.cpu);
-			per_cpu(qman_affine_portal, cfg.cpu) = affine_portal;
-			num_affine_portals++;
+			return 0;
 		}
+		/* default: enable all (available) pool channels */
+		qman_static_dequeue_add_ex(affine_portal, ~0);
+		pr_info("Qman portal %d auto-initialised\n", cfg.cpu);
+		per_cpu(qman_affine_portal, cfg.cpu) = affine_portal;
+		num_affine_portals++;
 	}
 #endif
 	return 0;

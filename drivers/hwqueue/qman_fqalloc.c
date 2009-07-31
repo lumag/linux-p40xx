@@ -99,22 +99,45 @@ struct alloc_node {
 	u32 num;
 };
 
-int qman_alloc_fq_range(u32 *result, u32 count, u32 align, int partial)
+/* #define FQRANGE_DEBUG */
+
+#ifdef FQRANGE_DEBUG
+#define DPRINT		pr_info
+static void DUMP(void)
 {
-	struct alloc_node *i, *next_best = NULL;
+	int off = 0;
+	char buf[256];
+	struct alloc_node *p;
+	list_for_each_entry(p, &alloc_list, list) {
+		if (off < 255)
+			off += snprintf(buf + off, 255-off, "{%d,%d}",
+				p->base, p->base + p->num - 1);
+	}
+	pr_info("%s\n", buf);
+}
+#else
+#define DPRINT(x...)	do { ; } while(0)
+#define DUMP()		do { ; } while(0)
+#endif
+
+int qman_alloc_fqid_range(u32 *result, u32 count, u32 align, int partial)
+{
+	struct alloc_node *i = NULL, *next_best = NULL;
 	u32 base, next_best_base = 0, num = 0, next_best_num = 0;
 	struct alloc_node *margin_left, *margin_right;
 
+	DPRINT("alloc_range(%d,%d,%d)\n", count, align, partial);
+	DUMP();
 	/* If 'align' is 0, it should behave as though it was 1 */
 	if (!align)
 		align = 1;
 	margin_left = kmalloc(sizeof(*margin_left), GFP_KERNEL);
 	if (!margin_left)
-		return -ENOMEM;
+		goto err;
 	margin_right = kmalloc(sizeof(*margin_right), GFP_KERNEL);
 	if (!margin_right) {
 		kfree(margin_left);
-		return -ENOMEM;
+		goto err;
 	}
 	spin_lock_irq(&alloc_lock);
 	list_for_each_entry(i, &alloc_list, list) {
@@ -161,13 +184,18 @@ done:
 		*result = base;
 	}
 	spin_unlock_irq(&alloc_lock);
+err:
+	DPRINT("returning %d\n", i ? num : -ENOMEM);
+	DUMP();
 	return i ? num : -ENOMEM;
 }
-EXPORT_SYMBOL(qman_alloc_fq_range);
+EXPORT_SYMBOL(qman_alloc_fqid_range);
 
-void qman_release_fq_range(u32 fqid, unsigned int count)
+void qman_release_fqid_range(u32 fqid, u32 count)
 {
 	struct alloc_node *i, *node = kmalloc(sizeof(*node), GFP_KERNEL);
+	DPRINT("release_range(%d,%d)\n", fqid, count);
+	DUMP();
 	spin_lock_irq(&alloc_lock);
 	node->base = fqid;
 	node->num = count;
@@ -197,7 +225,8 @@ done:
 		kfree(i);
 	}
 	spin_unlock_irq(&alloc_lock);
+	DUMP();
 }
-EXPORT_SYMBOL(qman_release_fq_range);
+EXPORT_SYMBOL(qman_release_fqid_range);
 
 #endif /* CONFIG_FSL_QMAN_FQRANGE */
