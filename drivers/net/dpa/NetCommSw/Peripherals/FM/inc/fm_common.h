@@ -550,12 +550,12 @@ uint8_t     FmPcdKgGetSchemeSwId(t_Handle h_FmPcd, uint8_t schemeHwId);
 t_Error     FmPcdKgSchemeTryLock(t_Handle h_FmPcd, uint8_t schemeId);
 void        FmPcdKgReleaseSchemeLock(t_Handle h_FmPcd, uint8_t schemeId);
 
-#ifndef CONFIG_MULTI_PARTITION_SUPPORT
 t_Error     FmPcdKgBindPortToSchemes(t_Handle h_FmPcd , t_FmPcdKgInterModuleBindPortToSchemes  *p_SchemeBind);
 t_Error     FmPcdKgUnbindPortToSchemes(t_Handle h_FmPcd , t_FmPcdKgInterModuleBindPortToSchemes *p_SchemeBind);
 t_Error     FmPcdKgBindPortToClsPlanGrp(t_Handle p_FmPcd, uint8_t hardwarePortId, uint8_t clsPlanGrpId);
 void        FmPcdKgUnbindPortToClsPlanGrp(t_Handle h_FmPcd, uint8_t hardwarePortId);
 
+#ifndef CONFIG_MULTI_PARTITION_SUPPORT
 void        FmPcdPrsIncludePortInStatistics(t_Handle p_FmPcd, uint8_t hardwarePortId,  bool include);
 #endif /* !CONFIG_MULTI_PARTITION_SUPPORT */
 
@@ -591,14 +591,11 @@ t_Error     FmPcdHandleIpcMsg(t_Handle h_FmPcd, uint32_t msgId, uint8_t msgBody[
 uint8_t     FmPcdGetPartitionId(t_Handle h_FmPcd);
 #endif /* CONFIG_MULTI_PARTITION_SUPPORT */
 
-t_Handle    FmPcdGetHcHandle(t_Handle h_FmPcd);
-
 t_Error     FmPortSetPcd(t_Handle h_FmPort, t_FmPortPcdParams *p_PcdParams);
 t_Error     FmPortDeletePcd(t_Handle h_FmPort);
 uint8_t     FmPortGetNetEnvId(t_Handle h_FmPort);
 uint8_t     FmPortGetHardwarePortId(t_Handle h_FmPort);
 uint32_t    FmPortGetPcdEngines(t_Handle h_FmPort);
-void        FmPortGetPortSchemeBindParams(t_Handle h_FmPort, t_FmPcdKgInterModuleBindPortToSchemes *p_SchemeBind, bool clear);
 uint8_t     FmPortGetClsPlanId(t_Handle h_FmPort);
 t_Error     FmPortPcdKgSwBindClsPlanGrp (t_Handle h_FmPort, bool useClsPlan, uint8_t newClsPlanGrpId);
 void        FmPortPcdKgSwUnbindClsPlanGrp (t_Handle h_FmPort);

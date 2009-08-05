@@ -45,14 +45,6 @@
 #include "fm_port.h"
 
 
-extern t_Error     FmHcPortSetPCD(t_Handle h_FmHc, t_Handle h_FmPort, t_FmPortPcdParams *p_PcdParams);
-extern t_Error     FmHcPortDeletePCD(t_Handle h_FmHc, t_Handle h_FmPort);
-
-extern t_Error     FmHcPortPcdKgModifyClsPlanGrp (t_Handle h_FmHc, t_Handle h_FmPort, bool useClsPlan, t_Handle h_NewClsPlanGrp);
-extern t_Error     FmHcPortPcdKgBindSchemes(t_Handle h_FmHc , t_Handle h_FmPort, t_FmPcdPortSchemesParams *p_PortScheme);
-extern t_Error     FmHcPortPcdKgUnbindSchemes(t_Handle h_FmHc , t_Handle h_FmPort, t_FmPcdPortSchemesParams *p_PortScheme);
-
-
 /****************************************/
 /*       static functions               */
 /****************************************/
@@ -1205,6 +1197,37 @@ static t_Error  AdditionalPrsParams(t_FmPort *p_FmPort, t_FmPcdPrsAdditionalHdrP
 
     return E_OK;
 }
+
+static uint32_t GetPortSchemeBindParams(t_Handle h_FmPort, t_FmPcdKgInterModuleBindPortToSchemes *p_SchemeBind)
+{
+    t_FmPort                    *p_FmPort = (t_FmPort*)h_FmPort;
+    uint32_t                    walking1Mask = 0x80000000, tmp;
+    uint8_t                     idx = 0;
+
+    p_SchemeBind->netEnvId = p_FmPort->netEnvId;
+    p_SchemeBind->hardwarePortId = p_FmPort->hardwarePortId;
+    p_SchemeBind->useClsPlan = p_FmPort->useClsPlan;
+    p_SchemeBind->numOfSchemes = 0;
+    tmp = p_FmPort->schemesPerPortVector;
+    if(tmp)
+    {
+        while (tmp)
+        {
+            if(tmp & walking1Mask)
+            {
+                p_SchemeBind->schemesIds[p_SchemeBind->numOfSchemes] = FmPcdKgGetSchemeSwId(p_FmPort->h_FmPcd, idx);
+                p_SchemeBind->numOfSchemes++;
+                tmp &= ~walking1Mask;
+            }
+            walking1Mask >>= 1;
+            idx++;
+        }
+    }
+
+    return tmp;
+}
+
+
 /********************************************/
 /*  Inter-module API                        */
 /********************************************/
@@ -1321,7 +1344,6 @@ t_Error FmPortSetPcd(t_Handle h_FmPort, t_FmPortPcdParams *p_PcdParams)
         for(i = 0; i<p_PcdParams->p_KgParams->numOfSchemes; i++)
         {
             physicalSchemeId = (uint8_t)(CAST_POINTER_TO_UINT32(p_PcdParams->p_KgParams->h_Schemes[i])-1);
-
             /* build vector */
             p_FmPort->schemesPerPortVector |= 1 << (31 - physicalSchemeId);
         }
@@ -1650,36 +1672,6 @@ t_Error          FmPortPcdKgSwBindClsPlanGrp (t_Handle h_FmPort, bool useClsPlan
         RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("FmPortPcdKgSwBindClsPlanGrp failed. "));
 
     return E_OK;
-}
-
-void FmPortGetPortSchemeBindParams(t_Handle h_FmPort, t_FmPcdKgInterModuleBindPortToSchemes *p_SchemeBind, bool clear)
-{
-    t_FmPort                    *p_FmPort = (t_FmPort*)h_FmPort;
-    uint32_t                    walking1Mask = 0x80000000, tmp;
-    uint8_t                     idx = 0;
-
-    p_SchemeBind->netEnvId = p_FmPort->netEnvId;
-    p_SchemeBind->hardwarePortId = p_FmPort->hardwarePortId;
-    p_SchemeBind->useClsPlan = p_FmPort->useClsPlan;
-    p_SchemeBind->numOfSchemes = 0;
-    tmp = p_FmPort->schemesPerPortVector;
-    if(tmp)
-    {
-        while (tmp)
-        {
-            if(tmp & walking1Mask)
-            {
-                p_SchemeBind->schemesIds[p_SchemeBind->numOfSchemes] = FmPcdKgGetSchemeSwId(p_FmPort->h_FmPcd, idx);
-                p_SchemeBind->numOfSchemes++;
-                tmp &= ~walking1Mask;
-            }
-            walking1Mask >>= 1;
-            idx++;
-        }
-    }
-
-    if (clear)
-        p_FmPort->schemesPerPortVector = tmp;
 }
 
 uint8_t FmPortGetNetEnvId(t_Handle h_FmPort)
@@ -3374,11 +3366,9 @@ t_Error FM_PORT_DetachPCD(t_Handle h_FmPort)
 t_Error FM_PORT_SetPCD(t_Handle h_FmPort, t_FmPortPcdParams *p_PcdParams)
 {
     t_FmPort                                *p_FmPort = (t_FmPort*)h_FmPort;
-    t_Error                                 err = E_OK;
-#ifndef CONFIG_MULTI_PARTITION_SUPPORT
     t_FmPcdKgInterModuleBindPortToSchemes   schemeBind;
+    t_Error                                 err = E_OK;
     uint8_t                                 i;
-#endif /* !CONFIG_MULTI_PARTITION_SUPPORT */
 
     if (p_FmPort->imEn)
         RETURN_ERROR(MAJOR, E_INVALID_OPERATION, ("available for non-independant mode ports only"));
@@ -3388,17 +3378,6 @@ t_Error FM_PORT_SetPCD(t_Handle h_FmPort, t_FmPortPcdParams *p_PcdParams)
     p_FmPort->h_FmPcd = FmGetPcdHandle(p_FmPort->h_Fm);
     ASSERT_COND(p_FmPort->h_FmPcd);
 
-    if (FmPcdGetHcHandle(p_FmPort->h_FmPcd))
-    {
-        err = FmHcPortSetPCD(FmPcdGetHcHandle(p_FmPort->h_FmPcd), p_FmPort, p_PcdParams);
-        RELEASE_LOCK(p_FmPort->lock);
-        return err;
-    }
-#ifdef CONFIG_MULTI_PARTITION_SUPPORT
-    else
-        RETURN_ERROR(MAJOR, E_INVALID_HANDLE, ("No HC obj. must have HC in guest partition!"));
-
-#else
     err = FmPortSetPcd( h_FmPort, p_PcdParams);
     if(err)
     {
@@ -3414,6 +3393,7 @@ t_Error FM_PORT_SetPCD(t_Handle h_FmPort, t_FmPortPcdParams *p_PcdParams)
         schemeBind.useClsPlan = p_PcdParams->p_KgParams->useClsPlan;
         for(i = 0;i<schemeBind.numOfSchemes;i++)
             schemeBind.schemesIds[i] = (uint8_t)(CAST_POINTER_TO_UINT32(p_PcdParams->p_KgParams->h_Schemes[i])-1);
+
         err = FmPcdKgBindPortToSchemes(p_FmPort->h_FmPcd, &schemeBind);
         if(err)
         {
@@ -3432,8 +3412,10 @@ t_Error FM_PORT_SetPCD(t_Handle h_FmPort, t_FmPortPcdParams *p_PcdParams)
         }
     }
 
+#ifndef CONFIG_MULTI_PARTITION_SUPPORT
     if(( p_FmPort->pcdEngines & FM_PCD_PRS) && (p_PcdParams->p_PrsParams->includeInPrsStatistics))
         FmPcdPrsIncludePortInStatistics(p_FmPort->h_FmPcd, p_FmPort->hardwarePortId, TRUE);
+#endif  /* ! CONFIG_MULTI_PARTITION_SUPPORT */
 
     FmPcdIncNetEnvOwners(p_FmPort->h_FmPcd, p_FmPort->netEnvId);
 
@@ -3442,28 +3424,18 @@ t_Error FM_PORT_SetPCD(t_Handle h_FmPort, t_FmPortPcdParams *p_PcdParams)
     RELEASE_LOCK(p_FmPort->lock);
 
     return err;
-#endif /* CONFIG_MULTI_PARTITION_SUPPORT */
 }
 
 t_Error FM_PORT_DeletePCD(t_Handle h_FmPort)
 {
     t_FmPort                                *p_FmPort = (t_FmPort*)h_FmPort;
-#ifndef CONFIG_MULTI_PARTITION_SUPPORT
-    t_Error                                 err = E_OK;
     t_FmPcdKgInterModuleBindPortToSchemes   schemeBind;
-#endif /* !CONFIG_MULTI_PARTITION_SUPPORT */
+    t_Error                                 err = E_OK;
 
-    if (FmPcdGetHcHandle(p_FmPort->h_FmPcd))
-        return FmHcPortDeletePCD(FmPcdGetHcHandle(p_FmPort->h_FmPcd), p_FmPort);
-#ifdef CONFIG_MULTI_PARTITION_SUPPORT
-    else
-        RETURN_ERROR(MAJOR, E_INVALID_HANDLE, ("No HC obj. must have HC in guest partition!"));
-
-#else
     if(p_FmPort->pcdEngines & FM_PCD_KG)
     {
         /* unbind all schemes */
-        FmPortGetPortSchemeBindParams(p_FmPort, &schemeBind, TRUE);
+        p_FmPort->schemesPerPortVector = GetPortSchemeBindParams(p_FmPort, &schemeBind);
 
         err = FmPcdKgUnbindPortToSchemes(p_FmPort->h_FmPcd, &schemeBind);
         if(err)
@@ -3472,8 +3444,10 @@ t_Error FM_PORT_DeletePCD(t_Handle h_FmPort)
         FmPcdKgUnbindPortToClsPlanGrp(p_FmPort->h_FmPcd, p_FmPort->hardwarePortId);
     }
 
+#ifndef CONFIG_MULTI_PARTITION_SUPPORT
     /* we do it anyway, instead of checking if included */
     FmPcdPrsIncludePortInStatistics(p_FmPort->h_FmPcd, p_FmPort->hardwarePortId, FALSE);
+#endif  /* ! CONFIG_MULTI_PARTITION_SUPPORT */
 
     err = FmPortDeletePcd( h_FmPort);
     if(err)
@@ -3482,10 +3456,9 @@ t_Error FM_PORT_DeletePCD(t_Handle h_FmPort)
     FmPcdDecNetEnvOwners(p_FmPort->h_FmPcd, p_FmPort->netEnvId);
 
     return E_OK;
-#endif /* CONFIG_MULTI_PARTITION_SUPPORT */
 }
 
-t_Error          FM_PORT_PcdKgModifyClsPlanGrp (t_Handle h_FmPort, bool useClsPlan, t_Handle h_NewClsPlanGrp)
+t_Error FM_PORT_PcdKgModifyClsPlanGrp (t_Handle h_FmPort, bool useClsPlan, t_Handle h_NewClsPlanGrp)
 {
     t_FmPort            *p_FmPort = (t_FmPort*)h_FmPort;
     t_Error             err;
@@ -3520,43 +3493,23 @@ t_Error          FM_PORT_PcdKgModifyClsPlanGrp (t_Handle h_FmPort, bool useClsPl
     if((GET_UINT32(*p_BmiNia) & ~BMI_RFNE_FDCS_MASK) != (NIA_ENG_BMI | NIA_BMI_AC_ENQ_FRAME))
             RETURN_ERROR(MAJOR, E_INVALID_OPERATION, ("may be called only for ports in BMI-to-BMI state."));
 
-    if (FmPcdGetHcHandle(p_FmPort->h_FmPcd))
-    {
-        err = FmHcPortPcdKgModifyClsPlanGrp(FmPcdGetHcHandle(p_FmPort->h_FmPcd), p_FmPort, useClsPlan, h_NewClsPlanGrp);
-        if(err)
-        {
-            RELEASE_LOCK(p_FmPort->lock);
-            return err;
-        }
-    }
-#ifdef CONFIG_MULTI_PARTITION_SUPPORT
-    else
+    /* deal with SW */
+    FmPortPcdKgSwUnbindClsPlanGrp(h_FmPort);
+
+    err = FmPortPcdKgSwBindClsPlanGrp(h_FmPort, useClsPlan, (uint8_t)(CAST_POINTER_TO_UINT32(h_NewClsPlanGrp)-1));
+    if(err)
     {
         RELEASE_LOCK(p_FmPort->lock);
-        RETURN_ERROR(MAJOR, E_INVALID_HANDLE, ("No HC obj. must have HC in guest partition!"));
+        RETURN_ERROR(MINOR, err, NO_MSG);
     }
-#else
-    else
+
+    /* deal with HW */
+    err = FmPcdKgBindPortToClsPlanGrp(p_FmPort->h_FmPcd, p_FmPort->hardwarePortId, p_FmPort->clsPlanGrpId);
+    if(err)
     {
-        /* deal with SW */
-        FmPortPcdKgSwUnbindClsPlanGrp(h_FmPort);
-
-        err = FmPortPcdKgSwBindClsPlanGrp(h_FmPort, useClsPlan, (uint8_t)(CAST_POINTER_TO_UINT32(h_NewClsPlanGrp)-1));
-        if(err)
-        {
-            RELEASE_LOCK(p_FmPort->lock);
-            RETURN_ERROR(MINOR, err, NO_MSG);
-        }
-
-        /* deal with HW */
-        err = FmPcdKgBindPortToClsPlanGrp(p_FmPort->h_FmPcd, p_FmPort->hardwarePortId, p_FmPort->clsPlanGrpId);
-        if(err)
-        {
-            RELEASE_LOCK(p_FmPort->lock);
-            RETURN_ERROR(MINOR, err, NO_MSG);
-        }
+        RELEASE_LOCK(p_FmPort->lock);
+        RETURN_ERROR(MINOR, err, NO_MSG);
     }
-#endif /* CONFIG_MULTI_PARTITION_SUPPORT */
 
     /************************************/
     /* Parser classification group plan parameters           */
@@ -3657,89 +3610,68 @@ t_Error          FM_PORT_PcdKgModifyClsPlanGrp (t_Handle h_FmPort, bool useClsPl
     return E_OK;
 }
 
-t_Error       FM_PORT_PcdKgBindSchemes (t_Handle h_FmPort, t_FmPcdPortSchemesParams *p_PortScheme)
+t_Error  FM_PORT_PcdKgBindSchemes (t_Handle h_FmPort, t_FmPcdPortSchemesParams *p_PortScheme)
 {
-    t_FmPort                    *p_FmPort = (t_FmPort*)h_FmPort;
-    t_Error                     err;
-#ifndef CONFIG_MULTI_PARTITION_SUPPORT
+    t_FmPort                                *p_FmPort = (t_FmPort*)h_FmPort;
     t_FmPcdKgInterModuleBindPortToSchemes   schemeBind;
+    t_Error                                 err;
+    uint32_t                                tmpScmVec=0;
     int                                     i;
-#endif /* !CONFIG_MULTI_PARTITION_SUPPORT */
 
     SANITY_CHECK_RETURN_ERROR(p_FmPort, E_INVALID_HANDLE);
     SANITY_CHECK_RETURN_ERROR(!p_FmPort->p_FmPortDriverParam, E_INVALID_STATE);
     SANITY_CHECK_RETURN_ERROR(p_FmPort->pcdEngines & FM_PCD_KG , E_INVALID_STATE);
 
-    TRY_LOCK_RET_ERR(p_FmPort->lock);
-
-    if (FmPcdGetHcHandle(p_FmPort->h_FmPcd))
-    {
-        err = FmHcPortPcdKgBindSchemes(FmPcdGetHcHandle(p_FmPort->h_FmPcd), p_FmPort, p_PortScheme);
-        RELEASE_LOCK(p_FmPort->lock);
-        return err;
-    }
-#ifdef CONFIG_MULTI_PARTITION_SUPPORT
-    else
-    {
-        RELEASE_LOCK(p_FmPort->lock);
-        RETURN_ERROR(MAJOR, E_INVALID_HANDLE, ("No HC obj. must have HC in guest partition!"));
-    }
-
-#else
     schemeBind.netEnvId = p_FmPort->netEnvId;
     schemeBind.hardwarePortId = p_FmPort->hardwarePortId;
     schemeBind.numOfSchemes = p_PortScheme->numOfSchemes;
     schemeBind.useClsPlan = p_FmPort->useClsPlan;
     for (i=0; i<schemeBind.numOfSchemes; i++)
+    {
         schemeBind.schemesIds[i] = (uint8_t)(CAST_POINTER_TO_UINT32(p_PortScheme->h_Schemes[i])-1);
+        /* build vector */
+        tmpScmVec |= 1 << (31 - schemeBind.schemesIds[i]);
+    }
 
-    err = FmPcdKgBindPortToSchemes(h_FmPort, &schemeBind);
+    TRY_LOCK_RET_ERR(p_FmPort->lock);
+    err = FmPcdKgBindPortToSchemes(p_FmPort->h_FmPcd, &schemeBind);
+    p_FmPort->schemesPerPortVector |= tmpScmVec;
     RELEASE_LOCK(p_FmPort->lock);
+
     return err;
-#endif /* CONFIG_MULTI_PARTITION_SUPPORT */
 }
 
-t_Error       FM_PORT_PcdKgUnbindSchemes (t_Handle h_FmPort, t_FmPcdPortSchemesParams *p_PortScheme)
+t_Error FM_PORT_PcdKgUnbindSchemes (t_Handle h_FmPort, t_FmPcdPortSchemesParams *p_PortScheme)
 {
-    t_FmPort                    *p_FmPort = (t_FmPort*)h_FmPort;
-    t_Error                     err;
-
-#ifndef CONFIG_MULTI_PARTITION_SUPPORT
+    t_FmPort                                *p_FmPort = (t_FmPort*)h_FmPort;
     t_FmPcdKgInterModuleBindPortToSchemes   schemeBind;
+    t_Error                                 err;
+    uint32_t                                tmpScmVec=0;
     int                                     i;
-#endif /* !CONFIG_MULTI_PARTITION_SUPPORT */
 
     SANITY_CHECK_RETURN_ERROR(p_FmPort, E_INVALID_HANDLE);
     SANITY_CHECK_RETURN_ERROR(!p_FmPort->p_FmPortDriverParam, E_INVALID_STATE);
     SANITY_CHECK_RETURN_ERROR(p_FmPort->pcdEngines & FM_PCD_KG , E_INVALID_STATE);
 
-    if (FmPcdGetHcHandle(p_FmPort->h_FmPcd))
-    {
-        err = FmHcPortPcdKgUnbindSchemes(FmPcdGetHcHandle(p_FmPort->h_FmPcd), p_FmPort, p_PortScheme);
-        RELEASE_LOCK(p_FmPort->lock);
-        return err;
-    }
-#ifdef CONFIG_MULTI_PARTITION_SUPPORT
-    else
-    {
-        RELEASE_LOCK(p_FmPort->lock);
-        RETURN_ERROR(MAJOR, E_INVALID_HANDLE, ("No HC obj. must have HC in guest partition!"));
-    }
-
-#else
     schemeBind.netEnvId = p_FmPort->netEnvId;
     schemeBind.hardwarePortId = p_FmPort->hardwarePortId;
     schemeBind.numOfSchemes = p_PortScheme->numOfSchemes;
     for (i=0; i<schemeBind.numOfSchemes; i++)
+    {
         schemeBind.schemesIds[i] = (uint8_t)(CAST_POINTER_TO_UINT32(p_PortScheme->h_Schemes[i])-1);
+        /* build vector */
+        tmpScmVec |= 1 << (31 - schemeBind.schemesIds[i]);
+    }
 
-    err = FmPcdKgUnbindPortToSchemes(h_FmPort, &schemeBind);
+    TRY_LOCK_RET_ERR(p_FmPort->lock);
+    err = FmPcdKgUnbindPortToSchemes(p_FmPort->h_FmPcd, &schemeBind);
+    p_FmPort->schemesPerPortVector &= ~tmpScmVec;
     RELEASE_LOCK(p_FmPort->lock);
+
     return err;
-#endif /* CONFIG_MULTI_PARTITION_SUPPORT */
 }
 
-t_Error       FM_PORT_PcdPrsModifyStartOffset (t_Handle h_FmPort, t_FmPcdPrsStart *p_FmPcdPrsStart)
+t_Error FM_PORT_PcdPrsModifyStartOffset (t_Handle h_FmPort, t_FmPcdPrsStart *p_FmPcdPrsStart)
 {
     t_FmPort            *p_FmPort = (t_FmPort*)h_FmPort;
     volatile uint32_t   *p_BmiPrsStartOffset = NULL;
