@@ -44,11 +44,12 @@
 #include "net_ext.h"
 #include "fm_ext.h"
 #include "fm_pcd_ext.h"
-#include "fm_hc.h"
+
+#include "fm_pcd.h"
 #ifdef FM_MASTER_PARTITION
 #include "fm_pcd_ipc.h"
 #endif /* FM_MASTER_PARTITION */
-#include "fm_pcd.h"
+#include "fm_hc.h"
 
 
 #ifndef CONFIG_GUEST_PARTITION
@@ -280,13 +281,6 @@ uint8_t FmPcdGetPartitionId(t_Handle h_FmPcd)
     return p_FmPcd->partitionId;
 }
 #endif /* CONFIG_MULTI_PARTITION_SUPPORT */
-
-t_Handle FmPcdGetHcHandle(t_Handle h_FmPcd)
-{
-    t_FmPcd     *p_FmPcd = (t_FmPcd*)h_FmPcd;
-
-    return p_FmPcd->h_Hc;
-}
 
 void FmPcdIncNetEnvOwners(t_Handle h_FmPcd, uint8_t netEnvId)
 {

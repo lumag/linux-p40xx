@@ -60,8 +60,8 @@
 #include <linux/of_platform.h>
 #include <asm/uaccess.h>
 #include <asm/errno.h>
+#include <asm/qe.h>        /* For struct qe_firmware */
 #include <sysdev/fsl_soc.h>
-#include <asm/qe.h>		/* For struct qe_firmware */
 
 /* NetCommSw Headers --------------- */
 #include "std_ext.h"
@@ -398,12 +398,12 @@ typedef _Packed struct {
 }
 
 #ifndef NO_OF_SUPPORT
-
 /* The default address for the Fman microcode in flash. Having a default
  * allows older systems to continue functioning.  0xEF000000 is the address
  * where the firmware is normally on a P4080DS.
  */
 static phys_addr_t P4080_UCAddr = 0xef000000;
+
 
 /**
  * FmanUcodeAddrParam - process the fman_ucode kernel command-line parameter
@@ -414,14 +414,14 @@ static phys_addr_t P4080_UCAddr = 0xef000000;
  */
 static int FmanUcodeAddrParam(char *str)
 {
-	unsigned long long l;
-	int ret;
+    unsigned long long l;
+    int ret;
 
-	ret = strict_strtoull(str, 0, &l);
-	if (!ret)
-		P4080_UCAddr = (phys_addr_t) l;
+    ret = strict_strtoull(str, 0, &l);
+    if (!ret)
+        P4080_UCAddr = (phys_addr_t) l;
 
-	return ret;
+    return ret;
 }
 __setup("fman_ucode=", FmanUcodeAddrParam);
 
@@ -452,7 +452,8 @@ static struct qe_firmware *FindFmanMicrocode(void)
 
         /* Make sure it really is a QE Firmware blob */
         hdr = &P4080_UCPatch->header;
-        if ((hdr->magic[0] != 'Q') || (hdr->magic[1] != 'E') ||
+        if (!hdr ||
+            (hdr->magic[0] != 'Q') || (hdr->magic[1] != 'E') ||
             (hdr->magic[2] != 'F')) {
             REPORT_ERROR(MAJOR, E_NOT_FOUND, ("data at %llx is not a Fman microcode", (u64) P4080_UCAddr));
             return NULL;
@@ -607,6 +608,10 @@ static t_LnxWrpFmDev * ReadFmDevTreeNode (struct of_device *of_dev)
             (void *) fw + fw->microcode[0].code_offset;
         p_LnxWrpFmDev->fmDevSettings.param.firmware.size =
             sizeof(u32) * fw->microcode[0].count;
+        DBG(INFO, ("Loading fman-controller code version %d.%d.%d",
+                   fw->microcode[0].major,
+                   fw->microcode[0].minor,
+                   fw->microcode[0].revision));
     }
 
     p_LnxWrpFmDev->active = TRUE;

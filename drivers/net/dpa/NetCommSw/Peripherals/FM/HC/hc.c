@@ -185,14 +185,6 @@ typedef struct t_FmHc {
 } t_FmHc;
 
 
-t_Error     FmHcPortSetPCD(t_Handle h_FmHc, t_Handle h_FmPort, t_FmPortPcdParams *p_PcdParams);
-t_Error     FmHcPortDeletePCD(t_Handle h_FmHc, t_Handle h_FmPort);
-
-t_Error     FmHcPortPcdKgModifyClsPlanGrp (t_Handle h_FmHc, t_Handle h_FmPort, bool useClsPlan, t_Handle h_NewClsPlanGrp);
-t_Error     FmHcPortPcdKgBindSchemes(t_Handle h_FmHc , t_Handle h_FmPort, t_FmPcdPortSchemesParams *p_PortScheme);
-t_Error     FmHcPortPcdKgUnbindSchemes(t_Handle h_FmHc , t_Handle h_FmPort);
-
-
 static t_Error KgHcSetClsPlan(t_FmHc *p_FmHc, t_FmPcdKgInterModuleClsPlanSet *p_Set)
 {
     t_HcFrame               hcFrame;
@@ -215,64 +207,6 @@ static t_Error KgHcSetClsPlan(t_FmHc *p_FmHc, t_FmPcdKgInterModuleClsPlanSet *p_
 
         ENQUEUE_FRM(&fmFd);
     }
-
-    return E_OK;
-}
-
-static t_Error KgHcWriteSp(t_FmHc *p_FmHc, uint8_t hardwarePortId, uint32_t spReg, bool add)
-{
-    t_HcFrame               hcFrame;
-    t_FmFD                  fmFd;
-    t_Error                 err;
-
-    ASSERT_COND(p_FmHc);
-
-    memset(&hcFrame, 0, sizeof(hcFrame));
-    /* first read SP register */
-    hcFrame.opcode = 0x00000001;
-    hcFrame.actionReg  = FmPcdKgBuildReadPortSchemeBindActionReg(hardwarePortId);
-    hcFrame.extraReg = 0xFFFFF800;
-    hcFrame.commandSequence = p_FmHc->seqNum;
-
-    BUILD_FD(SIZE_OF_HC_FRAME_PORT_REGS);
-
-    ENQUEUE_FRM(&fmFd);
-
-    /* spReg is the first reg, so we can use it bothe for read and for write */
-    if(add)
-        hcFrame.hcSpecificData.portRegsForRead.spReg |= spReg;
-    else
-        hcFrame.hcSpecificData.portRegsForRead.spReg &= ~spReg;
-
-    hcFrame.actionReg  = FmPcdKgBuildWritePortSchemeBindActionReg(hardwarePortId);
-    hcFrame.commandSequence = p_FmHc->seqNum;
-
-    BUILD_FD(sizeof(hcFrame));
-
-    ENQUEUE_FRM(&fmFd);
-
-    return E_OK;
-}
-
-static t_Error KgHcWriteCpp(t_FmHc *p_FmHc, uint8_t hardwarePortId, uint32_t cppReg)
-{
-    t_HcFrame               hcFrame;
-    t_FmFD                  fmFd;
-    t_Error                 err;
-
-    ASSERT_COND(p_FmHc);
-
-    memset(&hcFrame, 0, sizeof(hcFrame));
-    /* first read SP register */
-    hcFrame.opcode = 0x00000001;
-    hcFrame.actionReg  = FmPcdKgBuildWritePortClsPlanBindActionReg(hardwarePortId);
-    hcFrame.extraReg = 0xFFFFF800;
-    hcFrame.commandSequence = p_FmHc->seqNum;
-    hcFrame.hcSpecificData.singleRegForWrite = cppReg;
-
-    BUILD_FD(sizeof(hcFrame));
-
-    ENQUEUE_FRM(&fmFd);
 
     return E_OK;
 }
@@ -345,34 +279,6 @@ static t_Error HcDynamicChangeForKey(t_FmHc *p_FmHc,t_Handle  *h_OldPointersLst,
         RETURN_ERROR(MAJOR, err, NO_MSG);
 
     LIST_Del(p_OldPointersLst);
-
-    return E_OK;
-}
-
-static t_Error HcPortPcdKgBindSchemes(t_FmHc *p_FmHc , t_Handle h_FmPort,t_FmPcdPortSchemesParams *p_PortScheme)
-{
-    uint32_t                                spReg;
-    t_Error                                 err;
-    t_FmPcdKgInterModuleBindPortToSchemes   schemeBind;
-    int                                     i;
-
-    /* we use this routine just to get the port parameters such as HW id, netEnv etc. */
-    FmPortGetPortSchemeBindParams(h_FmPort, &schemeBind, FALSE);
-
-    /* overwrite port params with the schemes we want removed */
-    schemeBind.numOfSchemes = p_PortScheme->numOfSchemes;
-    for (i=0; i<schemeBind.numOfSchemes; i++)
-        schemeBind.schemesIds[i] = (uint8_t)(CAST_POINTER_TO_UINT32(p_PortScheme->h_Schemes[i])-1);
-
-    err = FmPcdKgBuildBindPortToSchemes(p_FmHc->h_FmPcd, &schemeBind, &spReg, TRUE);
-    if(err)
-        RETURN_ERROR(MAJOR, err, NO_MSG);
-
-    err = KgHcWriteSp(p_FmHc, schemeBind.hardwarePortId, spReg, TRUE);
-    if(err)
-        RETURN_ERROR(MAJOR, err, NO_MSG);
-
-    FmPcdKgIncSchemeOwners(p_FmHc->h_FmPcd, &schemeBind);
 
     return E_OK;
 }
@@ -1210,115 +1116,62 @@ t_Error FmHcPcdCcModifyKey(t_Handle h_FmHc, t_Handle h_CcNode, uint8_t keyIndex,
     return err;
 }
 
-t_Error FmHcPortPcdKgModifyClsPlanGrp (t_Handle h_FmHc, t_Handle h_FmPort, bool useClsPlan, t_Handle h_NewClsPlanGrp)
+t_Error FmHcKgWriteSp(t_Handle h_FmHc, uint8_t hardwarePortId, uint32_t spReg, bool add)
 {
-    t_FmHc          *p_FmHc = (t_FmHc*)h_FmHc;
-    t_Error         err;
-    uint32_t        cppReg;
+    t_FmHc                  *p_FmHc = (t_FmHc*)h_FmHc;
+    t_HcFrame               hcFrame;
+    t_FmFD                  fmFd;
+    t_Error                 err;
 
-    /* deal with SW */
-    FmPortPcdKgSwUnbindClsPlanGrp(h_FmPort);
+    ASSERT_COND(p_FmHc);
 
-    err = FmPortPcdKgSwBindClsPlanGrp(h_FmPort, useClsPlan, (uint8_t)(CAST_POINTER_TO_UINT32(h_NewClsPlanGrp)-1));
-    if(err)
-        RETURN_ERROR(MINOR, err, NO_MSG);
+    memset(&hcFrame, 0, sizeof(hcFrame));
+    /* first read SP register */
+    hcFrame.opcode = 0x00000001;
+    hcFrame.actionReg  = FmPcdKgBuildReadPortSchemeBindActionReg(hardwarePortId);
+    hcFrame.extraReg = 0xFFFFF800;
+    hcFrame.commandSequence = p_FmHc->seqNum;
 
-    /* deal with HW */
-    cppReg = FmPcdKgBuildCppReg(p_FmHc->h_FmPcd, FmPortGetClsPlanId(h_FmPort));
-    err = KgHcWriteCpp(p_FmHc, FmPortGetHardwarePortId(h_FmPort), cppReg);
+    BUILD_FD(SIZE_OF_HC_FRAME_PORT_REGS);
 
-    return err;
-}
+    ENQUEUE_FRM(&fmFd);
 
-t_Error FmHcPortPcdKgBindSchemes(t_Handle h_FmHc , t_Handle h_FmPort,t_FmPcdPortSchemesParams *p_PortScheme)
-{
-    return HcPortPcdKgBindSchemes(h_FmHc, h_FmPort, p_PortScheme);
-}
+    /* spReg is the first reg, so we can use it bothe for read and for write */
+    if(add)
+        hcFrame.hcSpecificData.portRegsForRead.spReg |= spReg;
+    else
+        hcFrame.hcSpecificData.portRegsForRead.spReg &= ~spReg;
 
-t_Error FmHcPortPcdKgUnbindSchemes(t_Handle h_FmHc , t_Handle h_FmPort)
-{
-    t_FmHc                                  *p_FmHc = (t_FmHc*)h_FmHc;
-    uint32_t                                spReg;
-    t_Error                                 err;
-    t_FmPcdKgInterModuleBindPortToSchemes   schemeBind;
+    hcFrame.actionReg  = FmPcdKgBuildWritePortSchemeBindActionReg(hardwarePortId);
+    hcFrame.commandSequence = p_FmHc->seqNum;
 
-    /* we use this routine just to get the port parameters such as HW id, netEnv etc. */
-    FmPortGetPortSchemeBindParams(h_FmPort, &schemeBind, TRUE);
+    BUILD_FD(sizeof(hcFrame));
 
-    err = FmPcdKgBuildBindPortToSchemes(p_FmHc->h_FmPcd, &schemeBind, &spReg, FALSE);
-    if(err)
-        RETURN_ERROR(MAJOR, err, NO_MSG);
-
-    err = KgHcWriteSp(h_FmHc, schemeBind.hardwarePortId, spReg, FALSE);
-    if(err)
-        RETURN_ERROR(MAJOR, err, NO_MSG);
-
-    FmPcdKgDecSchemeOwners(p_FmHc->h_FmPcd, &schemeBind);
+    ENQUEUE_FRM(&fmFd);
 
     return E_OK;
 }
 
-t_Error FmHcPortSetPCD(t_Handle h_FmHc, t_Handle h_FmPort, t_FmPortPcdParams *p_PcdParams)
+t_Error FmHcKgWriteCpp(t_Handle h_FmHc, uint8_t hardwarePortId, uint32_t cppReg)
 {
-    t_FmHc                                  *p_FmHc = (t_FmHc*)h_FmHc;
-    t_Error                                 err = E_OK;
-    t_FmPcdPortSchemesParams                currentSchemes;
-    uint32_t                                cppReg;
-    uint8_t                                 i;
+    t_FmHc                  *p_FmHc = (t_FmHc*)h_FmHc;
+    t_HcFrame               hcFrame;
+    t_FmFD                  fmFd;
+    t_Error                 err;
 
-    err = FmPortSetPcd(h_FmPort, p_PcdParams);
-    if(err)
-        RETURN_ERROR(MAJOR, err, NO_MSG);
+    ASSERT_COND(p_FmHc);
 
-    if(FmPortGetPcdEngines(h_FmPort) & FM_PCD_KG)
-    {
-        currentSchemes.numOfSchemes = p_PcdParams->p_KgParams->numOfSchemes;
-        for(i = 0;i<currentSchemes.numOfSchemes;i++)
-            currentSchemes.h_Schemes[i] = p_PcdParams->p_KgParams->h_Schemes[i];
-        err = HcPortPcdKgBindSchemes(h_FmHc ,h_FmPort, &currentSchemes);
-        if(err)
-        {
-            FmPortDeletePcd(h_FmPort);
-            RETURN_ERROR(MAJOR, err, NO_MSG);
-        }
+    memset(&hcFrame, 0, sizeof(hcFrame));
+    /* first read SP register */
+    hcFrame.opcode = 0x00000001;
+    hcFrame.actionReg  = FmPcdKgBuildWritePortClsPlanBindActionReg(hardwarePortId);
+    hcFrame.extraReg = 0xFFFFF800;
+    hcFrame.commandSequence = p_FmHc->seqNum;
+    hcFrame.hcSpecificData.singleRegForWrite = cppReg;
 
-        cppReg = FmPcdKgBuildCppReg(p_FmHc->h_FmPcd, FmPortGetClsPlanId(h_FmPort));
+    BUILD_FD(sizeof(hcFrame));
 
-        err = KgHcWriteCpp(p_FmHc, FmPortGetHardwarePortId(h_FmPort), cppReg);
-        if(err)
-        {
-            FmHcPortPcdKgUnbindSchemes(p_FmHc->h_FmPcd, h_FmPort);
-            FmPortDeletePcd(h_FmPort);
-            RETURN_ERROR(MINOR, err, NO_MSG);
-        }
-    }
-
-    FmPcdIncNetEnvOwners(p_FmHc->h_FmPcd, FmPortGetNetEnvId(h_FmPort));
-
-    return FmPortAttachPCD(h_FmPort);
-}
-
-t_Error FmHcPortDeletePCD(t_Handle h_FmHc, t_Handle h_FmPort)
-{
-    t_FmHc                                  *p_FmHc = (t_FmHc*)h_FmHc;
-    t_Error                                 err = E_OK;
-
-    if(FmPortGetPcdEngines(h_FmPort) & FM_PCD_KG)
-    {
-        err = FmHcPortPcdKgUnbindSchemes(h_FmHc , h_FmPort);
-        if(err)
-            RETURN_ERROR(MAJOR, err, NO_MSG);
-
-        err = KgHcWriteCpp(p_FmHc, FmPortGetHardwarePortId(h_FmPort), 0);
-        if(err)
-            RETURN_ERROR(MINOR, err, NO_MSG);
-    }
-
-    err = FmPortDeletePcd( h_FmPort);
-    if(err)
-        RETURN_ERROR(MAJOR, err, NO_MSG);
-
-    FmPcdDecNetEnvOwners(p_FmHc->h_FmPcd, FmPortGetNetEnvId(h_FmPort));
+    ENQUEUE_FRM(&fmFd);
 
     return E_OK;
 }

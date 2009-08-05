@@ -173,19 +173,7 @@ static int __devinit __cold mac_probe(struct of_device *_of_dev, const struct of
 		goto _return_of_node_put;
 	}
 
-#ifdef CONFIG_GUEST_PARTITION
-	uint32_prop = of_get_property(dev_node, "cell-index", &lenp);
-	if (unlikely(uint32_prop == NULL)) {
-		cpu_dev_err(dev, "%s:%hu:%s(): of_get_property(%s, cell-index) failed\n",
-			    __file__, __LINE__, __func__, dev_node->full_name);
-		_errno = -EINVAL;
-		goto _return;
-	}
-	BUG_ON(lenp != sizeof(uint32_t));
-    mac_dev->fm = (void *)*uint32_prop;
-#else
     mac_dev->fm = (void *)fm_get_handle(mac_dev->fm_dev);
-#endif /* CONFIG_GUEST_PARTITION */
 	of_node_put(dev_node);
 
 	/* Get the address of the memory mapped registers */

@@ -1183,45 +1183,71 @@ static void PcdKgErrorException(t_Handle h_FmPcd)
     }
 }
 
-#ifndef CONFIG_MULTI_PARTITION_SUPPORT
-static t_Error KgWriteSp(t_FmPcd *p_FmPcd , uint8_t hardwarePortId, uint32_t spReg, bool add)
+static t_Error KgWriteSp(t_FmPcd *p_FmPcd, uint8_t hardwarePortId, uint32_t spReg, bool add)
 {
-    t_FmPcdKgPortConfigRegs *p_FmPcdKgPortRegs;
-    uint32_t                tmpKgarReg = 0, tmpKgpeSp;
-    t_Error                 err;
-
-    p_FmPcdKgPortRegs = &p_FmPcd->p_FmPcdKg->p_FmPcdKgRegs->indirectAccessRegs.portRegs;
-
-    tmpKgarReg = FmPcdKgBuildReadPortSchemeBindActionReg(hardwarePortId);
-
-    err = WriteKgarWait(p_FmPcd, tmpKgarReg);
-    if(err)
-        RETURN_ERROR(MINOR, err, NO_MSG);
-
-    tmpKgpeSp = GET_UINT32(p_FmPcdKgPortRegs->kgoe_sp);
-
-    if(add)
-        tmpKgpeSp |= spReg;
+    if (p_FmPcd->h_Hc)
+        return FmHcKgWriteSp(p_FmPcd->h_Hc, hardwarePortId, spReg, add);
     else
-        tmpKgpeSp &= ~spReg;
+#ifdef CONFIG_MULTI_PARTITION_SUPPORT
+        RETURN_ERROR(MAJOR, E_INVALID_HANDLE, ("No HC obj. must have HC in guest partition!"));
+#else
+    {
+        t_FmPcdKgPortConfigRegs *p_FmPcdKgPortRegs;
+        uint32_t                tmpKgarReg = 0, tmpKgpeSp;
+        t_Error                 err;
 
+        p_FmPcdKgPortRegs = &p_FmPcd->p_FmPcdKg->p_FmPcdKgRegs->indirectAccessRegs.portRegs;
 
-    WRITE_UINT32(p_FmPcdKgPortRegs->kgoe_sp, tmpKgpeSp);
+        tmpKgarReg = FmPcdKgBuildReadPortSchemeBindActionReg(hardwarePortId);
 
-    tmpKgarReg = FmPcdKgBuildWritePortSchemeBindActionReg(hardwarePortId);
+        err = WriteKgarWait(p_FmPcd, tmpKgarReg);
+        if(err)
+            RETURN_ERROR(MINOR, err, NO_MSG);
 
-    err = WriteKgarWait(p_FmPcd, tmpKgarReg);
-    if(err)
-        RETURN_ERROR(MINOR, err, NO_MSG);
+        tmpKgpeSp = GET_UINT32(p_FmPcdKgPortRegs->kgoe_sp);
+
+        if(add)
+            tmpKgpeSp |= spReg;
+        else
+            tmpKgpeSp &= ~spReg;
+
+        WRITE_UINT32(p_FmPcdKgPortRegs->kgoe_sp, tmpKgpeSp);
+
+        tmpKgarReg = FmPcdKgBuildWritePortSchemeBindActionReg(hardwarePortId);
+
+        err = WriteKgarWait(p_FmPcd, tmpKgarReg);
+        if(err)
+            RETURN_ERROR(MINOR, err, NO_MSG);
+    }
 
     return E_OK;
+#endif /* CONFIG_MULTI_PARTITION_SUPPORT */
 }
-#endif /* !CONFIG_MULTI_PARTITION_SUPPORT */
+
+static t_Error KgWriteCpp(t_FmPcd *p_FmPcd, uint8_t hardwarePortId, uint32_t cppReg)
+{
+    if (p_FmPcd->h_Hc)
+        return FmHcKgWriteCpp(p_FmPcd->h_Hc, hardwarePortId, cppReg);
+    else
+#ifdef CONFIG_MULTI_PARTITION_SUPPORT
+        RETURN_ERROR(MAJOR, E_INVALID_HANDLE, ("No HC obj. must have HC in guest partition!"));
+#else
+    {
+        t_FmPcdKgPortConfigRegs *p_FmPcdKgPortRegs;
+        uint32_t                tmpKgarReg;
+
+        p_FmPcdKgPortRegs = &p_FmPcd->p_FmPcdKg->p_FmPcdKgRegs->indirectAccessRegs.portRegs;
+        WRITE_UINT32(p_FmPcdKgPortRegs->kgoe_cpp, cppReg);
+
+        tmpKgarReg = FmPcdKgBuildWritePortClsPlanBindActionReg(hardwarePortId);
+        return WriteKgarWait(p_FmPcd, tmpKgarReg);
+    }
+#endif /* CONFIG_MULTI_PARTITION_SUPPORT */
+}
 
 /****************************************/
 /*  Internal and Inter-Module routines  */
 /****************************************/
-#ifndef CONFIG_MULTI_PARTITION_SUPPORT
 t_Error FmPcdKgBindPortToSchemes(t_Handle h_FmPcd , t_FmPcdKgInterModuleBindPortToSchemes  *p_SchemeBind)
 {
     t_FmPcd                 *p_FmPcd = (t_FmPcd*)h_FmPcd;
@@ -1263,35 +1289,21 @@ t_Error FmPcdKgUnbindPortToSchemes(t_Handle h_FmPcd ,  t_FmPcdKgInterModuleBindP
 t_Error FmPcdKgBindPortToClsPlanGrp(t_Handle h_FmPcd, uint8_t hardwarePortId, uint8_t clsPlanGrpId)
 {
     t_FmPcd                 *p_FmPcd = (t_FmPcd*)h_FmPcd;
-    t_FmPcdKgPortConfigRegs *p_FmPcdKgPortRegs;
-    uint32_t                tmpKgarReg = 0, tmpKgpeCpp = 0;
+    uint32_t                tmpKgpeCpp = 0;
 
-    p_FmPcdKgPortRegs = &p_FmPcd->p_FmPcdKg->p_FmPcdKgRegs->indirectAccessRegs.portRegs;
     tmpKgpeCpp = FmPcdKgBuildCppReg(p_FmPcd, clsPlanGrpId);
-    WRITE_UINT32(p_FmPcdKgPortRegs->kgoe_cpp, tmpKgpeCpp);
-
-    tmpKgarReg = FmPcdKgBuildWritePortClsPlanBindActionReg(hardwarePortId);
-    return WriteKgarWait(p_FmPcd, tmpKgarReg);
+    return KgWriteCpp(p_FmPcd, hardwarePortId, tmpKgpeCpp);
 }
 
 void FmPcdKgUnbindPortToClsPlanGrp(t_Handle h_FmPcd, uint8_t hardwarePortId)
 {
     t_FmPcd                 *p_FmPcd = (t_FmPcd*)h_FmPcd;
-    t_FmPcdKgPortConfigRegs *p_FmPcdKgPortRegs;
-    uint32_t                tmpKgarReg = 0;
-
 
     SANITY_CHECK_RETURN(p_FmPcd, E_INVALID_HANDLE);
     SANITY_CHECK_RETURN(p_FmPcd->p_FmPcdKg, E_INVALID_HANDLE);
 
-    p_FmPcdKgPortRegs = &p_FmPcd->p_FmPcdKg->p_FmPcdKgRegs->indirectAccessRegs.portRegs;
-    WRITE_UINT32(p_FmPcdKgPortRegs->kgoe_cpp, 0);
-
-    tmpKgarReg = 0;
-    tmpKgarReg |= FM_PCD_KG_KGAR_GO | FM_PCD_KG_KGAR_WRITE | FM_PCD_KG_KGAR_SEL_PORT_ENTRY | hardwarePortId | FM_PCD_KG_KGAR_SEL_PORT_WSEL_CPP;
-    WriteKgarWait(p_FmPcd, tmpKgarReg);
+    KgWriteCpp(p_FmPcd, hardwarePortId, 0);
 }
-#endif /* !CONFIG_MULTI_PARTITION_SUPPORT */
 
 #if 0
 bool KgSchemeIsValid(t_Handle h_FmPcd, uint8_t schemeId)
@@ -1380,8 +1392,8 @@ t_Error KgInit(t_FmPcd *p_FmPcd)
 #ifndef CONFIG_GUEST_PARTITION
     int                         i;
     t_FmPcdKgPortConfigRegs     *p_FmPcdKgPortRegs;
-    uint8_t                     hardwarePortId;
     uint32_t                    tmpKgarReg;
+    uint8_t                     hardwarePortId;
     uint8_t                     portsTable[] = PCD_PORTS_TABLE;
     uint32_t                    tmpReg;
 #else
@@ -1439,6 +1451,7 @@ t_Error KgInit(t_FmPcd *p_FmPcd)
         tmpKgarReg = FmPcdKgBuildWritePortSchemeBindActionReg(hardwarePortId);
 
         err = WriteKgarWait(p_FmPcd, tmpKgarReg);
+//        err = KgWriteSp(p_FmPcd, hardwarePortId, 0xffffffff, FALSE);
         if(err)
             RETURN_ERROR(MINOR, err, NO_MSG);
 
@@ -1447,6 +1460,7 @@ t_Error KgInit(t_FmPcd *p_FmPcd)
         tmpKgarReg = FmPcdKgBuildWritePortClsPlanBindActionReg(hardwarePortId);
 
         err = WriteKgarWait(p_FmPcd, tmpKgarReg);
+//        err = KgWriteCpp(p_FmPcd, hardwarePortId, 0);
         if(err)
             RETURN_ERROR(MINOR, err, NO_MSG);
     }
