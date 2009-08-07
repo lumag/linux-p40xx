@@ -125,6 +125,7 @@ typedef struct {
     t_WrpFmDevSettings          fmDevSettings;
     t_WrpFmPcdDevSettings       fmPcdDevSettings;
     t_Handle                    h_Dev;
+    uint16_t                    hcCh;
 
     t_Handle                    h_MuramDev;
     t_Handle                    h_PcdDev;
