@@ -12,9 +12,7 @@
 
 #include <linux/irq.h>
 
-#define NR_INTERNAL_INTS 128
-#define NR_EXTERNAL_INTS 16
-#define NR_VMPIC_INTS (NR_EXTERNAL_INTS + NR_INTERNAL_INTS)
+#define NR_VMPIC_INTS 1024
 
 #define VMPIC_INFO(name) VMPIC_##name
 

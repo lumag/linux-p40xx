@@ -32,6 +32,12 @@
 static struct vmpic *global_vmpic;
 static DEFINE_SPINLOCK(vmpic_lock);
 
+static u32 hwirq_intspec[NR_VMPIC_INTS];
+static u32 __iomem *mpic_percpu_base_vaddr;
+
+#define IRQ_TYPE_MPIC_DIRECT 4
+#define MPIC_EOI  0x00B0
+
 /*
  * Linux descriptor level callbacks
  */
@@ -56,6 +62,12 @@ void vmpic_end_irq(unsigned int irq)
 	unsigned int src = virq_to_hw(irq);
 
 	fh_vmpic_eoi(src);
+}
+
+
+void vmpic_direct_end_irq(unsigned int irq)
+{
+	out_be32(mpic_percpu_base_vaddr + MPIC_EOI / 4, 0);
 }
 
 /* Convert a cpu mask from logical to physical cpu numbers. */
@@ -153,6 +165,13 @@ static struct irq_chip vmpic_irq_chip = {
 	.set_type	= vmpic_set_irq_type,
 };
 
+static struct irq_chip vmpic_direct_eoi_irq_chip = {
+	.mask		= vmpic_mask_irq,
+	.unmask		= vmpic_unmask_irq,
+	.eoi		= vmpic_direct_end_irq,
+	.set_type	= vmpic_set_irq_type,
+};
+
 /* Return an interrupt vector or NO_IRQ if no interrupt is pending. */
 unsigned int vmpic_get_irq(void)
 {
@@ -190,6 +209,10 @@ static int vmpic_host_map(struct irq_host *h, unsigned int virq,
 	/* Default chip */
 	chip = &vmpic->hc_irq;
 
+	if (mpic_percpu_base_vaddr)
+		if (hwirq_intspec[hw] & IRQ_TYPE_MPIC_DIRECT)
+			chip = &vmpic_direct_eoi_irq_chip;
+
 	set_irq_chip_data(virq, vmpic);
 	/*
 	 * using handle_fasteoi_irq as our irq handler, this will
@@ -226,10 +249,14 @@ static int vmpic_host_xlate(struct irq_host *h, struct device_node *ct,
 	};
 
 	*out_hwirq = intspec[0];
-	if (intsize > 1)
-		*out_flags = map_of_senses_to_linux_irqtype[intspec[1]];
-	else
+	if (intsize > 1) {
+		hwirq_intspec[intspec[0]] = intspec[1];
+		*out_flags = map_of_senses_to_linux_irqtype[intspec[1] &
+							~IRQ_TYPE_MPIC_DIRECT];
+	} else {
 		*out_flags = IRQ_TYPE_NONE;
+	}
+
 	return 0;
 }
 
@@ -246,6 +273,7 @@ static struct irq_host_ops vmpic_host_ops = {
 void __init vmpic_init(struct device_node *node, int coreint_flag)
 {
 	struct vmpic *vmpic;
+	struct device_node *np;
 
 	vmpic = alloc_bootmem(sizeof(struct vmpic));
 	if (vmpic == NULL)
@@ -260,6 +288,15 @@ void __init vmpic_init(struct device_node *node, int coreint_flag)
 	if (vmpic->irqhost == NULL) {
 		of_node_put(node);
 		return;
+	}
+
+	np = of_find_compatible_node(NULL, NULL, "fsl,hv-mpic-per-cpu");
+	if (np) {
+		mpic_percpu_base_vaddr = of_iomap(np, 0);
+		if (!mpic_percpu_base_vaddr)
+			printk(KERN_ERR "vmpic_init: of_iomap failed\n");
+
+		of_node_put(np);
 	}
 
 	vmpic->irqhost->host_data = vmpic;
