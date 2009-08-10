@@ -607,10 +607,8 @@ static t_LnxWrpFmDev * ReadFmDevTreeNode (struct of_device *of_dev)
         const phandle       *phandle_prop;
 
         phandle_prop = (typeof(phandle_prop))of_get_property(dpa_node, "fsl,fman-mac", &lenp);
-        if (phandle_prop == NULL) {
-            REPORT_ERROR(MAJOR, E_INVALID_VALUE, ("of_get_property(%s, fsl,fman-mac) failed", dpa_node->full_name));
-            return NULL;
-        }
+        if (phandle_prop == NULL)
+            continue;
 
         BUG_ON(lenp != sizeof(phandle));
 
@@ -625,6 +623,7 @@ static t_LnxWrpFmDev * ReadFmDevTreeNode (struct of_device *of_dev)
             REPORT_ERROR(MAJOR, E_NO_DEVICE, ("of_get_parent() = %d", _errno));
             return NULL;
         }
+        of_node_put(mac_node);
 
         uint32_prop = (uint32_t *)of_get_property(fm_node, "cell-index", &lenp);
         if (unlikely(uint32_prop == NULL)) {
@@ -659,7 +658,6 @@ static t_LnxWrpFmDev * ReadFmDevTreeNode (struct of_device *of_dev)
             break;
         }
 
-        of_node_put(mac_node);
         of_node_put(fm_node);
     }
 
