@@ -282,8 +282,10 @@ dma_addr_t pme_map(void *ptr)
 {
 	return dma_map_single(&pdev->dev, ptr, 1, DMA_BIDIRECTIONAL);
 }
+EXPORT_SYMBOL(pme_map);
 
 int pme_map_error(dma_addr_t dma_addr)
 {
 	return dma_mapping_error(&pdev->dev, dma_addr);
 }
+EXPORT_SYMBOL(pme_map_error);
