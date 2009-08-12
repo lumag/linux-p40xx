@@ -607,7 +607,7 @@ dpa_fd_release(const struct net_device *net_dev, const struct qm_fd *fd)
 #ifdef CONFIG_DPA_RX_0_COPY
 		struct page **pageptr;
 		struct page *page = NULL;
-		
+
 		if (_dpa_bp->kernel_pool) {
 			unsigned long flags;
 			spin_lock_irqsave(&_dpa_bp->lock, flags);
@@ -1321,19 +1321,20 @@ static void __hot dpa_rx(struct work_struct *fd_work)
 		BUG_ON(IS_ERR(dpa_bp));
 
 #ifdef CONFIG_DPA_RX_0_COPY
-		spin_lock_irqsave(&dpa_bp->lock, flags);
-		pageptr = dpa_find_rxpage(dpa_bp, bmb->lo);
-
-		if (!pageptr)
-			cpu_pr_emerg("Aaaaaaah, no page for addr %x in pool %d!\n", bmb->lo, bmb->bpid);
-
-		page = *pageptr;
-		*pageptr = NULL;
-
-		dpa_bp->bp_refill_pending++;
-		spin_unlock_irqrestore(&dpa_bp->lock, flags);
-
 		if (dpa_bp->kernel_pool) {
+			spin_lock_irqsave(&dpa_bp->lock, flags);
+			pageptr = dpa_find_rxpage(dpa_bp, bmb->lo);
+
+			if (!pageptr)
+				cpu_pr_emerg("Aaaaaaah, no page for addr %x in pool %d!\n",
+					     bmb->lo, bmb->bpid);
+
+			page = *pageptr;
+			*pageptr = NULL;
+
+			dpa_bp->bp_refill_pending++;
+			spin_unlock_irqrestore(&dpa_bp->lock, flags);
+
 			head = sizeof(*bmb) + NET_IP_ALIGN;
 			size = ETH_HLEN + NN_ALLOCATED_SPACE(net_dev) + TT_ALLOCATED_SPACE(net_dev);
 		} else
