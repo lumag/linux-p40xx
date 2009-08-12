@@ -817,6 +817,14 @@
 			interrupts = <38 2>;
 			interrupt-parent = <&mpic>;
 			dfsrr;
+			eeprom@51 {
+				compatible = "at24,24c256";
+				reg = <0x51>;
+			};
+			eeprom@53 {
+				compatible = "at24,24c256";
+				reg = <0x53>;
+			};
 		};
 
 		i2c@118100 {
