@@ -399,7 +399,7 @@ void pme2_test_scan(void)
 	/* read back flow settings */
 	{
 		struct pme_flow *rb_flow;
-		rb_flow = kmalloc(sizeof(struct pme_flow), GFP_KERNEL);
+		rb_flow = pme_sw_flow_new();
 		memset(rb_flow, 0, sizeof(struct pme_flow));
 		ret = pme_ctx_ctrl_read_flow(&a_scan_ctx.base_ctx,
 			PME_CTX_OP_WAIT |
@@ -409,6 +409,7 @@ void pme2_test_scan(void)
 		pr_info("st: read Flow Context;\n");
 		hexdump(rb_flow, sizeof(*rb_flow));
 		kfree(rb_flow);
+		pme_sw_flow_free(rb_flow);
 	}
 
 	/* Disable */
