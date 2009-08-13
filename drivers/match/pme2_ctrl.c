@@ -803,6 +803,7 @@ int pme2_exclusive_set(struct qman_fq *fq)
 	pme_out(global_pme, EFQC, PME_EFQC(1, qman_fq_fqid(fq)));
 	return 0;
 }
+EXPORT_SYMBOL(pme2_exclusive_set);
 
 int pme2_exclusive_unset(void)
 {
@@ -811,6 +812,7 @@ int pme2_exclusive_unset(void)
 	pme_out(global_pme, EFQC, PME_EFQC(0, 0));
 	return 0;
 }
+EXPORT_SYMBOL(pme2_exclusive_unset);
 
 int pme_attr_set(enum pme_attr attr, u32 val)
 {

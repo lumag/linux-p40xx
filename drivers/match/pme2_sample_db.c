@@ -91,12 +91,6 @@ static u8 db_read[] = {
 	0x00,0x00,0x00,0x00,0x00,0x03,0x00,0x01,0x20,0x41
 };
 
-static u8 result_read_data[] = {
-	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
-	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
-	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
-};
-
 static u8 db_read_expected_result[] = {
 	0x01,0x00,0x00,0x00,0x00,0x00,0x00,0x1c,0x11,0x00,0x00,0x00,0x00,0x00,
 	0x00,0x00,0x00,0x00,0x00,0x03,0x00,0x01,0x20,0x41,0x40,0x20,0x00,0x11
@@ -126,6 +120,8 @@ void pme2_sample_db(void)
 	int ret;
 	enum pme_status status;
 	struct pme_ctx_token token;
+	void *mem;
+	void *mem_result;
 
 	pr_info("sample_db: starting pme2 sample DB initialisation\n");
 
@@ -141,8 +137,11 @@ void pme2_sample_db(void)
 
 	/* Write the database */
 	memset(&fd, 0, sizeof(struct qm_fd));
+	mem = kmalloc(sizeof(pme_db), GFP_KERNEL);
+	memcpy(mem,pme_db, sizeof(pme_db));
+
 	fd.length20 = sizeof(pme_db);
-	fd.addr_lo = pme_map(pme_db);
+	fd.addr_lo = pme_map(mem);
 
 	ret = pme_ctx_pmtcc(&ctx.base_ctx, PME_CTX_OP_WAIT, &fd, &token);
 	if (ret == -ENODEV) {
@@ -155,6 +154,7 @@ void pme2_sample_db(void)
 	}
 	BUG_ON(ret);
 	wait_for_completion(&ctx.done);
+	kfree(mem);
 	status = pme_fd_res_status(&ctx.result_fd);
 	if (status) {
 		pr_info("sample_db: PMTCC write status failed %d\n", status);
@@ -165,9 +165,14 @@ void pme2_sample_db(void)
 	init_completion(&ctx.done);
 	memset(&fd, 0, sizeof(struct qm_fd));
 	memset(&sg_table, 0, sizeof(sg_table));
-	sg_table[0].addr_lo = pme_map(result_read_data);
-	sg_table[0].length = sizeof(result_read_data);
-	sg_table[1].addr_lo = pme_map(db_read);
+
+	mem = kmalloc(sizeof(db_read), GFP_KERNEL);
+	memcpy(mem,db_read, sizeof(db_read));
+	mem_result = kmalloc(28, GFP_KERNEL);
+
+	sg_table[0].addr_lo = pme_map(mem_result);
+	sg_table[0].length = 28;
+	sg_table[1].addr_lo = pme_map(mem);
 	sg_table[1].length = sizeof(db_read);
 	sg_table[1].final = 1;
 	fd.format = qm_fd_compound;
@@ -186,16 +191,17 @@ void pme2_sample_db(void)
 			pme_fd_res_flags(&ctx.result_fd));
 		BUG_ON(1);
 	}
-	if (memcmp(db_read_expected_result, result_read_data,
-				sizeof(result_read_data)) != 0) {
+	if (memcmp(db_read_expected_result, mem_result,	28) != 0) {
 		pr_err("sample_db: DB read result not expected\n");
 		pr_err("Expected\n");
 		hexdump(db_read_expected_result,
 				sizeof(db_read_expected_result));
 		pr_info("Received\n");
-		hexdump(result_read_data, sizeof(result_read_data));
+		hexdump(mem_result, 28);
 		BUG_ON(1);
 	}
+	kfree(mem_result);
+	kfree(mem);
 	/* Disable */
 	ret = pme_ctx_disable(&ctx.base_ctx,
 		PME_CTX_OP_WAIT | PME_CTX_OP_WAIT_INT);
