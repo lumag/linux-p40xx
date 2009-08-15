@@ -85,31 +85,141 @@ static t_LnxWrpFm   lnxWrpFm;
 static int fm_proc_dump_stats(char *buffer, char **start, off_t offset,
                               int length, int *eof, void *data)
 {
-//    t_LnxWrpFmDev               *p_LnxWrpFmDev = (t_LnxWrpFmDev*)data;
-//    t_PppohtLinkStatistics      linkStatistics;
+    t_LnxWrpFmDev               *p_LnxWrpFmDev = (t_LnxWrpFmDev*)data;
+    t_FmDmaStatus               fmDmaStatus;
     t_Handle                    h_ProcBuff = ProcBuff_Init(buffer,start,offset,length,eof);
     unsigned long               flags;
     int                         numOfWrittenChars;
 
+    if (!p_LnxWrpFmDev->active || !p_LnxWrpFmDev->h_Dev)
+    {
+        REPORT_ERROR(MINOR, E_INVALID_STATE, ("FM not initialized!"));
+        return 0;
+    }
+
     local_irq_save(flags);
     ProcBuff_Write (h_ProcBuff, "FM driver statistics:\n");
 
-//#warning "complete"
-#if 0
-    for (i=0; i<PPPOHT_MAX_NUM_OF_LINKS; i++)
-        if (p_Pppohtd->links[i].h_Link)
-        {
-            memset(&linkStatistics, 0, sizeof(t_PppohtLinkStatistics));
-            PPPoHT_LINK_GetStatistics(p_Pppohtd->links[i].h_Link, &linkStatistics);
-            ProcBuff_Write (h_ProcBuff,
-                            "\tLink %d statistics:\n \
-                             rxFcsErrCnt: %d\n \
-                             rxInvalidAcCnt: %d\n",
-                            i,
-                            linkStatistics.rxFcsErrCnt,
-                            linkStatistics.rxInvalidAcCnt);
-        }
-#endif /* 0 */
+    memset(&fmDmaStatus, 0, sizeof(fmDmaStatus));
+    FM_GetDmaStatus(p_LnxWrpFmDev->h_Dev, &fmDmaStatus);
+    ProcBuff_Write (h_ProcBuff,
+                    "\tFM DMA statistics:\n"
+                    "cmqNotEmpty: %c\n"
+                    "busError: %c\n"
+                    "readBufEccError: %c\n"
+                    "writeBufEccSysError: %c\n"
+                    "writeBufEccFmError: %c\n",
+                    fmDmaStatus.cmqNotEmpty ? "T" : "F",
+                    fmDmaStatus.busError ? "T" : "F",
+                    fmDmaStatus.readBufEccError ? "T" : "F",
+                    fmDmaStatus.writeBufEccSysError ? "T" : "F",
+                    fmDmaStatus.writeBufEccFmError ? "T" : "F"
+                    );
+    ProcBuff_Write (h_ProcBuff,
+                    "\tFM counters:\n"
+                    "e_FM_COUNTERS_ENQ_TOTAL_FRAME: %d\n"
+                    "e_FM_COUNTERS_DEQ_TOTAL_FRAME: %d\n"
+                    "e_FM_COUNTERS_DEQ_0: %d\n"
+                    "e_FM_COUNTERS_DEQ_1: %d\n"
+                    "e_FM_COUNTERS_DEQ_2: %d\n"
+                    "e_FM_COUNTERS_DEQ_FROM_DEFAULT: %d\n"
+                    "e_FM_COUNTERS_DEQ_FROM_CONTEXT: %d\n"
+                    "e_FM_COUNTERS_DEQ_FROM_FD: %d\n"
+                    "e_FM_COUNTERS_DEQ_CONFIRM: %d\n"
+                    "e_FM_COUNTERS_SEMAPHOR_ENTRY_FULL_REJECT: %d\n"
+                    "e_FM_COUNTERS_SEMAPHOR_QUEUE_FULL_REJECT: %d\n"
+                    "e_FM_COUNTERS_SEMAPHOR_SYNC_REJECT: %d\n",
+                    FM_GetCounter(p_LnxWrpFmDev->h_Dev, e_FM_COUNTERS_ENQ_TOTAL_FRAME),
+                    FM_GetCounter(p_LnxWrpFmDev->h_Dev, e_FM_COUNTERS_DEQ_TOTAL_FRAME),
+                    FM_GetCounter(p_LnxWrpFmDev->h_Dev, e_FM_COUNTERS_DEQ_0),
+                    FM_GetCounter(p_LnxWrpFmDev->h_Dev, e_FM_COUNTERS_DEQ_1),
+                    FM_GetCounter(p_LnxWrpFmDev->h_Dev, e_FM_COUNTERS_DEQ_2),
+                    FM_GetCounter(p_LnxWrpFmDev->h_Dev, e_FM_COUNTERS_DEQ_FROM_DEFAULT),
+                    FM_GetCounter(p_LnxWrpFmDev->h_Dev, e_FM_COUNTERS_DEQ_FROM_CONTEXT),
+                    FM_GetCounter(p_LnxWrpFmDev->h_Dev, e_FM_COUNTERS_DEQ_FROM_FD),
+                    FM_GetCounter(p_LnxWrpFmDev->h_Dev, e_FM_COUNTERS_DEQ_CONFIRM),
+                    FM_GetCounter(p_LnxWrpFmDev->h_Dev, e_FM_COUNTERS_SEMAPHOR_ENTRY_FULL_REJECT),
+                    FM_GetCounter(p_LnxWrpFmDev->h_Dev, e_FM_COUNTERS_SEMAPHOR_QUEUE_FULL_REJECT),
+                    FM_GetCounter(p_LnxWrpFmDev->h_Dev, e_FM_COUNTERS_SEMAPHOR_SYNC_REJECT)
+                    );
+
+    numOfWrittenChars = ProcBuff_GetNumOfWrittenChars(h_ProcBuff);
+    ProcBuff_Free(h_ProcBuff);
+    local_irq_restore(flags);
+
+    return numOfWrittenChars;
+}
+
+static int fm_pcd_proc_dump_stats(char *buffer, char **start, off_t offset,
+                                  int length, int *eof, void *data)
+{
+    t_LnxWrpFmDev               *p_LnxWrpFmDev = (t_LnxWrpFmDev*)data;
+    t_Handle                    h_ProcBuff = ProcBuff_Init(buffer,start,offset,length,eof);
+    unsigned long               flags;
+    int                         numOfWrittenChars;
+
+    if (!p_LnxWrpFmDev->active || !p_LnxWrpFmDev->h_PcdDev)
+    {
+        REPORT_ERROR(MINOR, E_INVALID_STATE, ("FM-PCD not initialized!"));
+        return 0;
+    }
+
+    local_irq_save(flags);
+    ProcBuff_Write (h_ProcBuff, "FM-PCD driver statistics:\n");
+
+    ProcBuff_Write (h_ProcBuff,
+                    "\tFM-PCD counters:\n"
+                    "e_FM_COUNTERS_ENQ_TOTAL_FRAME: %d\n"
+                    "e_FM_PCD_KG_COUNTERS_TOTAL: %d\n"
+                    "e_FM_PCD_PLCR_COUNTERS_YELLOW: %d\n"
+                    "e_FM_PCD_PLCR_COUNTERS_RED: %d\n"
+                    "e_FM_PCD_PLCR_COUNTERS_RECOLORED_TO_RED: %d\n"
+                    "e_FM_PCD_PLCR_COUNTERS_RECOLORED_TO_YELLOW: %d\n"
+                    "e_FM_PCD_PLCR_COUNTERS_TOTAL: %d\n"
+                    "e_FM_PCD_PLCR_COUNTERS_LENGTH_MISMATCH: %d\n"
+                    "e_FM_PCD_PRS_COUNTERS_PARSE_DISPATCH: %d\n"
+                    "e_FM_PCD_PRS_COUNTERS_L2_PARSE_RESULT_RETURNED: %d\n"
+                    "e_FM_PCD_PRS_COUNTERS_L3_PARSE_RESULT_RETURNED: %d\n"
+                    "e_FM_PCD_PRS_COUNTERS_L4_PARSE_RESULT_RETURNED: %d\n"
+                    "e_FM_PCD_PRS_COUNTERS_SHIM_PARSE_RESULT_RETURNED: %d\n"
+                    "e_FM_PCD_PRS_COUNTERS_L2_PARSE_RESULT_RETURNED_WITH_ERR: %d\n"
+                    "e_FM_PCD_PRS_COUNTERS_L3_PARSE_RESULT_RETURNED_WITH_ERR: %d\n"
+                    "e_FM_PCD_PRS_COUNTERS_L4_PARSE_RESULT_RETURNED_WITH_ERR: %d\n"
+                    "e_FM_PCD_PRS_COUNTERS_SHIM_PARSE_RESULT_RETURNED_WITH_ERR: %d\n"
+                    "e_FM_PCD_PRS_COUNTERS_SOFT_PRS_CYCLES: %d\n"
+                    "e_FM_PCD_PRS_COUNTERS_SOFT_PRS_STALL_CYCLES: %d\n"
+                    "e_FM_PCD_PRS_COUNTERS_HARD_PRS_CYCLE_INCL_STALL_CYCLES: %d\n"
+                    "e_FM_PCD_PRS_COUNTERS_MURAM_READ_CYCLES: %d\n"
+                    "e_FM_PCD_PRS_COUNTERS_MURAM_READ_STALL_CYCLES: %d\n"
+                    "e_FM_PCD_PRS_COUNTERS_MURAM_WRITE_CYCLES: %d\n"
+                    "e_FM_PCD_PRS_COUNTERS_MURAM_WRITE_STALL_CYCLES: %d\n"
+                    "e_FM_PCD_PRS_COUNTERS_FPM_COMMAND_STALL_CYCLES: %d\n",
+                    FM_PCD_GetCounter(p_LnxWrpFmDev->h_PcdDev, e_FM_COUNTERS_ENQ_TOTAL_FRAME),
+                    FM_PCD_GetCounter(p_LnxWrpFmDev->h_PcdDev, e_FM_PCD_KG_COUNTERS_TOTAL),
+                    FM_PCD_GetCounter(p_LnxWrpFmDev->h_PcdDev, e_FM_PCD_PLCR_COUNTERS_YELLOW),
+                    FM_PCD_GetCounter(p_LnxWrpFmDev->h_PcdDev, e_FM_PCD_PLCR_COUNTERS_RED),
+                    FM_PCD_GetCounter(p_LnxWrpFmDev->h_PcdDev, e_FM_PCD_PLCR_COUNTERS_RECOLORED_TO_RED),
+                    FM_PCD_GetCounter(p_LnxWrpFmDev->h_PcdDev, e_FM_PCD_PLCR_COUNTERS_RECOLORED_TO_YELLOW),
+                    FM_PCD_GetCounter(p_LnxWrpFmDev->h_PcdDev, e_FM_PCD_PLCR_COUNTERS_TOTAL),
+                    FM_PCD_GetCounter(p_LnxWrpFmDev->h_PcdDev, e_FM_PCD_PLCR_COUNTERS_LENGTH_MISMATCH),
+                    FM_PCD_GetCounter(p_LnxWrpFmDev->h_PcdDev, e_FM_PCD_PRS_COUNTERS_PARSE_DISPATCH),
+                    FM_PCD_GetCounter(p_LnxWrpFmDev->h_PcdDev, e_FM_PCD_PRS_COUNTERS_L2_PARSE_RESULT_RETURNED),
+                    FM_PCD_GetCounter(p_LnxWrpFmDev->h_PcdDev, e_FM_PCD_PRS_COUNTERS_L3_PARSE_RESULT_RETURNED),
+                    FM_PCD_GetCounter(p_LnxWrpFmDev->h_PcdDev, e_FM_PCD_PRS_COUNTERS_L4_PARSE_RESULT_RETURNED),
+                    FM_PCD_GetCounter(p_LnxWrpFmDev->h_PcdDev, e_FM_PCD_PRS_COUNTERS_SHIM_PARSE_RESULT_RETURNED),
+                    FM_PCD_GetCounter(p_LnxWrpFmDev->h_PcdDev, e_FM_PCD_PRS_COUNTERS_L2_PARSE_RESULT_RETURNED_WITH_ERR),
+                    FM_PCD_GetCounter(p_LnxWrpFmDev->h_PcdDev, e_FM_PCD_PRS_COUNTERS_L3_PARSE_RESULT_RETURNED_WITH_ERR),
+                    FM_PCD_GetCounter(p_LnxWrpFmDev->h_PcdDev, e_FM_PCD_PRS_COUNTERS_L4_PARSE_RESULT_RETURNED_WITH_ERR),
+                    FM_PCD_GetCounter(p_LnxWrpFmDev->h_PcdDev, e_FM_PCD_PRS_COUNTERS_SHIM_PARSE_RESULT_RETURNED_WITH_ERR),
+                    FM_PCD_GetCounter(p_LnxWrpFmDev->h_PcdDev, e_FM_PCD_PRS_COUNTERS_SOFT_PRS_CYCLES),
+                    FM_PCD_GetCounter(p_LnxWrpFmDev->h_PcdDev, e_FM_PCD_PRS_COUNTERS_SOFT_PRS_STALL_CYCLES),
+                    FM_PCD_GetCounter(p_LnxWrpFmDev->h_PcdDev, e_FM_PCD_PRS_COUNTERS_HARD_PRS_CYCLE_INCL_STALL_CYCLES),
+                    FM_PCD_GetCounter(p_LnxWrpFmDev->h_PcdDev, e_FM_PCD_PRS_COUNTERS_MURAM_READ_CYCLES),
+                    FM_PCD_GetCounter(p_LnxWrpFmDev->h_PcdDev, e_FM_PCD_PRS_COUNTERS_MURAM_READ_STALL_CYCLES),
+                    FM_PCD_GetCounter(p_LnxWrpFmDev->h_PcdDev, e_FM_PCD_PRS_COUNTERS_MURAM_WRITE_CYCLES),
+                    FM_PCD_GetCounter(p_LnxWrpFmDev->h_PcdDev, e_FM_PCD_PRS_COUNTERS_MURAM_WRITE_STALL_CYCLES),
+                    FM_PCD_GetCounter(p_LnxWrpFmDev->h_PcdDev, e_FM_PCD_PRS_COUNTERS_FPM_COMMAND_STALL_CYCLES)
+                    );
 
     numOfWrittenChars = ProcBuff_GetNumOfWrittenChars(h_ProcBuff);
     ProcBuff_Free(h_ProcBuff);
@@ -153,6 +263,46 @@ static int fm_proc_dump_regs(char *buffer, char **start, off_t offset,
         if (p_LnxWrpFmDev->hcPort.active && p_LnxWrpFmDev->hcPort.h_Dev)
             FM_PORT_DumpRegs(p_LnxWrpFmDev->hcPort.h_Dev);
     }
+
+    local_irq_restore(flags);
+    *eof = 1;
+
+    return length - size;
+
+#else
+    t_Handle    h_ProcBuff = ProcBuff_Init(buffer,start,offset,length,eof);
+    int         numOfWrittenChars;
+
+    local_irq_save(flags);
+    ProcBuff_Write (h_ProcBuff, "Debug level is too low to dump registers!!!\n");
+    numOfWrittenChars = ProcBuff_GetNumOfWrittenChars(h_ProcBuff);
+    ProcBuff_Free(h_ProcBuff);
+    local_irq_restore(flags);
+
+    return numOfWrittenChars;
+#endif /* (defined(DEBUG_ERRORS) && ... */
+}
+
+static int fm_pcd_proc_dump_regs(char *buffer, char **start, off_t offset,
+                             int length, int *eof, void *data)
+{
+    unsigned long   flags;
+
+#if (defined(DEBUG_ERRORS) && (DEBUG_ERRORS > 0))
+    t_LnxWrpFmDev   *p_LnxWrpFmDev = (t_LnxWrpFmDev*)data;
+    char            *next = buffer;
+    unsigned        size = length;
+    int             t;
+
+    local_irq_save(flags);
+    t = scnprintf(next, size, "FM driver registers dump.\n");
+    size -= t;
+    next += t;
+
+    if (!p_LnxWrpFmDev->active || !p_LnxWrpFmDev->h_PcdDev)
+        REPORT_ERROR(MINOR, E_INVALID_STATE, ("FM not initialized!"));
+    else
+        FM_PCD_DumpRegs(p_LnxWrpFmDev->h_PcdDev);
 
     local_irq_restore(flags);
     *eof = 1;
@@ -1023,6 +1173,16 @@ static t_Error InitFmDev(t_LnxWrpFmDev  *p_LnxWrpFmDev)
     if (FM_ConfigResetOnInit(p_LnxWrpFmDev->h_Dev, TRUE) != E_OK)
         RETURN_ERROR(MAJOR, E_INVALID_STATE, ("FM"));
 
+    /* Workaround for silicon! not relevant for simulator */
+    if (FM_ConfigCatastrophicErr(p_LnxWrpFmDev->h_Dev, e_FM_CATASTROPHIC_ERR_STALL_TASK) != E_OK)
+        RETURN_ERROR(MAJOR, E_INVALID_STATE, ("FM"));
+    if (FM_ConfigDmaErr(p_LnxWrpFmDev->h_Dev, e_FM_DMA_ERR_REPORT) != E_OK)
+        RETURN_ERROR(MAJOR, E_INVALID_STATE, ("FM"));
+    if (FM_ConfigHaltOnExternalActivation(p_LnxWrpFmDev->h_Dev, FALSE) != E_OK)
+        RETURN_ERROR(MAJOR, E_INVALID_STATE, ("FM"));
+    if (FM_ConfigHaltOnUnrecoverableEccError(p_LnxWrpFmDev->h_Dev, FALSE) != E_OK)
+        RETURN_ERROR(MAJOR, E_INVALID_STATE, ("FM"));
+
     if (FM_Init(p_LnxWrpFmDev->h_Dev) != E_OK)
         RETURN_ERROR(MAJOR, E_INVALID_STATE, ("FM"));
 
@@ -1418,7 +1578,11 @@ static int /*__devinit*/ fm_probe(struct of_device *of_dev, const struct of_devi
     /* Register to the /proc for debug and statistics API */
     if (((p_LnxWrpFmDev->proc_fm = proc_mkdir(fmName, NULL)) == NULL) ||
         ((p_LnxWrpFmDev->proc_fm_regs = create_proc_read_entry("regs", 0, p_LnxWrpFmDev->proc_fm, fm_proc_dump_regs, p_LnxWrpFmDev)) == NULL) ||
-        ((p_LnxWrpFmDev->proc_fm_stats = create_proc_read_entry("stats", 0, p_LnxWrpFmDev->proc_fm, fm_proc_dump_stats, p_LnxWrpFmDev)) == NULL))
+        ((p_LnxWrpFmDev->proc_fm_stats = create_proc_read_entry("stats", 0, p_LnxWrpFmDev->proc_fm, fm_proc_dump_stats, p_LnxWrpFmDev)) == NULL) ||
+        ((p_LnxWrpFmDev->proc_fm_pcd = proc_mkdir("fm-pcd", p_LnxWrpFmDev->proc_fm)) == NULL) ||
+        ((p_LnxWrpFmDev->proc_fm_pcd_regs = create_proc_read_entry("regs", 0, p_LnxWrpFmDev->proc_fm_pcd, fm_pcd_proc_dump_regs, p_LnxWrpFmDev)) == NULL) ||
+        ((p_LnxWrpFmDev->proc_fm_pcd_stats = create_proc_read_entry("stats", 0, p_LnxWrpFmDev->proc_fm_pcd, fm_pcd_proc_dump_stats, p_LnxWrpFmDev)) == NULL)
+        )
     {
         FreeFmDev(p_LnxWrpFmDev);
         REPORT_ERROR(MAJOR, E_INVALID_STATE, ("Unable to create proc entry - fm!!!"));
@@ -1441,6 +1605,9 @@ static int __devexit fm_remove(struct of_device *of_dev)
     dev = &of_dev->dev;
     p_LnxWrpFmDev = dev_get_drvdata(dev);
 
+    remove_proc_entry("stats", p_LnxWrpFmDev->proc_fm_pcd);
+    remove_proc_entry("regs", p_LnxWrpFmDev->proc_fm_pcd);
+    remove_proc_entry(p_LnxWrpFmDev->proc_fm_pcd, p_LnxWrpFmDev->proc_fm);
     remove_proc_entry("stats", p_LnxWrpFmDev->proc_fm);
     remove_proc_entry("regs", p_LnxWrpFmDev->proc_fm);
     memset(fmName,0,sizeof(fmName));
@@ -1512,6 +1679,19 @@ static int /*__devinit*/ fm_port_probe(struct of_device *of_dev, const struct of
     if ((p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_HOST_COMMAND) &&
         (InitFmPcdDev((t_LnxWrpFmDev *)p_LnxWrpFmPortDev->h_LnxWrpFmDev) != E_OK))
         return -EIO;
+
+#if 0
+    /* Register to the /proc for debug and statistics API */
+    if (((p_LnxWrpFmPortDev->proc = proc_mkdir(fmName, NULL)) == NULL) ||
+        ((p_LnxWrpFmPortDev->proc_regs = create_proc_read_entry("regs", 0, p_LnxWrpFmDev->proc_fm, fm_proc_dump_regs, p_LnxWrpFmDev)) == NULL) ||
+        ((p_LnxWrpFmPortDev->proc_stats = create_proc_read_entry("stats", 0, p_LnxWrpFmDev->proc_fm, fm_proc_dump_stats, p_LnxWrpFmDev)) == NULL)
+        )
+    {
+        FreeFmDev(p_LnxWrpFmDev);
+        REPORT_ERROR(MAJOR, E_INVALID_STATE, ("Unable to create proc entry - fm!!!"));
+        return -EIO;
+    }
+#endif /* 0 */
 
     return 0;
 }
