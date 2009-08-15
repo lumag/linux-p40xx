@@ -1101,9 +1101,9 @@ t_Error FM_Init(t_Handle h_Fm)
     }
     tmpReg |= (p_Fm->p_FmDriverParam->catastrophicErr  << FPM_EV_MASK_CAT_ERR_SHIFT);
     tmpReg |= (p_Fm->p_FmDriverParam->dmaErr << FPM_EV_MASK_DMA_ERR_SHIFT);
-    if(p_Fm->p_FmDriverParam->haltOnExternalActivation)
+    if(!p_Fm->p_FmDriverParam->haltOnExternalActivation)
         tmpReg |= FPM_EV_MASK_EXTERNAL_HALT;
-    if(p_Fm->p_FmDriverParam->haltOnUnrecoverableEccError)
+    if(!p_Fm->p_FmDriverParam->haltOnUnrecoverableEccError)
         tmpReg |= FPM_EV_MASK_ECC_ERR_HALT;
     WRITE_UINT32(p_Fm->p_FmFpmRegs->fpmem, tmpReg);
 

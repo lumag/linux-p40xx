@@ -90,6 +90,9 @@ typedef struct {
     t_Handle                    h_LnxWrpFmDev;
     uint16_t                    txCh;
     struct device               *dev;
+    struct proc_dir_entry       *proc;
+    struct proc_dir_entry       *proc_regs;
+    struct proc_dir_entry       *proc_stats;
 } t_LnxWrpFmPortDev;
 
 typedef struct {
@@ -142,6 +145,9 @@ typedef struct {
     struct proc_dir_entry       *proc_fm;
     struct proc_dir_entry       *proc_fm_regs;
     struct proc_dir_entry       *proc_fm_stats;
+    struct proc_dir_entry       *proc_fm_pcd;
+    struct proc_dir_entry       *proc_fm_pcd_regs;
+    struct proc_dir_entry       *proc_fm_pcd_stats;
     struct qman_fq              *hc_tx_conf_fq, *hc_tx_err_fq, *hc_tx_fq;
 } t_LnxWrpFmDev;
 
