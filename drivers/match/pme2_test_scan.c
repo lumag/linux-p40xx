@@ -408,7 +408,6 @@ void pme2_test_scan(void)
 		BUG_ON(ret);
 		pr_info("st: read Flow Context;\n");
 		hexdump(rb_flow, sizeof(*rb_flow));
-		kfree(rb_flow);
 		pme_sw_flow_free(rb_flow);
 	}
 
