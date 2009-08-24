@@ -111,13 +111,13 @@ static int __devinit __cold init(struct mac_device *mac_dev)
 
 	priv = (typeof(priv))macdev_priv(mac_dev);
 
-	param.baseAddr =  (uint64_t)((size_t)(mac_dev->vaddr));
+	param.baseAddr =  devm_ioremap(mac_dev->dev, mac_dev->res->start, 0x2000);
 	param.enetMode	= macdev2enetinterface(mac_dev);
 	memcpy(&param.addr, mac_dev->addr, min(sizeof(param.addr), sizeof(mac_dev->addr)));
 	param.f_Exceptions	= mac_exception;
 	param.h_App		= mac_dev;
 	param.macId		= mac_dev->cell_index;
-    param.h_Fm = (t_Handle)mac_dev->fm;
+	param.h_Fm = (t_Handle)mac_dev->fm;
 
 	priv->mac = FM_MAC_Config(&param);
 	if (unlikely(priv->mac == NULL)) {
@@ -226,6 +226,20 @@ static int __cold change_promisc(struct mac_device *mac_dev)
 	return _errno;
 }
 
+static int __cold adjust_link(struct mac_device *mac_dev, uint16_t speed, bool full_duplex)
+{
+	int	 _errno;
+	t_Error	 err;
+
+	err = FM_MAC_AdjustLink(((struct mac_priv_s *)macdev_priv(mac_dev))->mac, speed, full_duplex);
+	_errno = -GET_ERROR_TYPE(err);
+	if (unlikely(_errno < 0))
+		cpu_dev_err(mac_dev->dev, "%s:%hu:%s(): FM_MAC_AdjustLink() = 0x%08x\n",
+			    __file__, __LINE__, __func__, err);
+
+	return _errno;
+}
+
 static int __cold uninit(struct mac_device *mac_dev)
 {
 	int			 _errno, __errno;
@@ -258,6 +272,7 @@ static void __devinit __cold setup_dtsec(struct mac_device *mac_dev)
 	mac_dev->start		= start;
 	mac_dev->stop		= stop;
 	mac_dev->change_promisc	= change_promisc;
+	mac_dev->adjust_link	= adjust_link;
 	mac_dev->uninit		= uninit;
 }
 
@@ -267,6 +282,7 @@ static void __devinit __cold setup_xgmac(struct mac_device *mac_dev)
 	mac_dev->start		= start;
 	mac_dev->stop		= stop;
 	mac_dev->change_promisc	= change_promisc;
+	mac_dev->adjust_link	= adjust_link;
 	mac_dev->uninit		= uninit;
 }
 

@@ -33,14 +33,25 @@
 #include <linux/module.h>
 #include <linux/of_platform.h>
 #include <linux/device.h>
+#include <linux/phy.h>
 
 #include "dpa-common.h"
 
 #include "lnxwrp_fm_ext.h"
 
+#include "fsl_pq_mdio.h"
 #include "mac.h"
 
 #define PHY_INTERFACE_MODE_XGMII    (PHY_INTERFACE_MODE_RTBI+1)
+#define DTSEC_SUPPORTED \
+	(SUPPORTED_10baseT_Half \
+	| SUPPORTED_10baseT_Full \
+	| SUPPORTED_100baseT_Half \
+	| SUPPORTED_100baseT_Full \
+	| SUPPORTED_1000baseT_Half \
+	| SUPPORTED_1000baseT_Full \
+	| SUPPORTED_Autoneg \
+	| SUPPORTED_MII)
 
 static const char phy_str[][11] __devinitconst =
 {
@@ -130,6 +141,7 @@ static int __devinit __cold mac_probe(struct of_device *_of_dev, const struct of
 	const char		*char_prop;
 	const phandle		*phandle_prop;
 	const uint32_t		*uint32_prop;
+	char bus_name[MII_BUS_ID_SIZE];
 
 	dev = &_of_dev->dev;
 
@@ -277,6 +289,9 @@ static int __devinit __cold mac_probe(struct of_device *_of_dev, const struct of
 	mac_dev->half_duplex	= false;
 	mac_dev->speed		= phy2speed[mac_dev->phy_if];
 	mac_dev->max_speed	= mac_dev->speed;
+	mac_dev->if_support = DTSEC_SUPPORTED;
+	if (strstr(char_prop, "sgmii") && (mac_dev->max_speed == 1000))
+		mac_dev->if_support &= ~SUPPORTED_1000baseT_Half;
 
 	/* Get the rest of the PHY information */
 	phandle_prop = (typeof(phandle_prop))of_get_property(mac_node, "phy-handle", &lenp);
@@ -318,18 +333,11 @@ static int __devinit __cold mac_probe(struct of_device *_of_dev, const struct of
 	of_node_put(dev_node);
 	dev_node = tmp_node;
 
-	/* Get the MDIO bus address */
-	_errno = of_address_to_resource(dev_node, 0, &res);
-	if (unlikely(_errno < 0)) {
-		cpu_dev_err(dev, "%s:%hu:%s(): of_address_to_resource(%s) = %d\n",
-			    __file__, __LINE__, __func__, dev_node->full_name, _errno);
-		goto _return_of_node_put;
-	}
-	of_node_put(dev_node);
-
 	/* Build the PHY id/address */
-	_errno = snprintf(mac_dev->phy_id, sizeof(mac_dev->phy_id), "%llx:%02x",
-			  res.start, *uint32_prop);
+	fsl_pq_mdio_bus_name(bus_name, dev_node);
+	of_node_put(dev_node);
+	_errno = snprintf(mac_dev->phy_id, sizeof(mac_dev->phy_id), "%s:%02x",
+				bus_name, *uint32_prop);
 	if (unlikely(_errno < 0 || _errno >= sizeof(mac_dev->phy_id))) {
 		cpu_dev_err(dev, "%s:%hu:%s(): snprintf() = %d\n",
 			    __file__, __LINE__, __func__, _errno);

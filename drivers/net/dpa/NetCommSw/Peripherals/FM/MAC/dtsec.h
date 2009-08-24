@@ -74,7 +74,7 @@ typedef  uint32_t t_ErrorDisable;
 #define HASH_TABLE_SIZE             256 /* Hash table size (= 32 bits * 8 regs) */
 
 
-#define DTSEC_TO_MII_OFFSET         0x1000  /* number of pattern match registers (entries) */
+#define DTSEC_TO_MII_OFFSET         0x1120  /* number of pattern match registers (entries) */
 
 #define DEFAULT_cam                 0
 
@@ -132,6 +132,7 @@ typedef  uint32_t t_ErrorDisable;
 #define DEFAULT_fifoTxThr           0x10
 #define DEFAULT_fifoTxWatermarkH    0x7e
 #define DEFAULT_fifoRxWatermarkL    0x08
+#define DEFAULT_tbiPhyAddr          5
 
 #define DEFAULT_imask               ((uint32_t)(IMASK_BREN | IMASK_RXCEN | IMASK_MSROEN | IMASK_GTSCEN | \
                                                 IMASK_BTEN | IMASK_TXCEN | IMASK_TXEEN |  IMASK_ABRTEN | \
@@ -139,6 +140,7 @@ typedef  uint32_t t_ErrorDisable;
                                                 IMASK_MAGEN | IMASK_MMRDEN | IMASK_MMWREN |IMASK_GRSCEN| \
                                                 IMASK_TDPEEN |IMASK_RDPEEN)
 
+#define MAX_PHYS                    31 /* maximum number of phys */
 
 #define DTSEC_ID1_ID                0xffff0000
 #define DTSEC_ID1_REV_MJ            0x0000FF00
@@ -265,6 +267,15 @@ typedef  uint32_t t_ErrorDisable;
 #define     MASK12BIT   0x00000FFF
 #define     MASK8BIT    0x000000FF
 
+/* PHY Control Register */
+#define PHY_CR_LOOPBACK     0x4000
+#define PHY_CR_SPEED0       0x2000
+#define PHY_CR_ANE          0x1000
+#define PHY_CR_FULLDUPLEX   0x0100
+#define PHY_CR_SPEED1       0x0040
+#define PHY_TBICON_SPEED2   0x0020
+#define PHY_TBICON_SRESET   0x8000
+
 
 #ifdef __MWERKS__
 #pragma pack(push,1)
@@ -286,7 +297,7 @@ typedef _Packed struct
     volatile uint32_t edis;                 /* 0x010 Error disabled register */
     volatile uint32_t ecntrl;               /* 0x014 E control register */
     volatile uint32_t ptv;                  /* 0x018 Pause time value register */
-    volatile uint32_t DTSEC_RESERVED1;      /* 0x01C TBIPA—TBI PHY address register */
+    volatile uint32_t tbipa;                /* 0x01C TBI PHY address register */
     volatile uint32_t tmr_ctrl;             /* 0x020 Time-stamp Control register */
     volatile uint32_t tmr_pevent;           /* 0x024 Time-stamp event register */
     volatile uint32_t tmr_pemask;           /* 0x028 Timer event mask register */
@@ -308,7 +319,7 @@ typedef _Packed struct
     volatile uint32_t ipgifg;               /* 0x108 IPG/IFG */
     volatile uint32_t hafdup;               /* 0x10C Half-duplex */
     volatile uint32_t maxfrm;               /* 0x110 Maximum frame */
-    volatile uint32_t  DTSEC_RESERVED7[3];  /* 0x114–0x11C register */
+    volatile uint32_t DTSEC_RESERVED7[3];   /* 0x114–0x11C register */
     volatile uint32_t miimcfg;              /* 0x120 MII Mgmt:configuration */
     volatile uint32_t miimcom;              /* 0x124 MII Mgmt:command */
     volatile uint32_t miimadd;              /* 0x128 MII Mgmt:address */
@@ -413,6 +424,7 @@ typedef struct {
     bool        halfDuplex;
     uint16_t    pauseTime;
     uint16_t    pauseExtended;
+    uint8_t     tbiPhyAddr;         /**< TBI Physical address  (1-31)     [DEFAULT_tbiPhyAddr]*/
 
     bool        autoZeroCounters;
     bool        statisticsEnable;
@@ -489,8 +501,8 @@ typedef struct {
     t_DtsecDriverParam          *p_DtsecDriverParam;
 } t_Dtsec;
 
-t_Error MII_WritePhyReg(t_Handle h_Dtsec, uint8_t phyAddr, uint8_t reg, uint16_t data);
-t_Error MII_ReadPhyReg(t_Handle  h_Dtsec, uint8_t phyAddr, uint8_t reg, uint16_t *p_Data);
+t_Error DTSEC_MII_WritePhyReg(t_Handle h_Dtsec, uint8_t phyAddr, uint8_t reg, uint16_t data);
+t_Error DTSEC_MII_ReadPhyReg(t_Handle  h_Dtsec, uint8_t phyAddr, uint8_t reg, uint16_t *p_Data);
 
 
 #endif /* __DTSEC_H */

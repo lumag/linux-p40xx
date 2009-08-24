@@ -87,6 +87,11 @@ static t_Error CheckInitParameters(t_Dtsec *p_Dtsec)
     if((p_Dtsec->p_DtsecDriverParam)->collisionWindow > MAX_COLLISION_WINDOW)
         RETURN_ERROR(MAJOR, E_INVALID_STATE, ("collisionWindow can't be greater than %d ",MAX_COLLISION_WINDOW ));
 
+    /*  If Auto negotiation process is disabled, need to */
+    /*  Set up the PHY using the MII Management Interface */
+    if (p_Dtsec->p_DtsecDriverParam->tbiPhyAddr > MAX_PHYS)
+        RETURN_ERROR(MAJOR, E_NOT_IN_RANGE, ("PHY address (should be 0-%d)", MAX_PHYS));
+
     return E_OK;
 }
 
@@ -119,6 +124,7 @@ static void SetDefaultParam(t_Dtsec *p_Dtsec, t_DtsecDriverParam *p_DtsecDriverP
     p_DtsecDriverParam->debugMode            = DEFAULT_debugMode;
 
     p_DtsecDriverParam->loopback             = DEFAULT_loopback;
+    p_DtsecDriverParam->tbiPhyAddr           = DEFAULT_tbiPhyAddr;
     p_DtsecDriverParam->actOnRxPauseFrame    = DEFAULT_actOnRxPauseFrame;
     p_DtsecDriverParam->actOnTxPauseFrame    = DEFAULT_actOnTxPauseFrame;
 
@@ -272,7 +278,6 @@ static t_Error DtsecInit(t_Handle h_Dtsec)
 
 /***************ECNTRL************************/
     tmpReg32 = GET_UINT32(p_DtsecMemMap->ecntrl);
-
     if(tmpReg32 & ECNTRL_CFG_RO)
     {
         isRgmii = (( p_Dtsec->enetMode == e_ENET_MODE_RGMII_10)   ||
@@ -303,7 +308,6 @@ static t_Error DtsecInit(t_Handle h_Dtsec)
         if((is100 && !isResetCnfg100) ||
             (!is100 && isResetCnfg100))
           RETURN_ERROR(MAJOR, E_CONFLICT,(" Error. 100 speed interface is not configured properly. Check dTsec cfg switch \n"));
-
     }
     else
     {
@@ -321,13 +325,16 @@ static t_Error DtsecInit(t_Handle h_Dtsec)
             tmpReg32 |= ECNTRL_RPM;
        if((p_Dtsec->enetMode == e_ENET_MODE_RGMII_100) || (p_Dtsec->enetMode == e_ENET_MODE_SGMII_100))
             tmpReg32 |= ECNTRL_R100M;
+#ifdef FM_ENET_SGMII_1000_ERRATA
+       if(p_Dtsec->enetMode == e_ENET_MODE_SGMII_1000)
+            tmpReg32 |= ECNTRL_R100M;
+#endif /* FM_ENET_SGMII_1000_ERRATA */
     }
 
     if (p_DtsecDriverParam->autoZeroCounters)
         tmpReg32 |= ECNTRL_AUTOZ;
     if(p_DtsecDriverParam->statisticsEnable)
-        tmpReg32 |= ECNTRL_STEN ;
-
+        tmpReg32 |= ECNTRL_STEN;
     WRITE_UINT32(p_DtsecMemMap->ecntrl, tmpReg32);
 
 /***************ECNTRL************************/
@@ -380,6 +387,42 @@ static t_Error DtsecInit(t_Handle h_Dtsec)
 
     WRITE_UINT32(p_DtsecMemMap->rctrl, tmpReg32);
 
+    /* Assign a Phy Address to the TBI (TBIPA).            */
+    /* Done also in case that TBI is not selected to avoid */
+    /* conflict with the external PHY’s Physical address   */
+    WRITE_UINT32(p_DtsecMemMap->tbipa, p_DtsecDriverParam->tbiPhyAddr);
+
+    /* Reset the management interface */
+    WRITE_UINT32(p_DtsecMemMap->miimcfg, MIIMCFG_RESET_MGMT);
+
+    /* Setup the MII Mgmt clock speed */
+    WRITE_UINT32(p_DtsecMemMap->miimcfg, MIIMCFG_MGMT_CLOCK_SELECT);
+
+    if(p_Dtsec->enetMode == e_ENET_MODE_SGMII_1000)
+    {
+        uint16_t            tmpReg16;
+
+        /* Configure the TBI PHY Control Register */
+        tmpReg16 = PHY_TBICON_SPEED2 | PHY_TBICON_SRESET;
+
+        DTSEC_MII_WritePhyReg(p_Dtsec, p_DtsecDriverParam->tbiPhyAddr, 17, tmpReg16);
+
+        tmpReg16 = PHY_TBICON_SPEED2;
+
+        DTSEC_MII_WritePhyReg(p_Dtsec, p_DtsecDriverParam->tbiPhyAddr, 17, tmpReg16);
+
+        if(!p_DtsecDriverParam->halfDuplex)
+            tmpReg16 |= PHY_CR_FULLDUPLEX | 0x8000 | PHY_CR_ANE;
+
+        DTSEC_MII_WritePhyReg(p_Dtsec, p_DtsecDriverParam->tbiPhyAddr, 0, tmpReg16);
+
+        tmpReg16 = 0x01a0;
+        DTSEC_MII_WritePhyReg(p_Dtsec, p_DtsecDriverParam->tbiPhyAddr, 4, tmpReg16);
+
+        tmpReg16 = 0x1340;
+        DTSEC_MII_WritePhyReg(p_Dtsec, p_DtsecDriverParam->tbiPhyAddr, 0, tmpReg16);
+    }
+
 /***************RCTRL************************/
 /***************IMASK************************/
     WRITE_UINT32(p_DtsecMemMap->imask, p_DtsecDriverParam->imask);
@@ -408,13 +451,15 @@ static t_Error DtsecInit(t_Handle h_Dtsec)
 /***************MACCFG1***********************/
 /***************MACCFG2***********************/
     tmpReg32 = 0;
-
     if((p_Dtsec->enetMode == e_ENET_MODE_RGMII_10) ||
         (p_Dtsec->enetMode == e_ENET_MODE_RGMII_100)||
         (p_Dtsec->enetMode == e_ENET_MODE_SGMII_10) ||
         (p_Dtsec->enetMode == e_ENET_MODE_SGMII_100))
             tmpReg32 |= MACCFG2_NIBBLE_MODE;
-
+#ifdef FM_ENET_SGMII_1000_ERRATA
+    else if(p_Dtsec->enetMode == e_ENET_MODE_SGMII_1000)
+            tmpReg32 |= MACCFG2_NIBBLE_MODE;
+#endif /* FM_ENET_SGMII_1000_ERRATA */
     else if((p_Dtsec->enetMode == e_ENET_MODE_RGMII_1000) ||
         (p_Dtsec->enetMode == e_ENET_MODE_SGMII_1000)||
         (p_Dtsec->enetMode == e_ENET_MODE_GMII_1000))
@@ -436,8 +481,8 @@ static t_Error DtsecInit(t_Handle h_Dtsec)
         tmpReg32 |= MACCFG2_CRC_EN ;
     if(!p_DtsecDriverParam->halfDuplex)
         tmpReg32 |= MACCFG2_FULL_DUPLEX;
-
     WRITE_UINT32(p_DtsecMemMap->maccfg2, tmpReg32);
+
 /***************MACCFG2***********************/
 /***************IPGIFG************************/
 
@@ -1132,11 +1177,13 @@ static t_Error DtsecSetPromiscuous(t_Handle h_Dtsec, bool newVal)
 static t_Error DtsecAdjustLink(t_Handle h_Dtsec, e_EnetSpeed speed, bool fullDuplex)
 {
     t_Dtsec         *p_Dtsec = (t_Dtsec *)h_Dtsec;
-    t_DtsecMemMap   *p_DtsecMemMap = p_Dtsec->p_MemMap;
+    t_DtsecMemMap   *p_DtsecMemMap;
     uint32_t        tmpReg32;
 
     SANITY_CHECK_RETURN_ERROR(p_Dtsec, E_INVALID_HANDLE);
     SANITY_CHECK_RETURN_ERROR(!p_Dtsec->p_DtsecDriverParam, E_INVALID_HANDLE);
+    p_DtsecMemMap = p_Dtsec->p_MemMap;
+    SANITY_CHECK_RETURN_ERROR(p_DtsecMemMap, E_INVALID_HANDLE);
 
     if (!fullDuplex &&
         ((speed >= e_ENET_SPEED_1000) ||
@@ -1144,16 +1191,16 @@ static t_Error DtsecAdjustLink(t_Handle h_Dtsec, e_EnetSpeed speed, bool fullDup
         RETURN_ERROR(MAJOR, E_CONFLICT, ("Ethernet interface does not support Half Duplex mode"));
 
     p_Dtsec->enetMode = MAKE_ENET_MODE(ENET_INTERFACE_FROM_MODE(p_Dtsec->enetMode), speed);
-    p_Dtsec->p_DtsecDriverParam->halfDuplex = !fullDuplex;
+    p_Dtsec->halfDuplex = !fullDuplex;
 
     tmpReg32 = GET_UINT32(p_DtsecMemMap->maccfg2);
-    if(p_Dtsec->p_DtsecDriverParam->halfDuplex)
+    if(p_Dtsec->halfDuplex)
         tmpReg32 &= ~MACCFG2_FULL_DUPLEX;
     else
         tmpReg32 |= MACCFG2_FULL_DUPLEX;
-    WRITE_UINT32(p_DtsecMemMap->maccfg2, tmpReg32);
 
-    tmpReg32 = GET_UINT32(p_DtsecMemMap->ecntrl);
+	tmpReg32 &= ~(MACCFG2_NIBBLE_MODE | MACCFG2_BYTE_MODE);
+
     if((p_Dtsec->enetMode == e_ENET_MODE_RGMII_10) ||
         (p_Dtsec->enetMode == e_ENET_MODE_RGMII_100)||
         (p_Dtsec->enetMode == e_ENET_MODE_SGMII_10) ||
@@ -1164,7 +1211,17 @@ static t_Error DtsecAdjustLink(t_Handle h_Dtsec, e_EnetSpeed speed, bool fullDup
         (p_Dtsec->enetMode == e_ENET_MODE_SGMII_1000)||
         (p_Dtsec->enetMode == e_ENET_MODE_GMII_1000))
             tmpReg32 |= MACCFG2_BYTE_MODE;
-    WRITE_UINT32(p_DtsecMemMap->ecntrl, tmpReg32);
+    WRITE_UINT32(p_DtsecMemMap->maccfg2, tmpReg32);
+
+    tmpReg32 = GET_UINT32(p_DtsecMemMap->ecntrl);
+    if(!(tmpReg32 & ECNTRL_CFG_RO))
+    {
+        if((p_Dtsec->enetMode == e_ENET_MODE_RGMII_100) || (p_Dtsec->enetMode == e_ENET_MODE_SGMII_100))
+            tmpReg32 |= ECNTRL_R100M;
+        else
+            tmpReg32 &= ~ECNTRL_R100M;
+        WRITE_UINT32(p_DtsecMemMap->ecntrl, tmpReg32);
+    }
 
     return E_OK;
 }
@@ -1302,8 +1359,8 @@ static void InitFmMacControllerDriver(t_FmMacControllerDriver *p_FmMacController
     p_FmMacControllerDriver->f_FM_MAC_GetId                     = DtsecGetId;
     p_FmMacControllerDriver->f_FM_MAC_GetVersion                = DtsecGetVersion;
 
-    p_FmMacControllerDriver->f_FM_MAC_MII_WritePhyReg           = MII_WritePhyReg;
-    p_FmMacControllerDriver->f_FM_MAC_MII_ReadPhyReg            = MII_ReadPhyReg;
+    p_FmMacControllerDriver->f_FM_MAC_MII_WritePhyReg           = DTSEC_MII_WritePhyReg;
+    p_FmMacControllerDriver->f_FM_MAC_MII_ReadPhyReg            = DTSEC_MII_ReadPhyReg;
 
 #if (defined(DEBUG_ERRORS) && (DEBUG_ERRORS > 0))
     p_FmMacControllerDriver->f_FM_MAC_DumpRegs                  = DtsecDumpRegs;
