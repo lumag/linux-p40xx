@@ -242,10 +242,10 @@ static int vmpic_host_xlate(struct irq_host *h, struct device_node *ct,
 	 */
 
 	static unsigned char map_of_senses_to_linux_irqtype[4] = {
+		IRQ_TYPE_EDGE_FALLING,
 		IRQ_TYPE_EDGE_RISING,
 		IRQ_TYPE_LEVEL_LOW,
 		IRQ_TYPE_LEVEL_HIGH,
-		IRQ_TYPE_EDGE_FALLING,
 	};
 
 	*out_hwirq = intspec[0];
