@@ -349,6 +349,13 @@ static int fsl_pq_mdio_probe(struct of_device *ofdev,
 		err = -ENODEV;
 		goto err_free_irqs;
 #endif
+	} else if (of_device_is_compatible(np, "fsl,fman-mdio")) {
+#ifdef CONFIG_FSL_FMAN
+		tbiaddr = 5;
+#else
+		err = -ENODEV;
+		goto err_free_irqs;
+#endif
 	} else {
 		err = -ENODEV;
 		goto err_free_irqs;
@@ -367,7 +374,9 @@ static int fsl_pq_mdio_probe(struct of_device *ofdev,
 	}
 
 	if (tbiaddr == -1) {
+#ifndef CONFIG_FSL_FMAN
 		out_be32(tbipa, 0);
+#endif
 
 		tbiaddr = fsl_pq_mdio_find_free(new_bus);
 	}
@@ -382,7 +391,9 @@ static int fsl_pq_mdio_probe(struct of_device *ofdev,
 		goto err_free_irqs;
 	}
 
+#ifndef CONFIG_FSL_FMAN
 	out_be32(tbipa, tbiaddr);
+#endif
 
 	/*
 	 * The TBIPHY-only buses will find PHYs at every address,
@@ -445,6 +456,9 @@ static struct of_device_id fsl_pq_mdio_match[] = {
 	},
 	{
 		.compatible = "fsl,gianfar-mdio",
+	},
+	{
+		.compatible = "fsl,fman-mdio",
 	},
 	{},
 };

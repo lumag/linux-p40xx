@@ -53,6 +53,7 @@ struct mac_device {
 	struct fm_port	*port_dev[2];
 
 	phy_interface_t		 phy_if;
+	u32					 if_support;
 	bool			 link;
 	bool			 half_duplex;
 	uint16_t		 speed;
@@ -65,6 +66,7 @@ struct mac_device {
 	int (*start)(struct mac_device *mac_dev);
 	int (*stop)(struct mac_device *mac_dev);
 	int (*change_promisc)(struct mac_device *mac_dev);
+	int (*adjust_link)(struct mac_device *mac_dev, uint16_t speed, bool full_duplex);
 	int (*uninit)(struct mac_device *mac_dev);
 };
 

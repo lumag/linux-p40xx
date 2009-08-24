@@ -1238,6 +1238,58 @@ static const struct qman_fq _egress_fqs __devinitconst = {
 	.cb = {egress_dqrr, egress_ern, egress_dc_ern, egress_fqs}
 };
 
+/* Called every time the controller might need to be made
+ * aware of new link state.  The PHY code conveys this
+ * information through variables in the phydev structure, and this
+ * function converts those variables into the appropriate
+ * register values, and can bring down the device if needed.
+ */
+static void adjust_link(struct net_device *net_dev)
+{
+	const struct dpa_priv_s	*priv;
+	struct phy_device *phydev;
+	int			 _errno = 0;
+//	unsigned long flags;
+
+	priv = (typeof(priv))netdev_priv(net_dev);
+	phydev = priv->phydev;
+
+//	spin_lock_irqsave(&priv->lock, flags);
+
+	if (phydev->link)
+		_errno = priv->mac_dev->adjust_link(priv->mac_dev, phydev->speed, phydev->duplex);
+
+	if (unlikely(_errno < 0))
+		cpu_netdev_err(net_dev, "%s:%hu:%s(): mac_dev->adjust_link() = %d\n",
+			       __file__, __LINE__, __func__, _errno);
+//	spin_unlock_irqrestore(&priv->lock, flags);
+}
+
+/* Initializes driver's PHY state, and attaches to the PHY.
+ * Returns 0 on success.
+ */
+static int init_phy(struct net_device *net_dev)
+{
+	struct dpa_priv_s	*priv;
+	struct phy_device *phydev;
+
+	priv = (typeof(priv))netdev_priv(net_dev);
+
+	phydev = phy_connect(net_dev, priv->mac_dev->phy_id, &adjust_link, 0, priv->mac_dev->phy_if);
+	if (IS_ERR(phydev)) {
+		printk(KERN_ERR "%s: Could not attach to PHY\n", net_dev->name);
+		return PTR_ERR(phydev);
+	}
+
+	/* Remove any features not supported by the controller */
+	phydev->supported &= priv->mac_dev->if_support;
+	phydev->advertising = phydev->supported;
+
+	priv->phydev = phydev;
+
+	return 0;
+}
+
 static struct net_device_stats * __cold dpa_get_stats(struct net_device *net_dev)
 {
 	cpu_netdev_dbg(net_dev, "-> %s:%s()\n", __file__, __func__);
@@ -1408,6 +1460,73 @@ static void __hot dpa_rx(struct work_struct *fd_work)
 		}
 
 		skb->protocol = eth_type_trans(skb, net_dev);
+#if defined(CONFIG_FSL_FMAN_TEST) || defined(CONFIG_FSL_FMAN_TEST_LOOP)
+{
+    struct iphdr    *iph = (struct iphdr *)(skb->data);
+    uint32_t        net;
+    uint32_t        saddr = iph->saddr;
+    uint32_t        daddr = iph->daddr;
+
+    /* If it is ARP packet ... */
+    if (*(uint32_t*)skb->data == 0x00010800)
+    {
+        saddr = *((uint32_t*)(skb->data+14));
+        daddr = *((uint32_t*)(skb->data+24));
+    }
+
+    cpu_dev_dbg (net_dev->dev.parent,
+                 "Src  IP before header-manipulation: %d.%d.%d.%d\n",
+                 (int)((saddr & 0xff000000) >> 24),
+                 (int)((saddr & 0x00ff0000) >> 16),
+                 (int)((saddr & 0x0000ff00) >> 8),
+                 (int)((saddr & 0x000000ff) >> 0));
+    cpu_dev_dbg (net_dev->dev.parent,
+                 "Dest IP before header-manipulation: %d.%d.%d.%d\n",
+                 (int)((daddr & 0xff000000) >> 24),
+                 (int)((daddr & 0x00ff0000) >> 16),
+                 (int)((daddr & 0x0000ff00) >> 8),
+                 (int)((daddr & 0x000000ff) >> 0));
+
+    /* We allow only up to 10 eth ports */
+#if defined(CONFIG_FSL_FMAN_TEST)
+    net   = ((daddr & 0x000000ff) % 10);
+    saddr = (uint32_t)((saddr & ~0x0000ff00) | (net << 8));
+    daddr = (uint32_t)((daddr & ~0x0000ff00) | (net << 8));
+#else /* loopback */
+    net   = saddr;
+    saddr = daddr;
+    daddr = net;
+#endif /* defined(CONFIG_FSL_FMAN_TEST) */
+
+    /* If not ARP ... */
+    if (*(uint32_t*)skb->data != 0x00010800)
+    {
+        iph->check = 0;
+
+        iph->saddr = saddr;
+        iph->daddr = daddr;
+        iph->check = ip_fast_csum((unsigned char *)iph, iph->ihl);
+    }
+    else /* The packet is ARP */
+    {
+        *(uint32_t*)(skb->data+14) = saddr;
+        *(uint32_t*)(skb->data+24) = daddr;
+    }
+
+    cpu_dev_dbg (net_dev->dev.parent,
+                 "Src  IP after  header-manipulation: %d.%d.%d.%d\n",
+                 (int)((saddr & 0xff000000) >> 24),
+                 (int)((saddr & 0x00ff0000) >> 16),
+                 (int)((saddr & 0x0000ff00) >> 8),
+                 (int)((saddr & 0x000000ff) >> 0));
+    cpu_dev_dbg (net_dev->dev.parent,
+                 "Dest IP after  header-manipulation: %d.%d.%d.%d\n",
+                 (int)((daddr & 0xff000000) >> 24),
+                 (int)((daddr & 0x00ff0000) >> 16),
+                 (int)((daddr & 0x0000ff00) >> 8),
+                 (int)((daddr & 0x000000ff) >> 0));
+}
+#endif /* defined(CONFIG_FSL_FMAN_TEST) */
 
 		_errno = netif_rx_ni(skb);
 		if (unlikely(_errno != NET_RX_SUCCESS)) {
@@ -1548,7 +1667,7 @@ _return:
 
 static int __cold dpa_start(struct net_device *net_dev)
 {
-	int			 _errno, i, j;
+	int			 _errno, i=0, j;
 	const struct dpa_priv_s	*priv;
 
 	priv = (typeof(priv))netdev_priv(net_dev);
@@ -1557,7 +1676,15 @@ static int __cold dpa_start(struct net_device *net_dev)
 		cpu_netdev_dbg(net_dev, "-> %s:%s()\n", __file__, __func__);
 
 	if (priv->mac_dev) {
-		for (i = 0; i < ARRAY_SIZE(priv->mac_dev->port_dev); i++)
+		_errno = init_phy(net_dev);
+		if(_errno) {
+			if (netif_msg_ifup(priv))
+				cpu_netdev_err(net_dev, "%s:%hu:%s(): init_phy() = %d\n",
+					       __file__, __LINE__, __func__, _errno);
+			goto _return_port_dev_stop;
+		}
+
+		for (; i < ARRAY_SIZE(priv->mac_dev->port_dev); i++)
 			fm_port_enable(priv->mac_dev->port_dev[i]);
 
 		_errno = priv->mac_dev->start(priv->mac_dev);
@@ -1567,6 +1694,7 @@ static int __cold dpa_start(struct net_device *net_dev)
 					       __file__, __LINE__, __func__, _errno);
 			goto _return_port_dev_stop;
 		}
+		phy_start(priv->phydev);
 	}
 
 	netif_tx_start_all_queues(net_dev);
@@ -1598,6 +1726,8 @@ static int __cold dpa_stop(struct net_device *net_dev)
 
 	_errno = 0;
 	if (priv->mac_dev) {
+		phy_stop(priv->phydev);
+
 		__errno = priv->mac_dev->stop(priv->mac_dev);
 		if (unlikely(__errno < 0)) {
 			if (netif_msg_ifdown(priv))

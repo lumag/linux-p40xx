@@ -179,7 +179,7 @@ typedef enum e_TransSrc
 typedef enum e_P4080DeviceName
 {
     e_P4080_REV_INVALID   = 0x00000000,   /**< Invalid revision      */
-    e_P4080E_REV_1_0      = 0x807D0010    /**< P4080E with security, revision 1.0 */
+    e_P4080E_REV_1_0      = 0x80230010    /**< P4080E with security, revision 1.0 */
 } e_P4080DeviceName;
 
 
@@ -299,8 +299,10 @@ uint32_t P4080_GetCcbFactor(t_Handle h_P4080);
 #define FM_PCD_KG_NUM_OF_SCHEMES    32                  /**< Total number of KG schemes */
 #define FM_PCD_MAX_NUM_OF_CLS_PLANS 256                 /**< Number of classification plan entries. */
 
+/* FM erratas */
 #define FM_OP_PARTITION_ERRATA
 #define CORE_8BIT_ACCESS_ERRATA
+#define FM_ENET_SGMII_1000_ERRATA
 
 
 #endif /* __PART_INTEGRATION_EXT_H */

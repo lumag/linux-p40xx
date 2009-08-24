@@ -69,6 +69,7 @@ struct dpa_priv_s {
 #endif /* CONFIG_FSL_FMAN_TEST */
 
 	struct mac_device	*mac_dev;
+	struct phy_device	*phydev;
 
 	struct work_struct	 fd_work;
 	struct fd_list_head	*fd_list;

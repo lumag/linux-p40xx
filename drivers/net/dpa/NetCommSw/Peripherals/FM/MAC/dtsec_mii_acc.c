@@ -42,12 +42,11 @@
 #include "dtsec.h"
 
 
-
 /*****************************************************************************/
-t_Error MII_WritePhyReg(t_Handle h_Dtsec,
-                        uint8_t     phyAddr,
-                        uint8_t     reg,
-                        uint16_t    data)
+t_Error DTSEC_MII_WritePhyReg(t_Handle    h_Dtsec,
+                              uint8_t     phyAddr,
+                              uint8_t     reg,
+                              uint16_t    data)
 {
     t_Dtsec             *p_Dtsec = (t_Dtsec *)h_Dtsec;
     t_MiiAccessMemMap   *p_MiiAccess;
@@ -78,12 +77,11 @@ t_Error MII_WritePhyReg(t_Handle h_Dtsec,
     return E_OK;
 }
 
-
 /*****************************************************************************/
-t_Error MII_ReadPhyReg(t_Handle h_Dtsec,
-                   uint8_t  phyAddr,
-                   uint8_t  reg,
-                   uint16_t *p_Data)
+t_Error DTSEC_MII_ReadPhyReg(t_Handle h_Dtsec,
+                             uint8_t  phyAddr,
+                             uint8_t  reg,
+                             uint16_t *p_Data)
 {
     t_Dtsec             *p_Dtsec = (t_Dtsec *)h_Dtsec;
     t_MiiAccessMemMap   *p_MiiAccess;
@@ -114,14 +112,7 @@ t_Error MII_ReadPhyReg(t_Handle h_Dtsec,
     tmpReg = GET_UINT32(p_MiiAccess->miimcom);
 
     if (*p_Data == 0xffff)
-    {
-        REPORT_ERROR(MAJOR, E_INVALID_VALUE, ("Read wrong data: phyAddr"));
-/*
-        DBG(INFO, ("Read wrong data: phyAddr %d, reg %d, base %08x",
-            phyAddr, reg, (long)p_MiiAccess));
-*/
-    return E_INVALID_VALUE;
-    }
+        RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("Read wrong data: phyAddr"));
 
     return E_OK;
 }
