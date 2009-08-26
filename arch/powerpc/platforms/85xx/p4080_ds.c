@@ -2,7 +2,6 @@
  * P4080 DS Setup
  *
  * Maintained by Kumar Gala (see MAINTAINERS for contact information)
- *
  * Copyright 2009 Freescale Semiconductor Inc.
  *
  * This program is free software; you can redistribute  it and/or modify it
@@ -30,11 +29,91 @@
 #include <sysdev/fsl_soc.h>
 #include <sysdev/fsl_pci.h>
 
-#include "corenet_ds.h"
+void __init mpc85xx_ds_pic_init(void)
+{
+	struct mpic *mpic;
+	struct resource r;
+	struct device_node *np = NULL;
+
+	np = of_find_node_by_type(np, "open-pic");
+
+	if (np == NULL) {
+		printk(KERN_ERR "Could not find open-pic node\n");
+		return;
+	}
+
+	if (of_address_to_resource(np, 0, &r)) {
+		printk(KERN_ERR "Failed to map mpic register space\n");
+		of_node_put(np);
+		return;
+	}
+
+	mpic = mpic_alloc(np, r.start, MPIC_PRIMARY | MPIC_ENABLE_COREINT |
+			  MPIC_BIG_ENDIAN | MPIC_BROKEN_FRR_NIRQS |
+			  MPIC_SINGLE_DEST_CPU,
+			0, 256, " OpenPIC  ");
+	BUG_ON(mpic == NULL);
+
+	mpic_init(mpic);
+}
 
 #ifdef CONFIG_PCI
 static int primary_phb_addr;
 #endif
+
+/*
+ * Setup the architecture
+ */
+#ifdef CONFIG_SMP
+void __init mpc85xx_smp_init(void);
+#endif
+static void __init mpc85xx_ds_setup_arch(void)
+{
+#ifdef CONFIG_PCI
+	struct device_node *np;
+#endif
+
+	if (ppc_md.progress)
+		ppc_md.progress("mpc85xx_ds_setup_arch()", 0);
+
+#ifdef CONFIG_SMP
+	mpc85xx_smp_init();
+#endif
+
+#ifdef CONFIG_PCI
+	for_each_node_by_type(np, "pci") {
+		if (of_device_is_compatible(np, "fsl,p4080-pcie")) {
+			struct resource rsrc;
+			of_address_to_resource(np, 0, &rsrc);
+			if ((rsrc.start & 0xfffff) == primary_phb_addr)
+				fsl_add_bridge(np, 1);
+			else
+				fsl_add_bridge(np, 0);
+		}
+	}
+#endif
+
+	printk(KERN_INFO "P4080 DS board from Freescale Semiconductor\n");
+}
+
+static const struct of_device_id of_device_ids[] __devinitconst = {
+	{
+		.compatible	= "simple-bus"
+	},
+	{
+		.compatible	= "fsl,dpaa"
+	},
+	{
+		.compatible	= "fsl,rapidio-delta",
+	},
+	{}
+};
+
+static int __init declare_of_platform_devices(void)
+{
+	return of_platform_bus_probe(NULL, of_device_ids, NULL);
+}
+machine_device_initcall(p4080_ds, declare_of_platform_devices);
 
 /*
  * Called very early, device-tree isn't unflattened
@@ -45,10 +124,8 @@ static int __init p4080_ds_probe(void)
 
 	if (of_flat_dt_is_compatible(root, "fsl,P4080DS")) {
 #ifdef CONFIG_PCI
-		/* treat PCIe1 as primary,
-		 * shouldn't matter as we have no ISA on the board
-		 */
-		primary_phb_addr = 0x0000;
+		/* xxx - galak */
+		primary_phb_addr = 0x8000;
 #endif
 		return 1;
 	} else {
@@ -56,11 +133,37 @@ static int __init p4080_ds_probe(void)
 	}
 }
 
+/* Early setup is required for large chunks of contiguous (and coarsely-aligned)
+ * memory. The following shoe-horns Qman/Bman "init_early" calls into the
+ * platform setup to let them parse their CCSR nodes early on. */
+#ifdef CONFIG_FSL_QMAN_CONFIG
+void __init qman_init_early(void);
+#endif
+#ifdef CONFIG_FSL_BMAN_CONFIG
+void __init bman_init_early(void);
+#endif
+#ifdef CONFIG_FSL_PME2_CTRL
+void __init pme2_init_early(void);
+#endif
+
+static __init void p4080_init_early(void)
+{
+#ifdef CONFIG_FSL_QMAN_CONFIG
+	qman_init_early();
+#endif
+#ifdef CONFIG_FSL_BMAN_CONFIG
+	bman_init_early();
+#endif
+#ifdef CONFIG_FSL_PME2_CTRL
+	pme2_init_early();
+#endif
+}
+
 define_machine(p4080_ds) {
 	.name			= "P4080 DS",
 	.probe			= p4080_ds_probe,
-	.setup_arch		= corenet_ds_setup_arch,
-	.init_IRQ		= corenet_ds_pic_init,
+	.setup_arch		= mpc85xx_ds_setup_arch,
+	.init_IRQ		= mpc85xx_ds_pic_init,
 #ifdef CONFIG_PCI
 	.pcibios_fixup_bus	= fsl_pcibios_fixup_bus,
 #endif
@@ -68,7 +171,6 @@ define_machine(p4080_ds) {
 	.restart		= fsl_rstcr_restart,
 	.calibrate_decr		= generic_calibrate_decr,
 	.progress		= udbg_progress,
+	.init_early		= p4080_init_early,
 };
 
-machine_device_initcall(p4080_ds, corenet_ds_publish_devices);
-machine_arch_initcall(p4080_ds, swiotlb_setup_bus_notifier);
