@@ -16,4 +16,5 @@ obj-$(CONFIG_SBC8548)     += sbc8548.o
 obj-$(CONFIG_SOCRATES)    += socrates.o socrates_fpga_pic.o
 obj-$(CONFIG_KSI8560)	  += ksi8560.o
 obj-$(CONFIG_P4080_SIM)   += p4080_sim.o
+obj-$(CONFIG_P4080_DS)    += p4080_ds.o
 obj-$(CONFIG_P4080_HV)    += p4080_hv.o
