@@ -33,6 +33,7 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/types.h>
+#include <linux/mm.h>
 #include <linux/interrupt.h>
 #include <linux/device.h>
 #include <linux/of_platform.h>
@@ -304,6 +305,7 @@ static int __devinit fsl_of_pamu_probe(struct of_device *dev,
 	struct ppaace *ppaact = NULL;
 	struct ome *omt = NULL;
 	int irq;
+	struct page *p;
 
 	printk(KERN_INFO "Setting Freescale static PAMU/IOMMU configuration\n");
 
@@ -325,37 +327,40 @@ static int __devinit fsl_of_pamu_probe(struct of_device *dev,
 	if (!guts_node) {
 		dev_err(&dev->dev, "%s guts devnode not found!\n",
 				dev->node->full_name);
+		iounmap(pamu_regs);
 		return -ENODEV;
 	}
 
 	guts_regs = of_iomap(guts_node, 0);
-	if (!guts_node) {
+	if (!guts_regs) {
 		dev_err(&dev->dev, "guts ioremap failed\n");
 		iounmap(pamu_regs);
 		return -ENOMEM;
 	}
 	of_node_put(guts_node);
 
-	ppaact = alloc_bootmem_pages(PAACT_SIZE);
-	if (!ppaact) {
+	p = alloc_pages(GFP_KERNEL, get_order(PAACT_SIZE));
+	if (!p) {
 		printk(KERN_ERR "Unable to allocate space for PAACT table\n");
 		iounmap(pamu_regs);
 		iounmap(guts_regs);
 		return -ENOMEM;
 	}
+	ppaact = page_address(p);
 	memset(ppaact, 0, PAACT_SIZE);
 
-	pr_debug("fsl_pamu, paact_mem, v : %p, p : 0%lx\n",
+	pr_debug("fsl_pamu, paact_mem, v : %p, p : 0x%lx\n",
 			ppaact, virt_to_phys(ppaact));
 
-	omt = alloc_bootmem_pages(OMT_SIZE);
-	if (!omt) {
+	p = alloc_pages(GFP_KERNEL, get_order(OMT_SIZE));
+	if (!p) {
 		printk(KERN_ERR "Unable to allocate space for OMT table\n");
 		iounmap(pamu_regs);
 		iounmap(guts_regs);
-		free_bootmem(__pa(ppaact), PAACT_SIZE);
+		free_pages((unsigned long)ppaact, get_order(PAACT_SIZE));
 		return -ENOMEM;
 	}
+	omt = page_address(p);
 	memset(omt, 0, OMT_SIZE);
 
 	pr_debug("fsl_pamu, omt_mem, v : %p, p : 0x%lx\n",
@@ -380,8 +385,8 @@ static int __devinit fsl_of_pamu_probe(struct of_device *dev,
 		printk(KERN_ERR "Cannot request PAMU AV interrupt\n");
 		iounmap(pamu_regs);
 		iounmap(guts_regs);
-		free_bootmem(__pa(ppaact), PAACT_SIZE);
-		free_bootmem(__pa(omt), OMT_SIZE);
+		free_pages((unsigned long)ppaact, get_order(PAACT_SIZE));
+		free_pages((unsigned long)omt, get_order(OMT_SIZE));
 		return -ENODEV;
 	}
 
