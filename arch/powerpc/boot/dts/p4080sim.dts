@@ -24,14 +24,12 @@
 		ethernet1 = &enet1;
 		ethernet2 = &enet2;
 		ethernet3 = &enet3;
-/*		ethernet4 = &enet4;
-
+		ethernet4 = &enet4;
 		ethernet5 = &enet5;
 		ethernet6 = &enet6;
 		ethernet7 = &enet7;
 		ethernet8 = &enet8;
 		ethernet9 = &enet9;
-*/
 		serial0 = &serial0;
 		serial1 = &serial1;
 		serial2 = &serial2;
@@ -76,7 +74,6 @@
 		fman0_rx3 = &fman0_rx3;
 		fman0_rx4 = &fman0_rx4;
 
-/*
 		fman1 = &fman1;
 		fman1_oh0 = &fman1_oh0;
 		fman1_oh1 = &fman1_oh1;
@@ -90,7 +87,6 @@
 		fman1_rx2 = &fman1_rx2;
 		fman1_rx3 = &fman1_rx3;
 		fman1_rx4 = &fman1_rx4;
-*/
 		rio0 = &rapidio0;
 		simicsfs = &simicsfs;
 	};
@@ -293,11 +289,9 @@
 			fman@0 {
 				dev-handle = <&fman0>;
 			};
-/*
 			fman@1 {
 				dev-handle = <&fman1>;
 			};
-*/
 		};
 
 		qportal1: qman-portal@4000 {
@@ -322,11 +316,9 @@
 			fman@0 {
 				dev-handle = <&fman0>;
 			};
-/*
 			fman@1 {
 				dev-handle = <&fman1>;
 			};
-*/
 		};
 
 		qportal2: qman-portal@8000 {
@@ -351,11 +343,9 @@
 			fman@0 {
 				dev-handle = <&fman0>;
 			};
-/*
 			fman@1 {
 				dev-handle = <&fman1>;
 			};
-*/
 		};
 
 		qportal3: qman-portal@c000 {
@@ -380,11 +370,9 @@
 			fman@0 {
 				dev-handle = <&fman0>;
 			};
-/*
 			fman@1 {
 				dev-handle = <&fman1>;
 			};
-*/
 		};
 
 		qportal4: qman-portal@10000 {
@@ -409,11 +397,9 @@
 			fman@0 {
 				dev-handle = <&fman0>;
 			};
-/*
 			fman@1 {
 				dev-handle = <&fman1>;
 			};
-*/
 		};
 
 		qportal5: qman-portal@14000 {
@@ -438,11 +424,9 @@
 			fman@0 {
 				dev-handle = <&fman0>;
 			};
-/*
 			fman@1 {
 				dev-handle = <&fman1>;
 			};
-*/
 		};
 
 		qportal6: qman-portal@18000 {
@@ -467,11 +451,9 @@
 			fman@0 {
 				dev-handle = <&fman0>;
 			};
-/*
 			fman@1 {
 				dev-handle = <&fman1>;
 			};
-*/
 		};
 
 		qportal7: qman-portal@1c000 {
@@ -496,11 +478,9 @@
 			fman@0 {
 				dev-handle = <&fman0>;
 			};
-/*
 			fman@1 {
 				dev-handle = <&fman1>;
 			};
-*/
 		};
 
 		qportal8: qman-portal@20000 {
@@ -524,11 +504,9 @@
 			fman@0 {
 				dev-handle = <&fman0>;
 			};
-/*
 			fman@1 {
 				dev-handle = <&fman1>;
 			};
-*/
 		};
 
 		qportal9: qman-portal@24000 {
@@ -552,11 +530,9 @@
 			fman@0 {
 				dev-handle = <&fman0>;
 			};
-/*
 			fman@1 {
 				dev-handle = <&fman1>;
 			};
-*/
 		};
 
 		qpool1: qman-pool@1 {
@@ -1246,27 +1222,18 @@
 				reg = <0xe0000 0x1000>;
 				fsl,port-handles = <&fman0_rx0 &fman0_tx0>;
 				phy-handle = <&phy0>;
-				phy-connection-type = "sgmii";
+				phy-connection-type = "rgmii-id";
 			};
 
-			mdio@e1120 {
+			mdio@e1000 {
 				#address-cells = <1>;
 				#size-cells = <0>;
 				compatible = "fsl,fman-mdio";
-				reg = <0xe1120 0xee0>;
+				reg = <0xe1000 0x1000>;
 				interrupts = <100 1>;
 
 				phy0: ethernet-phy@0 {
-					reg = <0x1c>;
-				};
-				phy1: ethernet-phy@1 {
-					reg = <0x1d>;
-				};
-				phy2: ethernet-phy@2 {
-					reg = <0x1e>;
-				};
-				phy3: ethernet-phy@3 {
-					reg = <0x1f>;
+					reg = <0>;
 				};
 			};
 
@@ -1276,7 +1243,7 @@
 				reg = <0xe2000 0x1000>;
 				fsl,port-handles = <&fman0_rx1 &fman0_tx1>;
 				phy-handle = <&phy1>;
-				phy-connection-type = "sgmii";
+				phy-connection-type = "rgmii-id";
 			};
 
 			mdio@e3000 {
@@ -1285,6 +1252,10 @@
 				compatible = "fsl,fman-mdio";
 				reg = <0xe3000 0x1000>;
 				interrupts = <100 1>;
+
+				phy1: ethernet-phy@0 {
+					reg = <0>;
+				};
 			};
 
 			enet2: ethernet@e4000 {
@@ -1293,7 +1264,7 @@
 				reg = <0xe4000 0x1000>;
 				fsl,port-handles = <&fman0_rx2 &fman0_tx2>;
 				phy-handle = <&phy2>;
-				phy-connection-type = "sgmii";
+				phy-connection-type = "rgmii-id";
 			};
 
 			mdio@e5000 {
@@ -1302,6 +1273,10 @@
 				compatible = "fsl,fman-mdio";
 				reg = <0xe5000 0x1000>;
 				interrupts = <100 1>;
+
+				phy2: ethernet-phy@0 {
+					reg = <0>;
+				};
 			};
 
 			enet3: ethernet@e6000 {
@@ -1310,7 +1285,7 @@
 				reg = <0xe6000 0x1000>;
 				fsl,port-handles = <&fman0_rx3 &fman0_tx3>;
 				phy-handle = <&phy3>;
-				phy-connection-type = "sgmii";
+				phy-connection-type = "rgmii-id";
 			};
 
 			mdio@e7000 {
@@ -1319,8 +1294,12 @@
 				compatible = "fsl,fman-mdio";
 				reg = <0xe7000 0x1000>;
 				interrupts = <100 1>;
+
+				phy3: ethernet-phy@0 {
+					reg = <0>;
+				};
 			};
-/*
+
 			enet4: ethernet@f0000 {
 				cell-index = <0>;
 				compatible = "fsl,p4080-fman-10g-mac", "fsl,fman-10g-mac";
@@ -1341,10 +1320,8 @@
 					reg = <0>;
 				};
 			};
-*/
 		};
 
-/*
 		fman1: fman@500000 {
 			#address-cells = <1>;
 			#size-cells = <1>;
@@ -1595,7 +1572,6 @@
 				};
 			};
 		};
-*/
 	};
 
 	rapidio0: rapidio@fe0c0000 {
@@ -1745,7 +1721,6 @@
 			fsl,qman-channel = <&qpool1>;
 			fsl,fman-mac = <&enet3>;
 		};
-/*
 		ethernet@4 {
 			compatible = "fsl,p4080-dpa-ethernet", "fsl,dpa-ethernet";
 			fsl,qman-channel = <&qpool1>;
@@ -1776,7 +1751,6 @@
 			fsl,qman-channel = <&qpool1>;
 			fsl,fman-mac = <&enet9>;
 		};
-*/
 	};
 
 	localbus@fe124000 {
