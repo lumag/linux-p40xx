@@ -1313,7 +1313,7 @@
 				reg = <0xe4000 0x1000>;
 				fsl,port-handles = <&fman0_rx2 &fman0_tx2>;
 				phy-handle = <&phy2>;
-				phy-connection-type = "rgmii-id";
+				phy-connection-type = "sgmii";
 			};
 
 			mdio@e5000 {
@@ -1330,7 +1330,7 @@
 				reg = <0xe6000 0x1000>;
 				fsl,port-handles = <&fman0_rx3 &fman0_tx3>;
 				phy-handle = <&phy3>;
-				phy-connection-type = "rgmii-id";
+				phy-connection-type = "sgmii";
 			};
 
 			mdio@e7000 {
