@@ -156,7 +156,7 @@ config FSL_PME2_TEST_LOW
 	tristate "PME2 low-level self-test"
 	depends on FSL_PME2 && FSL_QMAN_FQALLOCATOR && \
 		FSL_QMAN_PORTAL_DISABLEAUTO
-	default y
+	default n
 	---help---
 	  This takes an unused Qman portal and performs low-level PME2 API
 	  testing with it.
@@ -164,7 +164,7 @@ config FSL_PME2_TEST_LOW
 config FSL_PME2_TEST_HIGH
 	tristate "PME2 high-level self-test"
 	depends on FSL_PME2_HIGH
-	default y
+	default n
 	---help---
 	  This uses the high-level Qman driver (and the cpu-affine portals it
 	  manages) to perform high-level PME2 API testing with it.
@@ -172,7 +172,7 @@ config FSL_PME2_TEST_HIGH
 config FSL_PME2_TEST_SCAN
 	tristate "PME2 scan self-test"
 	depends on FSL_PME2_SAMPLE_DB
-	default y
+	default n
 	---help---
 	  This uses the high-level Qman driver (and the cpu-affine portals it
 	  manages) to perform scan PME2 API testing with it.
