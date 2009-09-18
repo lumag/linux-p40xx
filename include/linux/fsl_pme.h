@@ -100,6 +100,7 @@ enum pme_status {
 /* pme_fd_res_flags() returns these flags */
 #define PME_STATUS_UNRELIABLE	0x80
 #define PME_STATUS_TRUNCATED	0x10
+#define PME_STATUS_MASK		0x90
 
 /**************/
 /* USER SPACE */
@@ -348,7 +349,7 @@ static inline enum pme_status pme_fd_res_status(const struct qm_fd *fd)
 }
 static inline u8 pme_fd_res_flags(const struct qm_fd *fd)
 {
-	return (fd->status >> 16) & 0xff;
+	return (fd->status >> 16) & PME_STATUS_MASK;
 }
 
 /* Fill in a frame descriptor for a NOP command. */
@@ -516,6 +517,9 @@ int pme_ctx_enable(struct pme_ctx *ctx);
 /* query whether a context is disabled. Returns > 0 if the ctx is disabled. */
 int pme_ctx_is_disabled(struct pme_ctx *ctx);
 
+/* query whether a context is in an error state. */
+int pme_ctx_is_dead(struct pme_ctx *ctx);
+
 /* A pre-condition for the following APIs is the ctx must be disabled
  * dest maybe ignored if the flags parameter indicated LOCAL during the
  * corresponding pme_ctx_init.
@@ -529,7 +533,14 @@ int pme_ctx_reconfigure_rx(struct pme_ctx *ctx, u8 qosout,
  * sent. If PME_CTX_OP_WAIT_INT was specified and a signal was received while
  * waiting for the response, it may return prematurely with success. The caller
  * can use signal_pending() to deal with any corresponding issues, if required.
- * Also 'params' may be modified by this call. For instance if
+ * If WAIT isn't used, or if WAIT_INT is specified and a signal may have
+ * returned prematurely before the PME replied to the control command, then
+ * pme_ctx_in_ctrl() should be used to determine when the command is complete.
+ * NB: as the return value indicates whether the command was issued (and not
+ * what the device did in reaction to the command), device errors caused by
+ * pme_ctx_ctrl_***() APIs should be detected by calling pme_ctx_is_dead() after
+ * the operation completes.
+ * NB: 'params' may be modified by this call. For instance if
  * PME_CTX_OP_RESETRESLEN was specified and residue is enabled, then the
  * params->ren will be set to 1 (in order not to disabled residue).
  * NB: _update() will overwrite the 'params->rptr_[hi/low]' fields since the
@@ -575,6 +586,9 @@ int pme2_have_control(void);
 enum pme_attr {
 	pme_attr_efqc_int,
 	pme_attr_sw_db,
+	pme_attr_dmcr,
+	pme_attr_smcr,
+	pme_attr_famcr,
 	pme_attr_kvlts,
 	pme_attr_max_chain_length,
 	pme_attr_pattern_range_counter_idx,

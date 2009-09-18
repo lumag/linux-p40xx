@@ -143,13 +143,6 @@ EXPORT_SYMBOL(pme_hw_residue_free);
 struct pme_hw_flow *pme_hw_flow_new(void)
 {
 	struct pme_flow *flow = kmem_cache_zalloc(slab_flow, GFP_KERNEL);
-	if(likely(flow)){
-		flow->sos=1;
-		flow->esee=1;
-		flow->clim=0xffff;
-		flow->mlim=0xffff;
-		flow_map(flow);
-	}
 	return (struct pme_hw_flow *)flow;
 }
 EXPORT_SYMBOL(pme_hw_flow_new);
@@ -160,15 +153,33 @@ void pme_hw_flow_free(struct pme_hw_flow *p)
 }
 EXPORT_SYMBOL(pme_hw_flow_free);
 
+static const struct pme_flow default_sw_flow = {
+	.sos = 1,
+	.srvm = 0,
+	.esee = 1,
+	.ren = 0,
+	.rlen = 0,
+	.seqnum_hi = 0,
+	.seqnum_lo = 0,
+	.sessionid = 0x7ffffff,
+	.rptr_hi = 0,
+	.rptr_lo = 0,
+	.clim = 0xffff,
+	.mlim = 0xffff
+};
+
 struct pme_flow *pme_sw_flow_new(void)
 {
-	return (struct pme_flow *)pme_hw_flow_new();
+	struct pme_flow *flow = kmem_cache_zalloc(slab_flow, GFP_KERNEL);
+	if (likely(flow))
+		memcpy(flow, &default_sw_flow, sizeof(*flow));
+	return flow;
 }
 EXPORT_SYMBOL(pme_sw_flow_new);
 
 void pme_sw_flow_free(struct pme_flow *p)
 {
-	pme_hw_flow_free((struct pme_hw_flow *)p);
+	kmem_cache_free(slab_flow, p);
 }
 EXPORT_SYMBOL(pme_sw_flow_free);
 

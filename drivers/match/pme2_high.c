@@ -348,6 +348,12 @@ int pme_ctx_is_disabled(struct pme_ctx *ctx)
 }
 EXPORT_SYMBOL(pme_ctx_is_disabled);
 
+int pme_ctx_is_dead(struct pme_ctx *ctx)
+{
+	return (ctx->flags & PME_CTX_FLAG_DEAD);
+}
+EXPORT_SYMBOL(pme_ctx_is_dead);
+
 int pme_ctx_disable(struct pme_ctx *ctx, u32 flags)
 {
 	struct qm_mcc_initfq initfq;
