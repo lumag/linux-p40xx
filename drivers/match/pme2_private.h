@@ -132,6 +132,7 @@ struct qman_fq *slabfq_alloc(void);
 void slabfq_free(struct qman_fq *fq);
 
 /* Hook from pme2_high to pme2_ctrl */
+int pme2_have_control(void);
 int pme2_exclusive_set(struct qman_fq *fq);
 int pme2_exclusive_unset(void);
 

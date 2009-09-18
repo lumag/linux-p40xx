@@ -653,7 +653,13 @@ enum pme_attr {
 	pme_attr_isr,
 	pme_attr_bsc_first,
 	pme_attr_bsc_last = pme_attr_bsc_first + 63,
-
+	pme_attr_tbt0ecc1th,
+	pme_attr_tbt1ecc1th,
+	pme_attr_vlt0ecc1th,
+	pme_attr_vlt1ecc1th,
+	pme_attr_cmecc1th,
+	pme_attr_dxcmecc1th,
+	pme_attr_dxemecc1th
 };
 
 #define pme_attr_bsc(n) (pme_attr_bsc_first + (n))
