@@ -223,6 +223,7 @@ static struct of_device_id of_fsl_pme_ids[] = {
 MODULE_DEVICE_TABLE(of, of_fsl_pme_ids);
 
 /* Pme interrupt handler */
+#if 0
 static irqreturn_t pme_isr(int irq, void *ptr)
 {
 	static u32 last_isrstate;
@@ -242,6 +243,7 @@ static irqreturn_t pme_isr(int irq, void *ptr)
 	pme_out(global_pme, IER, ~last_isrstate);
 	return IRQ_HANDLED;
 }
+#endif
 
 static int of_fsl_pme_remove(struct of_device *ofdev)
 {
@@ -251,7 +253,9 @@ static int of_fsl_pme_remove(struct of_device *ofdev)
 	/* Disable PME..TODO need to wait till it's quiet */
 	pme_out(global_pme, FACONF, PME_FACONF_RESET);
 	/* Release interrupt */
+#if 0
 	free_irq(pme_err_irq, &ofdev->dev);
+#endif
 	/* Remove sysfs attribute */
 	pme2_remove_sysfs_dev_files(ofdev);
 	/* Unmap controller region */
@@ -308,11 +312,13 @@ static int __devinit of_fsl_pme_probe(struct of_device *ofdev,
 	pme_out(global_pme, SMCR, 0x00000211);
 
 	/* Register the pme ISR handler */
+#if 0
 	err = request_irq(pme_err_irq, pme_isr, IRQF_SHARED, "pme-err", dev);
 	if (err) {
 		dev_err(dev, "request_irq() failed\n");
 		goto out_unmap_ctrl_region;
 	}
+#endif
 
 #ifdef CONFIG_FSL_PME2_SRE_AIM
 	srec_aim = 1;
@@ -386,8 +392,10 @@ out_stop_accumulator:
 		cancel_delayed_work_sync(&accumulator_work);
 	}
 out_free_irq:
+#if 0
 	free_irq(pme_err_irq, &ofdev->dev);
 out_unmap_ctrl_region:
+#endif
 	pme_out(global_pme, FACONF, PME_FACONF_RESET);
 	iounmap(global_pme);
 	global_pme = NULL;
