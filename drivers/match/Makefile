@@ -1,4 +1,4 @@
-obj-$(CONFIG_FSL_PME2_CTRL)	+= pme2_ctrl.o
+obj-$(CONFIG_FSL_PME2_CTRL)	+= pme2_ctrl.o pme2_sysfs.o
 obj-$(CONFIG_FSL_PME2)		+= pme2.o
 pme2-y				:= pme2_low.o
 pme2-$(CONFIG_FSL_PME2_HIGH)	+= pme2_high.o

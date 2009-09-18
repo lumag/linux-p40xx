@@ -33,6 +33,11 @@
 #include "pme2_private.h"
 #include "pme2_regs.h"
 
+/* Driver Name is used in naming the sysfs directory
+ * /sys/bus/of_platform/drivers/DRV_NAME
+ */
+#define DRV_NAME	"fsl-pme"
+
 #define DEFAULT_PDSR_SZ (CONFIG_FSL_PME2_PDSRSIZE << 7)
 #define DEFAULT_SRE_SZ  (CONFIG_FSL_PME2_SRESIZE << 5)
 #define PDSR_TBL_ALIGN  (1 << 7)
@@ -199,446 +204,23 @@ static inline u32 __pme_in(struct pme *p, u32 offset)
 #define PME_FACONF_ENABLE   0x00000002
 #define PME_FACONF_RESET    0x00000001
 
-static inline struct pme *pme_create(void *regs)
-{
-	struct pme *res = (struct pme *)regs;
-	pme_out(res, FACONF, 0);
-	pme_out(res, EFQC, PME_EFQC(0, 0));
-	pme_out(res, FACONF, PME_FACONF_ENABLE);
-	/* TODO: these coherency settings for PMFA, DXE, and SRE force all
-	 * transactions to snoop, as the kernel does not yet support flushing in
-	 * dma_map_***() APIs (ie. h/w can not treat otherwise coherent memory
-	 * in a non-coherent manner, temporarily or otherwise). When the kernel
-	 * supports this, we should tune these settings back to;
-	 *     FAMCR = 0x00010001
-	 *      DMCR = 0x00000000
-	 *      SMCR = 0x00000000
-	 */
-	pme_out(res, FAMCR, 0x01010101);
-	pme_out(res, DMCR, 0x00000001);
-	pme_out(res, SMCR, 0x00000211);
-	return res;
-}
-
 /* pme stats accumulator work */
-static int pme_stat_get(enum pme_attr *stat, u64 *value, int reset);
 static void accumulator_update(struct work_struct *work);
-static void accumulator_update_interval(u32 interval);
+void accumulator_update_interval(u32 interval);
 static DECLARE_DELAYED_WORK(accumulator_work, accumulator_update);
 u32 pme_stat_interval = CONFIG_FSL_PME2_STAT_ACCUMULATOR_UPDATE_INTERVAL;
-#define MAX_ACCUMULATOR_INTERVAL 10000
 #define PME_SBE_ERR 0x01000000
 #define PME_DBE_ERR 0x00080000
 #define PME_PME_ERR 0x00000100
 #define PME_ALL_ERR (PME_SBE_ERR | PME_DBE_ERR | PME_PME_ERR)
 
-static ssize_t pme_generic_store(const char *buf, size_t count,
-				enum pme_attr attr)
-{
-	unsigned long val;
-	size_t ret;
-	if (strict_strtoul(buf, 0, &val)) {
-		pr_err("pme: invalid input %s\n",buf);
-		return -EINVAL;
-	}
-	ret = pme_attr_set(attr, val);
-	if (ret) {
-		pr_err("pme: attr_set err attr=%u, val=%lu\n", attr, val);
-		return ret;
-	}
-	return count;
-}
-
-static ssize_t pme_generic_show(char *buf, enum pme_attr attr, const char *fmt)
-{
-	u32 data;
-	int ret;
-
-	ret =  pme_attr_get(attr, &data);
-	if (!ret)
-		return snprintf(buf, PAGE_SIZE, fmt, data);
-	else
-		return ret;
-}
-
-static ssize_t pme_generic_stat_show(char *buf, enum pme_attr attr)
-{
-	u64 data = 0;
-	int ret = 0;
-
-	ret = pme_stat_get(&attr, &data, 0);
-	if (!ret)
-		return snprintf(buf, PAGE_SIZE, "%llu\n", data);
-	else
-		return ret;
-}
-
-static ssize_t pme_generic_stat_store(const char *buf, size_t count,
-				enum pme_attr attr)
-{
-	unsigned long val;
-	u64 data = 0;
-	size_t ret = 0;
-	if (strict_strtoul(buf, 0, &val)) {
-		pr_err("pme: invalid input %s\n", buf);
-		return -EINVAL;
-	}
-	if (val) {
-		pr_err("pme: invalid input %s\n", buf);
-		return -EINVAL;
-	}
-	ret = pme_stat_get(&attr, &data, 1);
-	return count;
-}
-
-#define PME_GENERIC_ATTR(pme_attr, perm, showhex) \
-static ssize_t pme_store_##pme_attr(struct device_driver *pme, const char *buf,\
-					size_t count) \
-{ \
-	return pme_generic_store(buf, count, pme_attr_##pme_attr);\
-} \
-static ssize_t pme_show_##pme_attr(struct device_driver *pme, char *buf) \
-{ \
-	return pme_generic_show(buf, pme_attr_##pme_attr, showhex);\
-} \
-static DRIVER_ATTR( pme_attr, perm, pme_show_##pme_attr, pme_store_##pme_attr);
-
-#define PME_GENERIC_BSC_ATTR(bsc_id, perm, showhex) \
-static ssize_t pme_store_pme_attr_bsc_##bsc_id(struct device_driver *pme,\
-					const char *buf, size_t count) \
-{ \
-	return pme_generic_store(buf, count, pme_attr_bsc(bsc_id));\
-} \
-static ssize_t pme_show_pme_attr_bsc_##bsc_id(struct device_driver *pme,\
-						char *buf) \
-{ \
-	return pme_generic_show(buf, pme_attr_bsc(bsc_id), showhex);\
-} \
-static DRIVER_ATTR(bsc_##bsc_id, perm, pme_show_pme_attr_bsc_##bsc_id, \
-			pme_store_pme_attr_bsc_##bsc_id);
-
-
-#define PME_GENERIC_STAT_ATTR(pme_attr, perm) \
-static ssize_t pme_store_##pme_attr(struct device_driver *pme, const char *buf,\
-					size_t count) \
-{ \
-	return pme_generic_stat_store(buf, count, pme_attr_##pme_attr);\
-} \
-static ssize_t pme_show_##pme_attr(struct device_driver *pme, char *buf) \
-{ \
-	return pme_generic_stat_show(buf, pme_attr_##pme_attr);\
-} \
-static DRIVER_ATTR(pme_attr, perm, pme_show_##pme_attr, pme_store_##pme_attr);
-
-static ssize_t pme_store_update_interval(struct device_driver *pme,
-		const char *buf, size_t count)
-{
-	unsigned long val;
-
-	if (!pme2_have_control()) {
-		PMEPRERR("not on ctrl-plane\n");
-		return -ENODEV;
-	}
-	if (strict_strtoul(buf, 0, &val)) {
-		pr_err("pme: invalid input %s\n", buf);
-		return -EINVAL;
-	}
-	if (val > MAX_ACCUMULATOR_INTERVAL) {
-		pr_err("pme: invalid input %s\n", buf);
-		return -ERANGE;
-	}
-
-	accumulator_update_interval(val);
-	return count;
-}
-static ssize_t pme_show_update_interval(struct device_driver *pme, char *buf)
-{
-	if (!pme2_have_control())
-		return -ENODEV;
-	return snprintf(buf, PAGE_SIZE, "%u\n", pme_stat_interval);
-}
-static DRIVER_ATTR(update_interval, (S_IRUSR | S_IWUSR),
-		pme_show_update_interval, pme_store_update_interval);
-
-#define FMT_0HEX "0x%08x\n"
-#define FMT_HEX  "0x%x\n"
-#define FMT_DEC  "%u\n"
-#define PRIV_RO  S_IRUSR
-#define PRIV_RW  (S_IRUSR | S_IWUSR)
-
-/* Register Interfaces */
-/* read-write; */
-PME_GENERIC_ATTR(efqc_int, PRIV_RW, FMT_DEC);
-PME_GENERIC_ATTR(sw_db, PRIV_RW, FMT_DEC);
-PME_GENERIC_ATTR(dmcr, PRIV_RW, FMT_0HEX);
-PME_GENERIC_ATTR(smcr, PRIV_RW, FMT_0HEX);
-PME_GENERIC_ATTR(famcr, PRIV_RW, FMT_0HEX);
-PME_GENERIC_ATTR(kvlts, PRIV_RW, FMT_DEC);
-PME_GENERIC_ATTR(max_chain_length, PRIV_RW, FMT_DEC);
-PME_GENERIC_ATTR(pattern_range_counter_idx, PRIV_RW, FMT_0HEX);
-PME_GENERIC_ATTR(pattern_range_counter_mask, PRIV_RW, FMT_0HEX);
-PME_GENERIC_ATTR(max_allowed_test_line_per_pattern, PRIV_RW, FMT_DEC);
-PME_GENERIC_ATTR(max_pattern_matches_per_sui, PRIV_RW, FMT_DEC);
-PME_GENERIC_ATTR(max_pattern_evaluations_per_sui, PRIV_RW, FMT_DEC);
-PME_GENERIC_ATTR(report_length_limit, PRIV_RW, FMT_DEC);
-PME_GENERIC_ATTR(end_of_simple_sui_report, PRIV_RW, FMT_DEC);
-PME_GENERIC_ATTR(aim, PRIV_RW, FMT_DEC);
-PME_GENERIC_ATTR(end_of_sui_reaction_ptr, PRIV_RW, FMT_DEC);
-PME_GENERIC_ATTR(sre_pscl, PRIV_RW, FMT_DEC);
-PME_GENERIC_ATTR(sre_max_block_num, PRIV_RW, FMT_DEC);
-PME_GENERIC_ATTR(sre_max_instruction_limit, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(0, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(1, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(2, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(3, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(4, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(5, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(6, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(7, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(8, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(9, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(10, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(11, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(12, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(13, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(14, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(15, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(16, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(17, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(18, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(19, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(20, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(21, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(22, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(23, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(24, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(25, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(26, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(27, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(28, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(29, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(30, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(31, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(32, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(33, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(34, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(35, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(36, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(37, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(38, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(39, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(40, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(41, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(42, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(43, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(44, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(45, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(46, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(47, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(48, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(49, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(50, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(51, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(52, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(53, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(54, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(55, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(56, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(57, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(58, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(59, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(60, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(61, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(62, PRIV_RW, FMT_DEC);
-PME_GENERIC_BSC_ATTR(63, PRIV_RW, FMT_DEC);
-
-/* read-only; */
-PME_GENERIC_ATTR(max_pdsr_index, PRIV_RO, FMT_DEC);
-PME_GENERIC_ATTR(sre_context_size, PRIV_RO, FMT_DEC);
-PME_GENERIC_ATTR(sre_rule_num, PRIV_RO, FMT_DEC);
-PME_GENERIC_ATTR(sre_session_ctx_num, PRIV_RO, FMT_DEC);
-PME_GENERIC_ATTR(sre_max_index_size, PRIV_RO, FMT_DEC);
-PME_GENERIC_ATTR(sre_max_offset_ctrl, PRIV_RO, FMT_DEC);
-PME_GENERIC_ATTR(src_id, PRIV_RO, FMT_DEC);
-PME_GENERIC_ATTR(liodnr, PRIV_RO, FMT_DEC);
-PME_GENERIC_ATTR(rev1, PRIV_RO, FMT_0HEX);
-PME_GENERIC_ATTR(rev2, PRIV_RO, FMT_0HEX);
-PME_GENERIC_ATTR(isr, PRIV_RO, FMT_0HEX);
-
-/* Stats */
-PME_GENERIC_STAT_ATTR(trunci, PRIV_RW);
-PME_GENERIC_STAT_ATTR(rbc, PRIV_RW);
-PME_GENERIC_STAT_ATTR(tbt0ecc1ec, PRIV_RW);
-PME_GENERIC_STAT_ATTR(tbt1ecc1ec, PRIV_RW);
-PME_GENERIC_STAT_ATTR(vlt0ecc1ec, PRIV_RW);
-PME_GENERIC_STAT_ATTR(vlt1ecc1ec, PRIV_RW);
-PME_GENERIC_STAT_ATTR(cmecc1ec, PRIV_RW);
-PME_GENERIC_STAT_ATTR(dxcmecc1ec, PRIV_RW);
-PME_GENERIC_STAT_ATTR(dxemecc1ec, PRIV_RW);
-PME_GENERIC_STAT_ATTR(stnib, PRIV_RW);
-PME_GENERIC_STAT_ATTR(stnis, PRIV_RW);
-PME_GENERIC_STAT_ATTR(stnth1, PRIV_RW);
-PME_GENERIC_STAT_ATTR(stnth2, PRIV_RW);
-PME_GENERIC_STAT_ATTR(stnthv, PRIV_RW);
-PME_GENERIC_STAT_ATTR(stnths, PRIV_RW);
-PME_GENERIC_STAT_ATTR(stnch, PRIV_RW);
-PME_GENERIC_STAT_ATTR(stnpm, PRIV_RW);
-PME_GENERIC_STAT_ATTR(stns1m, PRIV_RW);
-PME_GENERIC_STAT_ATTR(stnpmr, PRIV_RW);
-PME_GENERIC_STAT_ATTR(stndsr, PRIV_RW);
-PME_GENERIC_STAT_ATTR(stnesr, PRIV_RW);
-PME_GENERIC_STAT_ATTR(stns1r, PRIV_RW);
-PME_GENERIC_STAT_ATTR(stnob, PRIV_RW);
-PME_GENERIC_STAT_ATTR(mia_byc, PRIV_RW);
-PME_GENERIC_STAT_ATTR(mia_blc, PRIV_RW);
-
-static struct attribute *pme_drv_attrs[] = {
-	&driver_attr_efqc_int.attr,
-	&driver_attr_sw_db.attr,
-	&driver_attr_dmcr.attr,
-	&driver_attr_smcr.attr,
-	&driver_attr_famcr.attr,
-	&driver_attr_kvlts.attr,
-	&driver_attr_max_chain_length.attr,
-	&driver_attr_pattern_range_counter_idx.attr,
-	&driver_attr_pattern_range_counter_mask.attr,
-	&driver_attr_max_allowed_test_line_per_pattern.attr,
-	&driver_attr_max_pdsr_index.attr,
-	&driver_attr_max_pattern_matches_per_sui.attr,
-	&driver_attr_max_pattern_evaluations_per_sui.attr,
-	&driver_attr_report_length_limit.attr,
-	&driver_attr_end_of_simple_sui_report.attr,
-	&driver_attr_aim.attr,
-	&driver_attr_sre_context_size.attr,
-	&driver_attr_sre_rule_num.attr,
-	&driver_attr_sre_session_ctx_num.attr,
-	&driver_attr_end_of_sui_reaction_ptr.attr,
-	&driver_attr_sre_pscl.attr,
-	&driver_attr_sre_max_block_num.attr,
-	&driver_attr_sre_max_instruction_limit.attr,
-	&driver_attr_sre_max_index_size.attr,
-	&driver_attr_sre_max_offset_ctrl.attr,
-	&driver_attr_src_id.attr,
-	&driver_attr_liodnr.attr,
-	&driver_attr_rev1.attr,
-	&driver_attr_rev2.attr,
-	&driver_attr_isr.attr,
-	&driver_attr_bsc_0.attr,
-	&driver_attr_bsc_1.attr,
-	&driver_attr_bsc_2.attr,
-	&driver_attr_bsc_3.attr,
-	&driver_attr_bsc_4.attr,
-	&driver_attr_bsc_5.attr,
-	&driver_attr_bsc_6.attr,
-	&driver_attr_bsc_7.attr,
-	&driver_attr_bsc_8.attr,
-	&driver_attr_bsc_9.attr,
-	&driver_attr_bsc_10.attr,
-	&driver_attr_bsc_11.attr,
-	&driver_attr_bsc_12.attr,
-	&driver_attr_bsc_13.attr,
-	&driver_attr_bsc_14.attr,
-	&driver_attr_bsc_15.attr,
-	&driver_attr_bsc_16.attr,
-	&driver_attr_bsc_17.attr,
-	&driver_attr_bsc_18.attr,
-	&driver_attr_bsc_19.attr,
-	&driver_attr_bsc_20.attr,
-	&driver_attr_bsc_21.attr,
-	&driver_attr_bsc_22.attr,
-	&driver_attr_bsc_23.attr,
-	&driver_attr_bsc_24.attr,
-	&driver_attr_bsc_25.attr,
-	&driver_attr_bsc_26.attr,
-	&driver_attr_bsc_27.attr,
-	&driver_attr_bsc_28.attr,
-	&driver_attr_bsc_29.attr,
-	&driver_attr_bsc_30.attr,
-	&driver_attr_bsc_31.attr,
-	&driver_attr_bsc_32.attr,
-	&driver_attr_bsc_33.attr,
-	&driver_attr_bsc_34.attr,
-	&driver_attr_bsc_35.attr,
-	&driver_attr_bsc_36.attr,
-	&driver_attr_bsc_37.attr,
-	&driver_attr_bsc_38.attr,
-	&driver_attr_bsc_39.attr,
-	&driver_attr_bsc_40.attr,
-	&driver_attr_bsc_41.attr,
-	&driver_attr_bsc_42.attr,
-	&driver_attr_bsc_43.attr,
-	&driver_attr_bsc_44.attr,
-	&driver_attr_bsc_45.attr,
-	&driver_attr_bsc_46.attr,
-	&driver_attr_bsc_47.attr,
-	&driver_attr_bsc_48.attr,
-	&driver_attr_bsc_49.attr,
-	&driver_attr_bsc_50.attr,
-	&driver_attr_bsc_51.attr,
-	&driver_attr_bsc_52.attr,
-	&driver_attr_bsc_53.attr,
-	&driver_attr_bsc_54.attr,
-	&driver_attr_bsc_55.attr,
-	&driver_attr_bsc_56.attr,
-	&driver_attr_bsc_57.attr,
-	&driver_attr_bsc_58.attr,
-	&driver_attr_bsc_59.attr,
-	&driver_attr_bsc_60.attr,
-	&driver_attr_bsc_61.attr,
-	&driver_attr_bsc_62.attr,
-	&driver_attr_bsc_63.attr,
-	NULL
-};
-
-static struct attribute *pme_drv_stats_attrs[] = {
-	&driver_attr_update_interval.attr,
-	&driver_attr_trunci.attr,
-	&driver_attr_rbc.attr,
-	&driver_attr_tbt0ecc1ec.attr,
-	&driver_attr_tbt1ecc1ec.attr,
-	&driver_attr_vlt0ecc1ec.attr,
-	&driver_attr_vlt1ecc1ec.attr,
-	&driver_attr_cmecc1ec.attr,
-	&driver_attr_dxcmecc1ec.attr,
-	&driver_attr_dxemecc1ec.attr,
-	&driver_attr_stnib.attr,
-	&driver_attr_stnis.attr,
-	&driver_attr_stnth1.attr,
-	&driver_attr_stnth2.attr,
-	&driver_attr_stnthv.attr,
-	&driver_attr_stnths.attr,
-	&driver_attr_stnch.attr,
-	&driver_attr_stnpm.attr,
-	&driver_attr_stns1m.attr,
-	&driver_attr_stnpmr.attr,
-	&driver_attr_stndsr.attr,
-	&driver_attr_stnesr.attr,
-	&driver_attr_stns1r.attr,
-	&driver_attr_stnob.attr,
-	&driver_attr_mia_byc.attr,
-	&driver_attr_mia_blc.attr,
-	NULL
-};
-
-static struct attribute_group pme_drv_attr_grp = {
-	.attrs = pme_drv_attrs
-};
-
-static struct attribute_group pme_drv_stats_attr_grp = {
-	.name  = "stats",
-	.attrs = pme_drv_stats_attrs
-};
-
-static struct attribute_group *pme_drv_attr_groups[] = {
-	&pme_drv_attr_grp,
-	&pme_drv_stats_attr_grp,
-	NULL,
-};
-
 static struct of_device_id of_fsl_pme_ids[] = {
-	{ .compatible = "fsl,pme", },
+	{
+		.compatible = "fsl,pme",
+	},
 	{}
 };
+MODULE_DEVICE_TABLE(of, of_fsl_pme_ids);
 
 /* Pme interrupt handler */
 static irqreturn_t pme_isr(int irq, void *ptr)
@@ -668,34 +250,34 @@ static int of_fsl_pme_remove(struct of_device *ofdev)
 	cancel_delayed_work_sync(&accumulator_work);
 	/* Disable PME..TODO need to wait till it's quiet */
 	pme_out(global_pme, FACONF, PME_FACONF_RESET);
-
 	/* Release interrupt */
 	free_irq(pme_err_irq, &ofdev->dev);
-
+	/* Remove sysfs attribute */
+	pme2_remove_sysfs_dev_files(ofdev);
 	/* Unmap controller region */
 	iounmap(global_pme);
+	global_pme = NULL;
 	return 0;
 }
 
 static int __devinit of_fsl_pme_probe(struct of_device *ofdev,
 				const struct of_device_id *match)
 {
-	u32 __iomem *regs;
-	struct device *dev;
-	struct device_node *nprop;
+	int err = 0;
+	void __iomem *regs;
+	struct device *dev = &ofdev->dev;
+	struct device_node *nprop = ofdev->node;
 	u32 clkfreq = DEFAULT_SRFCC * 1000000;
 	const u32 *value;
 	int srec_aim = 0, srec_esr = 0;
 	u32 srecontextsize_code;
 
-	dev = &ofdev->dev;
-	nprop = ofdev->node;
-
 	pme_err_irq = of_irq_to_resource(nprop, 0, NULL);
 	if (pme_err_irq == NO_IRQ) {
 		dev_err(dev, "Can't get %s property '%s'\n", nprop->full_name,
 			"interrupts");
-		return -ENODEV;
+		err = -ENODEV;
+		goto out;
 	}
 
 	/* Get configuration properties from device tree */
@@ -703,15 +285,33 @@ static int __devinit of_fsl_pme_probe(struct of_device *ofdev,
 	regs = of_iomap(nprop, 0);
 	if (regs == NULL) {
 		dev_err(dev, "of_iomap() failed\n");
-		return -EINVAL;
+		err = -EINVAL;
+		goto out;
 	}
-	/* Global configuration */
-	global_pme = pme_create(regs);
+
+	/* Global configuration, enable pme */
+	global_pme = (struct pme *)regs;
+	pme_out(global_pme, FACONF, 0);
+	pme_out(global_pme, EFQC, PME_EFQC(0, 0));
+	pme_out(global_pme, FACONF, PME_FACONF_ENABLE);
+	/* TODO: these coherency settings for PMFA, DXE, and SRE force all
+	 * transactions to snoop, as the kernel does not yet support flushing in
+	 * dma_map_***() APIs (ie. h/w can not treat otherwise coherent memory
+	 * in a non-coherent manner, temporarily or otherwise). When the kernel
+	 * supports this, we should tune these settings back to;
+	 *     FAMCR = 0x00010001
+	 *      DMCR = 0x00000000
+	 *      SMCR = 0x00000000
+	 */
+	pme_out(global_pme, FAMCR, 0x01010101);
+	pme_out(global_pme, DMCR, 0x00000001);
+	pme_out(global_pme, SMCR, 0x00000211);
 
 	/* Register the pme ISR handler */
-	if (request_irq(pme_err_irq, pme_isr, IRQF_SHARED, "pme-err", dev)) {
+	err = request_irq(pme_err_irq, pme_isr, IRQF_SHARED, "pme-err", dev);
+	if (err) {
 		dev_err(dev, "request_irq() failed\n");
-		return -ENODEV;
+		goto out_unmap_ctrl_region;
 	}
 
 #ifdef CONFIG_FSL_PME2_SRE_AIM
@@ -725,17 +325,18 @@ static int __devinit of_fsl_pme_probe(struct of_device *ofdev,
 			(sre_session_ctx_size < 32) ||
 			(sre_session_ctx_size > (131072))) {
 		dev_err(dev, "invalid sre_session_ctx_size\n");
-		iounmap(global_pme);
-		return -EINVAL;
+		err = -EINVAL;
+		goto out_free_irq;
 	}
 	srecontextsize_code = ilog2(sre_session_ctx_size);
 	srecontextsize_code -= 4;
 
+	/* Configure Clock Frequency */
 	value = of_get_property(nprop, "clock-frequency", NULL);
 	if (value)
 		clkfreq = *value;
-
 	pme_out(global_pme, SFRCC, clkfreq/1000000);
+
 	BUG_ON(sizeof(dxe_a) != 4);
 	pme_out(global_pme, PDSRBAL, (u32)dxe_a);
 	pme_out(global_pme, SCBARL, (u32)sre_a);
@@ -761,7 +362,6 @@ static int __devinit of_fsl_pme_probe(struct of_device *ofdev,
 		(srecontextsize_code << 19) |
 		/* Alternate Inclusive Mode */
 		((srec_aim ? 1 : 0) << 29));
-
 	pme_out(global_pme, SEC1,
 		(CONFIG_FSL_PME2_SRE_MAX_INSTRUCTION_LIMIT << 16) |
 		CONFIG_FSL_PME2_SRE_MAX_BLOCK_NUMBER);
@@ -770,21 +370,36 @@ static int __devinit of_fsl_pme_probe(struct of_device *ofdev,
 	if (pme_stat_interval)
 		schedule_delayed_work(&accumulator_work,
 				msecs_to_jiffies(pme_stat_interval));
+	/* Create sysfs entries */
+	err = pme2_create_sysfs_dev_files(ofdev);
+	if (err)
+		goto out_stop_accumulator;
 
 	/* Enable interrupts */
 	pme_out(global_pme, IER, PME_ALL_ERR);
-
 	dev_info(dev, "ver: 0x%08x\n", pme_in(global_pme, PM_IP_REV1));
 	return 0;
+
+out_stop_accumulator:
+	if (pme_stat_interval) {
+		accumulator_update_interval(0);
+		cancel_delayed_work_sync(&accumulator_work);
+	}
+out_free_irq:
+	free_irq(pme_err_irq, &ofdev->dev);
+out_unmap_ctrl_region:
+	pme_out(global_pme, FACONF, PME_FACONF_RESET);
+	iounmap(global_pme);
+	global_pme = NULL;
+out:
+	return err;
 }
 
 static struct of_platform_driver of_fsl_pme_driver = {
-	.name = "of-fsl-pme",
+	.owner = THIS_MODULE,
+	.name = DRV_NAME,
 	.match_table = of_fsl_pme_ids,
 	.probe = of_fsl_pme_probe,
-	.driver = {
-		.groups = pme_drv_attr_groups,
-	},
 	.remove      = __devexit_p(of_fsl_pme_remove),
 };
 
@@ -869,8 +484,6 @@ int pme_attr_set(enum pme_attr attr, u32 val)
 		attr_val = pme_in(global_pme, EFQC);
 		/* clear efqc_int */
 		attr_val &= mask;
-		/* clear unwanted bits in val*/
-		val &= ~mask;
 		val <<= 28;
 		val |= attr_val;
 		pme_out(global_pme, EFQC, val);
@@ -1053,6 +666,27 @@ int pme_attr_set(enum pme_attr attr, u32 val)
 		break;
 	case pme_attr_srrr:
 		pme_out(global_pme, SRRR, val);
+		break;
+	case pme_attr_tbt0ecc1th:
+		pme_out(global_pme, TBT0ECC1TH, val);
+		break;
+	case pme_attr_tbt1ecc1th:
+		pme_out(global_pme, TBT1ECC1TH, val);
+		break;
+	case pme_attr_vlt0ecc1th:
+		pme_out(global_pme, VLT0ECC1TH, val);
+		break;
+	case pme_attr_vlt1ecc1th:
+		pme_out(global_pme, VLT1ECC1TH, val);
+		break;
+	case pme_attr_cmecc1th:
+		pme_out(global_pme, CMECC1TH, val);
+		break;
+	case pme_attr_dxcmecc1th:
+		pme_out(global_pme, DXCMECC1TH, val);
+		break;
+	case pme_attr_dxemecc1th:
+		pme_out(global_pme, DXEMECC1TH, val);
 		break;
 
 	default:
@@ -1320,6 +954,34 @@ int pme_attr_get(enum pme_attr attr, u32 *val)
 		attr_val = pme_in(global_pme, DXEMECC1EC);
 		break;
 
+	case pme_attr_tbt0ecc1th:
+		attr_val = pme_in(global_pme, TBT0ECC1TH);
+		break;
+
+	case pme_attr_tbt1ecc1th:
+		attr_val = pme_in(global_pme, TBT1ECC1TH);
+		break;
+
+	case pme_attr_vlt0ecc1th:
+		attr_val = pme_in(global_pme, VLT0ECC1TH);
+		break;
+
+	case pme_attr_vlt1ecc1th:
+		attr_val = pme_in(global_pme, VLT1ECC1TH);
+		break;
+
+	case pme_attr_cmecc1th:
+		attr_val = pme_in(global_pme, CMECC1TH);
+		break;
+
+	case pme_attr_dxcmecc1th:
+		attr_val = pme_in(global_pme, DXCMECC1TH);
+		break;
+
+	case pme_attr_dxemecc1th:
+		attr_val = pme_in(global_pme, DXEMECC1TH);
+		break;
+
 	case pme_attr_stnib:
 		attr_val = pme_in(global_pme, STNIB);
 		break;
@@ -1461,7 +1123,7 @@ int pme_stat_get(enum pme_attr *stat, u64 *value, int reset)
 }
 EXPORT_SYMBOL(pme_stat_get);
 
-static void accumulator_update_interval(u32 interval)
+void accumulator_update_interval(u32 interval)
 {
 	int schedule = 0;
 
