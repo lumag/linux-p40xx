@@ -486,12 +486,17 @@ static int fsl_pme2_scan_open(struct inode *node, struct file *fp)
 {
 	int ret;
 	struct scan_session *session;
+	struct pme_flow *flow = pme_sw_flow_new();
 #ifdef CONFIG_FSL_PME2_SCAN_DEBUG
 	pr_info("pme2_scan: open %d\n", smp_processor_id());
 #endif
-	fp->private_data = kzalloc(sizeof(*session), GFP_KERNEL);
-	if (!fp->private_data)
+	if (!flow)
 		return -ENOMEM;
+	fp->private_data = kzalloc(sizeof(*session), GFP_KERNEL);
+	if (!fp->private_data) {
+		pme_sw_flow_free(flow);
+		return -ENOMEM;
+	}
 	session = (struct scan_session *)fp->private_data;
 	/* Set up the structures used for asynchronous requests */
 	init_waitqueue_head(&session->waiting_for_completion);
@@ -517,12 +522,24 @@ static int fsl_pme2_scan_open(struct inode *node, struct file *fp)
 		pme_ctx_finish(&session->ctx);
 		goto exit;
 	}
+	/* Update flow to set sane defaults in the flow context */
+	/* TODO: because we free 'flow' here, we need to be uninterruptible. */
+	ret = pme_ctx_ctrl_update_flow(&session->ctx,
+			PME_CTX_OP_WAIT | PME_CMD_FCW_ALL, flow);
+	if (ret) {
+		pr_info("pme2_scan: error updating flow ctx %d\n", ret);
+		pme_ctx_disable(&session->ctx, PME_CTX_OP_WAIT);
+		pme_ctx_finish(&session->ctx);
+		goto exit;
+	}
+	pme_sw_flow_free(flow);
 #ifdef CONFIG_FSL_PME2_SCAN_DEBUG
 	/* Set up the structures used for asynchronous requests */
 	pr_info("pme2_scan: Finish pme_scan open %d \n", smp_processor_id());
 #endif
 	return 0;
 exit:
+	pme_sw_flow_free(flow);
 	kfree(fp->private_data);
 	fp->private_data = NULL;
 	return ret;

@@ -46,8 +46,8 @@
 #define PME_REG_ECR0		0x034
 #define PME_REG_EFQC		0x050
 #define PME_REG_FACONF		0x060
-#define PME_REG_FAMCR		0x064
-#define PME_REG_PMSTAT		0x068
+#define PME_REG_PMSTAT		0x064
+#define PME_REG_FAMCR		0x068
 #define PME_REG_PMTR		0x06C
 #define PME_REG_PEHD		0x074
 #define PME_REG_BSC0		0x080

@@ -205,6 +205,18 @@ static inline struct pme *pme_create(void *regs)
 	pme_out(res, FACONF, 0);
 	pme_out(res, EFQC, PME_EFQC(0, 0));
 	pme_out(res, FACONF, PME_FACONF_ENABLE);
+	/* TODO: these coherency settings for PMFA, DXE, and SRE force all
+	 * transactions to snoop, as the kernel does not yet support flushing in
+	 * dma_map_***() APIs (ie. h/w can not treat otherwise coherent memory
+	 * in a non-coherent manner, temporarily or otherwise). When the kernel
+	 * supports this, we should tune these settings back to;
+	 *     FAMCR = 0x00010001
+	 *      DMCR = 0x00000000
+	 *      SMCR = 0x00000000
+	 */
+	pme_out(res, FAMCR, 0x01010101);
+	pme_out(res, DMCR, 0x00000001);
+	pme_out(res, SMCR, 0x00000211);
 	return res;
 }
 
@@ -358,6 +370,9 @@ static DRIVER_ATTR(update_interval, (S_IRUSR | S_IWUSR),
 /* read-write; */
 PME_GENERIC_ATTR(efqc_int, PRIV_RW, FMT_DEC);
 PME_GENERIC_ATTR(sw_db, PRIV_RW, FMT_DEC);
+PME_GENERIC_ATTR(dmcr, PRIV_RW, FMT_0HEX);
+PME_GENERIC_ATTR(smcr, PRIV_RW, FMT_0HEX);
+PME_GENERIC_ATTR(famcr, PRIV_RW, FMT_0HEX);
 PME_GENERIC_ATTR(kvlts, PRIV_RW, FMT_DEC);
 PME_GENERIC_ATTR(max_chain_length, PRIV_RW, FMT_DEC);
 PME_GENERIC_ATTR(pattern_range_counter_idx, PRIV_RW, FMT_0HEX);
@@ -480,6 +495,9 @@ PME_GENERIC_STAT_ATTR(mia_blc, PRIV_RW);
 static struct attribute *pme_drv_attrs[] = {
 	&driver_attr_efqc_int.attr,
 	&driver_attr_sw_db.attr,
+	&driver_attr_dmcr.attr,
+	&driver_attr_smcr.attr,
+	&driver_attr_famcr.attr,
 	&driver_attr_kvlts.attr,
 	&driver_attr_max_chain_length.attr,
 	&driver_attr_pattern_range_counter_idx.attr,
@@ -862,6 +880,18 @@ int pme_attr_set(enum pme_attr attr, u32 val)
 		pme_out(global_pme, SWDB, val);
 		break;
 
+	case pme_attr_dmcr:
+		pme_out(global_pme, DMCR, val);
+		break;
+
+	case pme_attr_smcr:
+		pme_out(global_pme, SMCR, val);
+		break;
+
+	case pme_attr_famcr:
+		pme_out(global_pme, FAMCR, val);
+		break;
+
 	case pme_attr_kvlts:
 		if (val < 2 || val > 16)
 			return -EINVAL;
@@ -1067,6 +1097,18 @@ int pme_attr_get(enum pme_attr attr, u32 *val)
 
 	case pme_attr_sw_db:
 		attr_val = pme_in(global_pme, SWDB);
+		break;
+
+	case pme_attr_dmcr:
+		attr_val = pme_in(global_pme, DMCR);
+		break;
+
+	case pme_attr_smcr:
+		attr_val = pme_in(global_pme, SMCR);
+		break;
+
+	case pme_attr_famcr:
+		attr_val = pme_in(global_pme, FAMCR);
 		break;
 
 	case pme_attr_kvlts:

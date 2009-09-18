@@ -33,14 +33,23 @@
 #include "pme2_test.h"
 
 static u8 scan_result_direct_mode_inc_mode[] = {
-	0x01,0x01,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01,0x00,0x00,
-	0x00,0x00
+	0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00
 };
 
 static u8 fl_ctx_exp[] = {
-	0x88,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
-	0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xff,0xff,0xff,0xff,
-	0x00,0x00,0x00,0x00
+	0x88, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xe0,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00
+};
+
+/* same again with 'sos' bit cleared */
+static u8 fl_ctx_exp_post_scan[] = {
+	0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0xff, 0xff, 0xff, 0xe0,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00
 };
 
 struct scan_ctx {
@@ -276,18 +285,16 @@ void pme2_test_scan(void)
 	pme_ctx_enable(&a_scan_ctx.base_ctx);
 	pr_info("st: Context Enabled\n");
 
+	ret = pme_ctx_ctrl_update_flow(&a_scan_ctx.base_ctx,
+		PME_CTX_OP_WAIT | PME_CMD_FCW_ALL, flow);
+	BUG_ON(ret);
+
 	/* read back flow settings */
 	{
-		struct pme_flow* rb_flow;
-		rb_flow = pme_sw_flow_new();
-		memset(rb_flow, 0, sizeof(struct pme_flow));
-		pr_info("st: Initial rb_flow\n");
-		hexdump(rb_flow, sizeof(*rb_flow));
+		struct pme_flow *rb_flow = pme_sw_flow_new();
 
 		ret = pme_ctx_ctrl_read_flow(&a_scan_ctx.base_ctx,
-			PME_CTX_OP_WAIT |
-			PME_CTX_OP_WAIT_INT |
-			PME_CMD_FCW_ALL, rb_flow);
+					PME_CTX_OP_WAIT, rb_flow);
 		BUG_ON(ret);
 		if (memcmp(rb_flow,fl_ctx_exp, sizeof(*rb_flow)) != 0) {
 			pr_info("st: Flow Context Read FAIL\n");
@@ -301,7 +308,6 @@ void pme2_test_scan(void)
 		}
 		pme_sw_flow_free(rb_flow);
 	}
-
 
 	/* Do a pre-built output, scan with match test */
 	/* Build a frame descriptor */
@@ -345,21 +351,17 @@ void pme2_test_scan(void)
 
 	/* read back flow settings */
 	{
-		struct pme_flow *rb_flow;
-		rb_flow = pme_sw_flow_new();
-		memset(rb_flow, 0, sizeof(struct pme_flow));
-		pr_info("st: Initial rb_flow\n");
-		hexdump(rb_flow, sizeof(*rb_flow));
+		struct pme_flow *rb_flow = pme_sw_flow_new();
 
 		ret = pme_ctx_ctrl_read_flow(&a_scan_ctx.base_ctx,
-			PME_CTX_OP_WAIT |
-			PME_CTX_OP_WAIT_INT |
-			PME_CMD_FCW_ALL, rb_flow);
+					PME_CTX_OP_WAIT, rb_flow);
 		BUG_ON(ret);
-		if (memcmp(rb_flow,fl_ctx_exp, sizeof(*rb_flow)) != 0) {
+		if (memcmp(rb_flow, fl_ctx_exp_post_scan,
+					sizeof(*rb_flow)) != 0) {
 			pr_info("st: Flow Context Read FAIL\n");
 			pr_info("st: Expected\n");
-			hexdump(fl_ctx_exp, sizeof(fl_ctx_exp));
+			hexdump(fl_ctx_exp_post_scan,
+				sizeof(fl_ctx_exp_post_scan));
 			pr_info("st: Received\n");
 			hexdump(rb_flow, sizeof(*rb_flow));
 			BUG_ON(1);
@@ -398,22 +400,27 @@ void pme2_test_scan(void)
 
 	/* read back flow settings */
 	{
-		struct pme_flow *rb_flow;
-		rb_flow = pme_sw_flow_new();
-		memset(rb_flow, 0, sizeof(struct pme_flow));
+		struct pme_flow *rb_flow = pme_sw_flow_new();
 		ret = pme_ctx_ctrl_read_flow(&a_scan_ctx.base_ctx,
-			PME_CTX_OP_WAIT |
-			PME_CTX_OP_WAIT_INT |
-			PME_CMD_FCW_ALL, rb_flow);
+					PME_CTX_OP_WAIT, rb_flow);
 		BUG_ON(ret);
-		pr_info("st: read Flow Context;\n");
-		hexdump(rb_flow, sizeof(*rb_flow));
+		if (memcmp(rb_flow, fl_ctx_exp_post_scan,
+					sizeof(*rb_flow)) != 0) {
+			pr_info("st: Flow Context Read FAIL\n");
+			pr_info("st: Expected\n");
+			hexdump(fl_ctx_exp_post_scan,
+				sizeof(fl_ctx_exp_post_scan));
+			pr_info("st: Received\n");
+			hexdump(rb_flow, sizeof(*rb_flow));
+			BUG_ON(1);
+		} else {
+			pr_info("st: Flow Context Read OK\n");
+		}
 		pme_sw_flow_free(rb_flow);
 	}
 
 	/* Disable */
-	ret = pme_ctx_disable(&a_scan_ctx.base_ctx,
-			PME_CTX_OP_WAIT | PME_CTX_OP_WAIT_INT);
+	ret = pme_ctx_disable(&a_scan_ctx.base_ctx, PME_CTX_OP_WAIT);
 	BUG_ON(ret);
 	pme_ctx_finish(&a_scan_ctx.base_ctx);
 	pme_sw_flow_free(flow);
