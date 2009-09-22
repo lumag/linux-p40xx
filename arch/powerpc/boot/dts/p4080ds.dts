@@ -903,25 +903,25 @@
 		};
 
 		usb0: usb@210000 {
-			compatible = "fsl,p4080-usb2-dr",
-					"fsl,mpc85xx-usb2-dr", "fsl-usb2-dr";
+			compatible = "fsl,p4080-usb2-mph",
+					"fsl,mpc85xx-usb2-mph", "fsl-usb2-mph";
 			reg = <0x210000 0x1000>;
 			#address-cells = <1>;
 			#size-cells = <0>;
 			interrupt-parent = <&mpic>;
 			interrupts = <44 0x2>;
-			dr_mode = "host";
 			phy_type = "ulpi";
 		};
 
 		usb1: usb@211000 {
-			compatible = "fsl,p4080-usb2-mph",
-					"fsl,mpc85xx-usb2-mph", "fsl-usb2-mph";
+			compatible = "fsl,p4080-usb2-dr",
+					"fsl,mpc85xx-usb2-dr", "fsl-usb2-dr";
 			reg = <0x211000 0x1000>;
 			#address-cells = <1>;
 			#size-cells = <0>;
 			interrupt-parent = <&mpic>;
 			interrupts = <45 0x2>;
+			dr_mode = "host";
 			phy_type = "ulpi";
 		};
 
