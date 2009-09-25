@@ -43,6 +43,12 @@ static int __cold dpa_get_settings(struct net_device *net_dev, struct ethtool_cm
 
 	priv = (typeof(priv))netdev_priv(net_dev);
 
+	if (priv->mac_dev == NULL) {
+		cpu_netdev_info(net_dev,
+				"%s:%hu:%s(): This is a MAC-less interface\n",
+				__file__, __LINE__, __func__);
+		return -ENODEV;
+	}
 	if (unlikely(priv->mac_dev->phy_dev == NULL)) {
 		cpu_netdev_err(net_dev, "%s:%hu:%s(): phy device not initialized\n",
 			       __file__, __LINE__, __func__);
@@ -68,6 +74,12 @@ static int __cold dpa_set_settings(struct net_device *net_dev, struct ethtool_cm
 
 	priv = (typeof(priv))netdev_priv(net_dev);
 
+	if (priv->mac_dev == NULL) {
+		cpu_netdev_info(net_dev,
+				"%s:%hu:%s(): This is a MAC-less interface\n",
+				__file__, __LINE__, __func__);
+		return -ENODEV;
+	}
 	if (unlikely(priv->mac_dev->phy_dev == NULL)) {
 		cpu_netdev_err(net_dev, "%s:%hu:%s(): phy device not initialized\n",
 			       __file__, __LINE__, __func__);
@@ -141,6 +153,12 @@ int __cold dpa_nway_reset(struct net_device *net_dev)
 
 	priv = (typeof(priv))netdev_priv(net_dev);
 
+	if (priv->mac_dev == NULL) {
+		cpu_netdev_info(net_dev,
+				"%s:%hu:%s(): This is a MAC-less interface\n",
+				__file__, __LINE__, __func__);
+		return -ENODEV;
+	}
 	if (unlikely(priv->mac_dev->phy_dev == NULL)) {
 		cpu_netdev_err(net_dev, "%s:%hu:%s(): phy device not initialized\n",
 			       __file__, __LINE__, __func__);
@@ -185,6 +203,12 @@ void __cold dpa_get_pauseparam(struct net_device *net_dev, struct ethtool_pausep
 
 	priv = (typeof(priv))netdev_priv(net_dev);
 
+	if (priv->mac_dev == NULL) {
+		cpu_netdev_info(net_dev,
+				"%s:%hu:%s(): This is a MAC-less interface\n",
+				__file__, __LINE__, __func__);
+		return -ENODEV;
+	}
 	if (unlikely(priv->mac_dev->phy_dev == NULL)) {
 		cpu_netdev_err(net_dev, "%s:%hu:%s(): phy device not initialized\n",
 			       __file__, __LINE__, __func__);
@@ -204,6 +228,12 @@ int __cold dpa_set_pauseparam(struct net_device *net_dev, struct ethtool_pausepa
 
 	priv = (typeof(priv))netdev_priv(net_dev);
 
+	if (priv->mac_dev == NULL) {
+		cpu_netdev_info(net_dev,
+				"%s:%hu:%s(): This is a MAC-less interface\n",
+				__file__, __LINE__, __func__);
+		return -ENODEV;
+	}
 	if (unlikely(priv->mac_dev->phy_dev == NULL)) {
 		cpu_netdev_err(net_dev, "%s:%hu:%s(): phy device not initialized\n",
 			       __file__, __LINE__, __func__);
