@@ -1409,7 +1409,7 @@ CONFIG_FSL_QMAN_BUG_CGR_INIT=y
 #
 # Pattern matching support
 #
-# CONFIG_PATTERN_MATCHING is not set
+CONFIG_PATTERN_MATCHING=y
 
 #
 # Frame Manager support
