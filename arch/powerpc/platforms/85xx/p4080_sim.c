@@ -39,7 +39,7 @@
 #define DBG(fmt, args...)
 #endif
 
-void __init mpc85xx_ds_pic_init(void)
+void __init mpc85xx_sim_pic_init(void)
 {
 	struct mpic *mpic;
 	struct resource r;
@@ -77,14 +77,14 @@ static int primary_phb_addr;
 #ifdef CONFIG_SMP
 extern void __init mpc85xx_smp_init(void);
 #endif
-static void __init mpc85xx_ds_setup_arch(void)
+static void __init mpc85xx_sim_setup_arch(void)
 {
 #ifdef CONFIG_PCI
 	struct device_node *np;
 #endif
 
 	if (ppc_md.progress)
-		ppc_md.progress("mpc85xx_ds_setup_arch()", 0);
+		ppc_md.progress("mpc85xx_sim_setup_arch()", 0);
 
 #ifdef CONFIG_SMP
         mpc85xx_smp_init();
@@ -123,12 +123,12 @@ static int __init declare_of_platform_devices(void)
 {
 	return of_platform_bus_probe(NULL, of_device_ids, NULL);
 }
-machine_device_initcall(p4080_ds, declare_of_platform_devices);
+machine_device_initcall(p4080_sim, declare_of_platform_devices);
 
 /*
  * Called very early, device-tree isn't unflattened
  */
-static int __init p4080_ds_probe(void)
+static int __init p4080_sim_probe(void)
 {
 	unsigned long root = of_get_flat_dt_root();
 
@@ -169,11 +169,11 @@ static __init void p4080_init_early(void)
 #endif
 }
 
-define_machine(p4080_ds) {
+define_machine(p4080_sim) {
 	.name			= "P4080 SIM",
-	.probe			= p4080_ds_probe,
-	.setup_arch		= mpc85xx_ds_setup_arch,
-	.init_IRQ		= mpc85xx_ds_pic_init,
+	.probe			= p4080_sim_probe,
+	.setup_arch		= mpc85xx_sim_setup_arch,
+	.init_IRQ		= mpc85xx_sim_pic_init,
 #ifdef CONFIG_PCI
 	.pcibios_fixup_bus	= fsl_pcibios_fixup_bus,
 #endif
