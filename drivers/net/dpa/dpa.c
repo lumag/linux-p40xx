@@ -2064,6 +2064,9 @@ dpa_init_probe(struct of_device *_of_dev)
 
 	dpa_node = _of_dev->node;
 
+	if (!of_device_is_available(dpa_node))
+		return -ENODEV;
+
 	/* FM */
 
 	mac_dev = dpa_mac_probe(_of_dev);
@@ -2212,12 +2215,16 @@ dpa_probe(struct of_device *_of_dev)
 	const uint32_t		*rx_fqids;
 	int			num_tx_fqids, num_tx_fqs;
 	int			num_rx_fqids, num_rx_fqs;
+	const char *dpa_status;
 
 	dev = &_of_dev->dev;
 
 	cpu_dev_dbg(dev, "-> %s:%s()\n", __file__, __func__);
 
 	dpa_node = _of_dev->node;
+
+	if (!of_device_is_available(dpa_node))
+		return -ENODEV;
 
 	/*
 	 * Allocate this early, so we can store relevant information in
