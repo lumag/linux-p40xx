@@ -111,7 +111,32 @@ static const struct of_device_id of_device_ids[] __devinitconst = {
 
 static int __init declare_of_platform_devices(void)
 {
-	return of_platform_bus_probe(NULL, of_device_ids, NULL);
+	struct device_node *np;
+	struct of_device *dev;
+	int err;
+
+	err = of_platform_bus_probe(NULL, of_device_ids, NULL);
+	if (err)
+		return err;
+
+	/* Now probe the fake MDIO buses */
+	for_each_compatible_node(np, NULL, "fsl,p4080ds-mdio") {
+		dev = of_platform_device_create(np, NULL, NULL);
+		if (!dev) {
+			of_node_put(np);
+			return -ENOMEM;
+		}
+	}
+
+	for_each_compatible_node(np, NULL, "fsl,p4080ds-xmdio") {
+		dev = of_platform_device_create(np, NULL, NULL);
+		if (!dev) {
+			of_node_put(np);
+			return -ENOMEM;
+		}
+	}
+
+	return 0;
 }
 machine_device_initcall(p4080_ds, declare_of_platform_devices);
 
