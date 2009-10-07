@@ -4,7 +4,7 @@
  *
  * Author: Andy Fleming <afleming@freescale.com>
  *
- * Copyright (c) 2002-2004,2008 Freescale Semiconductor, Inc.
+ * Copyright (c) 2002-2004,2008-2009 Freescale Semiconductor, Inc.
  *
  * Based on gianfar_mii.c and ucc_geth_mii.c (Li Yang, Kim Phillips)
  *
@@ -55,7 +55,7 @@
  * controlling the external PHYs, for example.
  */
 int fsl_pq_local_mdio_write(struct fsl_pq_mdio __iomem *regs, int mii_id,
-		int regnum, u16 value)
+			int regnum, u16 value)
 {
 	/* Set the PHY address and the register address we want to write */
 	out_be32(&regs->miimadd, (mii_id << 8) | regnum);
@@ -80,8 +80,8 @@ int fsl_pq_local_mdio_write(struct fsl_pq_mdio __iomem *regs, int mii_id,
  * and are always tied to the local mdio pins, which may not be the
  * same as system mdio bus, used for controlling the external PHYs, for eg.
  */
-int fsl_pq_local_mdio_read(struct fsl_pq_mdio __iomem *regs,
-		int mii_id, int regnum)
+int fsl_pq_local_mdio_read(struct fsl_pq_mdio __iomem *regs, int mii_id,
+			int regnum)
 {
 	u16 value;
 
@@ -106,7 +106,8 @@ int fsl_pq_local_mdio_read(struct fsl_pq_mdio __iomem *regs,
  * Write value to the PHY at mii_id at register regnum,
  * on the bus, waiting until the write is done before returning.
  */
-int fsl_pq_mdio_write(struct mii_bus *bus, int mii_id, int regnum, u16 value)
+int fsl_pq_mdio_write(struct mii_bus *bus, int mii_id, int devad, int regnum,
+			u16 value)
 {
 	struct fsl_pq_mdio __iomem *regs = (void __iomem *)bus->priv;
 
@@ -118,7 +119,7 @@ int fsl_pq_mdio_write(struct mii_bus *bus, int mii_id, int regnum, u16 value)
  * Read the bus for PHY at addr mii_id, register regnum, and
  * return the value.  Clears miimcom first.
  */
-int fsl_pq_mdio_read(struct mii_bus *bus, int mii_id, int regnum)
+int fsl_pq_mdio_read(struct mii_bus *bus, int mii_id, int devad, int regnum)
 {
 	struct fsl_pq_mdio __iomem *regs = (void __iomem *)bus->priv;
 
