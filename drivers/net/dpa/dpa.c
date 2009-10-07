@@ -34,6 +34,7 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/sort.h>
+#include <linux/of_mdio.h>
 #include <linux/of_platform.h>
 #include <linux/io.h>
 #include <linux/etherdevice.h>
@@ -1272,59 +1273,6 @@ static const struct qman_fq _egress_fqs __devinitconst = {
 	.cb = {egress_dqrr, egress_ern, egress_dc_ern, egress_fqs}
 };
 
-/* Called every time the controller might need to be made
- * aware of new link state.  The PHY code conveys this
- * information through variables in the phy_dev structure, and this
- * function converts those variables into the appropriate
- * register values, and can bring down the device if needed.
- */
-static void adjust_link(struct net_device *net_dev)
-{
-	const struct dpa_priv_s	*priv;
-	struct phy_device *phy_dev;
-	int			 _errno = 0;
-//	unsigned long flags;
-
-	priv = (typeof(priv))netdev_priv(net_dev);
-	phy_dev = priv->mac_dev->phy_dev;
-
-//	spin_lock_irqsave(&priv->lock, flags);
-
-	if (phy_dev->link)
-		_errno = priv->mac_dev->adjust_link(priv->mac_dev, phy_dev->speed, phy_dev->duplex);
-
-	if (unlikely(_errno < 0))
-		cpu_netdev_err(net_dev, "%s:%hu:%s(): mac_dev->adjust_link() = %d\n",
-			       __file__, __LINE__, __func__, _errno);
-//	spin_unlock_irqrestore(&priv->lock, flags);
-}
-
-/* Initializes driver's PHY state, and attaches to the PHY.
- * Returns 0 on success.
- */
-static int init_phy(struct net_device *net_dev)
-{
-	struct dpa_priv_s	*priv;
-	struct phy_device	*phy_dev;
-
-	priv = (typeof(priv))netdev_priv(net_dev);
-
-	phy_dev = phy_connect(net_dev, priv->mac_dev->phy_id, &adjust_link, 0, priv->mac_dev->phy_if);
-	if (IS_ERR(phy_dev)) {
-		cpu_netdev_err(net_dev, "%s:%hu:%s(): Could not attach to PHY %s\n",
-			       __file__, __LINE__, __func__, priv->mac_dev->phy_id);
-		return PTR_ERR(phy_dev);
-	}
-
-	/* Remove any features not supported by the controller */
-	phy_dev->supported &= priv->mac_dev->if_support;
-	phy_dev->advertising = phy_dev->supported;
-
-	priv->mac_dev->phy_dev = phy_dev;
-
-	return 0;
-}
-
 static struct net_device_stats * __cold
 dpa_get_stats(struct net_device *net_dev)
 {
@@ -1715,14 +1663,16 @@ static int __cold dpa_start(struct net_device *net_dev)
 {
 	int			 _errno, i=0, j;
 	const struct dpa_priv_s	*priv;
+	struct mac_device *mac_dev;
 
-	priv = (typeof(priv))netdev_priv(net_dev);
+	priv = netdev_priv(net_dev);
+	mac_dev = priv->mac_dev;
 
 	if (netif_msg_ifup(priv))
 		cpu_netdev_dbg(net_dev, "-> %s:%s()\n", __file__, __func__);
 
-	if (priv->mac_dev) {
-		_errno = init_phy(net_dev);
+	if (mac_dev) {
+		_errno = mac_dev->init_phy(net_dev);
 		if(_errno) {
 			if (netif_msg_ifup(priv))
 				cpu_netdev_err(net_dev,
@@ -1742,7 +1692,6 @@ static int __cold dpa_start(struct net_device *net_dev)
 					__file__, __LINE__, __func__, _errno);
 			goto _return_port_dev_stop;
 		}
-		phy_start(priv->mac_dev->phy_dev);
 	}
 
 	netif_tx_start_all_queues(net_dev);
@@ -1774,8 +1723,6 @@ static int __cold dpa_stop(struct net_device *net_dev)
 
 	_errno = 0;
 	if (priv->mac_dev) {
-		phy_stop(priv->mac_dev->phy_dev);
-
 		__errno = priv->mac_dev->stop(priv->mac_dev);
 		if (unlikely(__errno < 0)) {
 			if (netif_msg_ifdown(priv))
@@ -1788,6 +1735,9 @@ static int __cold dpa_stop(struct net_device *net_dev)
 
 		for (i = 0; i < ARRAY_SIZE(priv->mac_dev->port_dev); i++)
 			fm_port_disable(priv->mac_dev->port_dev[i]);
+
+		phy_disconnect(priv->mac_dev->phy_dev);
+		priv->mac_dev->phy_dev = NULL;
 	}
 
 	if (netif_msg_ifdown(priv))
@@ -2215,7 +2165,6 @@ dpa_probe(struct of_device *_of_dev)
 	const uint32_t		*rx_fqids;
 	int			num_tx_fqids, num_tx_fqs;
 	int			num_rx_fqids, num_rx_fqs;
-	const char *dpa_status;
 
 	dev = &_of_dev->dev;
 

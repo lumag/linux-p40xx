@@ -42,7 +42,6 @@
 #include "fsl_pq_mdio.h"
 #include "mac.h"
 
-#define PHY_INTERFACE_MODE_XGMII    (PHY_INTERFACE_MODE_RTBI+1)
 #define DTSEC_SUPPORTED \
 	(SUPPORTED_10baseT_Half \
 	| SUPPORTED_10baseT_Full \
@@ -133,7 +132,7 @@ static int __devinit __cold mac_probe(struct of_device *_of_dev, const struct of
 {
 	int			 _errno, i, lenp;
 	struct device		*dev;
-	struct device_node	*mac_node, *dev_node, *tmp_node;
+	struct device_node	*mac_node, *dev_node;
 	struct mac_device	*mac_dev;
 	struct of_device	*of_dev;
 	struct resource		 res;
@@ -141,7 +140,6 @@ static int __devinit __cold mac_probe(struct of_device *_of_dev, const struct of
 	const char		*char_prop;
 	const phandle		*phandle_prop;
 	const uint32_t		*uint32_prop;
-	char bus_name[MII_BUS_ID_SIZE];
 
 	dev = &_of_dev->dev;
 
@@ -292,59 +290,19 @@ static int __devinit __cold mac_probe(struct of_device *_of_dev, const struct of
 	mac_dev->if_support = DTSEC_SUPPORTED;
 	if (strstr(char_prop, "sgmii") && (mac_dev->max_speed == 1000))
 		mac_dev->if_support &= ~SUPPORTED_1000baseT_Half;
+	if (strstr(char_prop, "xgmii"))
+		mac_dev->if_support = SUPPORTED_10000baseT_Full;
 
 	/* Get the rest of the PHY information */
-	phandle_prop = (typeof(phandle_prop))of_get_property(mac_node, "phy-handle", &lenp);
-	if (unlikely(phandle_prop == NULL)) {
-		cpu_dev_err(dev, "%s:%hu:%s(): of_get_property(%s, phy-handle) failed\n",
-			    __file__, __LINE__, __func__, mac_node->full_name);
-		_errno = -EINVAL;
-		goto _return_dev_set_drvdata;
-	}
-	BUG_ON(lenp != sizeof(phandle));
-
-	/* Find the PHY node */
-	dev_node = of_find_node_by_phandle(*phandle_prop);
-	if (unlikely(dev_node == NULL)) {
-		cpu_dev_err(dev, "%s:%hu:%s(): of_find_node_by_phandle() failed\n",
+	mac_dev->phy_node = of_parse_phandle(mac_node, "phy-handle", 0);
+	if (unlikely(mac_dev->phy_node == NULL)) {
+		cpu_dev_err(dev, "%s:%hu:%s(): of_parse_phandle() failed\n",
 			    __file__, __LINE__, __func__);
 		_errno = -EINVAL;
 		goto _return_dev_set_drvdata;
 	}
 
-	/* Get the PHY interface/device address */
-	uint32_prop = (typeof(uint32_prop))of_get_property(dev_node, "reg", &lenp);
-	if (unlikely(uint32_prop == NULL)) {
-		cpu_dev_err(dev, "%s:%hu:%s(): of_get_property(%s, reg) failed\n",
-			    __file__, __LINE__, __func__, dev_node->full_name);
-		_errno = -EINVAL;
-		goto _return_of_node_put;
-	}
-	BUG_ON(lenp != sizeof(uint32_t));
-
-	/* Get the MDIO bus */
-	tmp_node = of_get_parent(dev_node);
-	if (unlikely(tmp_node == NULL)) {
-		cpu_dev_err(dev, "%s:%hu:%s(): of_get_parent(%s) failed\n",
-			    __file__, __LINE__, __func__, dev_node->full_name);
-		_errno = -EINVAL;
-		goto _return_of_node_put;
-	}
-	of_node_put(dev_node);
-	dev_node = tmp_node;
-
-	/* Build the PHY id/address */
-	fsl_pq_mdio_bus_name(bus_name, dev_node);
-	of_node_put(dev_node);
-	_errno = snprintf(mac_dev->phy_id, sizeof(mac_dev->phy_id), "%s:%02x",
-				bus_name, *uint32_prop);
-	if (unlikely(_errno < 0 || _errno >= sizeof(mac_dev->phy_id))) {
-		cpu_dev_err(dev, "%s:%hu:%s(): snprintf() = %d\n",
-			    __file__, __LINE__, __func__, _errno);
-		if (_errno > 0)
-			_errno = -ENOBUFS;
-		goto _return_dev_set_drvdata;
-	}
+	mac_dev->tbi_node = of_parse_phandle(mac_node, "tbi-handle", 0);
 
 	_errno = mac_dev->init(mac_dev);
 	if (unlikely(_errno < 0)) {

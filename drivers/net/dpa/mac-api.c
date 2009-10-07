@@ -32,8 +32,12 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/of_platform.h>
+#include <linux/of_mdio.h>
+#include <linux/phy.h>
+#include <linux/netdevice.h>
 
 #include "dpa-common.h"
+#include "dpa.h"
 #include "mac.h"
 
 #include "error_ext.h"	/* GET_ERROR_TYPE, E_OK */
@@ -185,13 +189,20 @@ static int __cold start(struct mac_device *mac_dev)
 {
 	int	 _errno;
 	t_Error	 err;
+	struct phy_device *phy_dev = mac_dev->phy_dev;
 
 	err = FM_MAC_Enable(((struct mac_priv_s *)macdev_priv(mac_dev))->mac,
-			    e_COMM_MODE_RX_AND_TX);
+			e_COMM_MODE_RX_AND_TX);
 	_errno = -GET_ERROR_TYPE(err);
 	if (unlikely(_errno < 0))
-		cpu_dev_err(mac_dev->dev, "%s:%hu:%s(): FM_MAC_Enable() = 0x%08x\n",
-			    __file__, __LINE__, __func__, err);
+		cpu_dev_err(mac_dev->dev,
+				"%s:%hu:%s(): FM_MAC_Enable() = 0x%08x\n",
+				__file__, __LINE__, __func__, err);
+
+	if (macdev2enetinterface(mac_dev) != e_ENET_MODE_XGMII_10000)
+		phy_start(phy_dev);
+	else if (phy_dev->drv->read_status)
+		phy_dev->drv->read_status(phy_dev);
 
 	return _errno;
 }
@@ -201,12 +212,16 @@ static int __cold stop(struct mac_device *mac_dev)
 	int	 _errno;
 	t_Error	 err;
 
+	if (macdev2enetinterface(mac_dev) != e_ENET_MODE_XGMII_10000)
+		phy_stop(mac_dev->phy_dev);
+
 	err = FM_MAC_Disable(((struct mac_priv_s *)macdev_priv(mac_dev))->mac,
-			     e_COMM_MODE_RX_AND_TX);
+				e_COMM_MODE_RX_AND_TX);
 	_errno = -GET_ERROR_TYPE(err);
 	if (unlikely(_errno < 0))
-		cpu_dev_err(mac_dev->dev, "%s:%hu:%s(): FM_MAC_Disable() = 0x%08x\n",
-			    __file__, __LINE__, __func__, err);
+		cpu_dev_err(mac_dev->dev,
+				"%s:%hu:%s(): FM_MAC_Disable() = 0x%08x\n",
+				__file__, __LINE__, __func__, err);
 
 	return _errno;
 }
@@ -216,28 +231,101 @@ static int __cold change_promisc(struct mac_device *mac_dev)
 	int	 _errno;
 	t_Error	 err;
 
-	err = FM_MAC_SetPromiscuous(((struct mac_priv_s *)macdev_priv(mac_dev))->mac,
-				    mac_dev->promisc = !mac_dev->promisc);
+	err = FM_MAC_SetPromiscuous(
+			((struct mac_priv_s *)macdev_priv(mac_dev))->mac,
+			mac_dev->promisc = !mac_dev->promisc);
 	_errno = -GET_ERROR_TYPE(err);
 	if (unlikely(_errno < 0))
-		cpu_dev_err(mac_dev->dev, "%s:%hu:%s(): FM_MAC_SetPromiscuous() = 0x%08x\n",
-			    __file__, __LINE__, __func__, err);
+		cpu_dev_err(mac_dev->dev,
+			"%s:%hu:%s(): FM_MAC_SetPromiscuous() = 0x%08x\n",
+			__file__, __LINE__, __func__, err);
 
 	return _errno;
 }
 
-static int __cold adjust_link(struct mac_device *mac_dev, uint16_t speed, bool full_duplex)
+static void adjust_link(struct net_device *net_dev)
 {
+	struct dpa_priv_s *priv = netdev_priv(net_dev);
+	struct mac_device *mac_dev = priv->mac_dev;
+	struct phy_device *phy_dev = mac_dev->phy_dev;
 	int	 _errno;
 	t_Error	 err;
 
-	err = FM_MAC_AdjustLink(((struct mac_priv_s *)macdev_priv(mac_dev))->mac, speed, full_duplex);
+	if (!phy_dev->link)
+		return;
+
+	err = FM_MAC_AdjustLink(
+			((struct mac_priv_s *)macdev_priv(mac_dev))->mac,
+			phy_dev->speed, phy_dev->duplex);
 	_errno = -GET_ERROR_TYPE(err);
 	if (unlikely(_errno < 0))
-		cpu_dev_err(mac_dev->dev, "%s:%hu:%s(): FM_MAC_AdjustLink() = 0x%08x\n",
-			    __file__, __LINE__, __func__, err);
+		cpu_dev_err(mac_dev->dev,
+			"%s:%hu:%s(): FM_MAC_AdjustLink() = 0x%08x\n",
+			__file__, __LINE__, __func__, err);
 
-	return _errno;
+	return;
+}
+
+/* Initializes driver's PHY state, and attaches to the PHY.
+ * Returns 0 on success.
+ */
+static int dtsec_init_phy(struct net_device *net_dev)
+{
+	struct dpa_priv_s	*priv;
+	struct mac_device	*mac_dev;
+	struct phy_device	*phy_dev;
+
+	priv = netdev_priv(net_dev);
+	mac_dev = priv->mac_dev;
+
+	if (!mac_dev->phy_node)
+		return -ENODEV;
+
+	phy_dev = of_phy_connect(net_dev, mac_dev->phy_node,
+			&adjust_link, 0, mac_dev->phy_if);
+	if (!phy_dev) {
+		cpu_netdev_err(net_dev,
+				"%s:%hu:%s(): Could not attach to PHY %s\n",
+				__file__, __LINE__, __func__,
+				priv->mac_dev->phy_node->full_name);
+		return -ENODEV;
+	}
+
+	/* Remove any features not supported by the controller */
+	phy_dev->supported &= priv->mac_dev->if_support;
+	phy_dev->advertising = phy_dev->supported;
+
+	priv->mac_dev->phy_dev = phy_dev;
+
+	return 0;
+}
+
+static int xgmac_init_phy(struct net_device *net_dev)
+{
+	struct dpa_priv_s *priv = netdev_priv(net_dev);
+	struct mac_device *mac_dev = priv->mac_dev;
+	struct phy_device *phy_dev;
+
+	if (!mac_dev->phy_node)
+		return -ENODEV;
+
+	phy_dev = of_phy_attach(net_dev, mac_dev->phy_node, 0,
+			mac_dev->phy_if);
+
+	if (!phy_dev) {
+		cpu_netdev_err(net_dev,
+				"%s:%hu:%s(): Could not attach to PHY %s\n",
+				__file__, __LINE__, __func__,
+				priv->mac_dev->phy_node->full_name);
+		return -ENODEV;
+	}
+
+	phy_dev->supported &= priv->mac_dev->if_support;
+	phy_dev->advertising = phy_dev->supported;
+
+	mac_dev->phy_dev = phy_dev;
+
+	return 0;
 }
 
 static int __cold uninit(struct mac_device *mac_dev)
@@ -268,21 +356,21 @@ static int __cold uninit(struct mac_device *mac_dev)
 
 static void __devinit __cold setup_dtsec(struct mac_device *mac_dev)
 {
+	mac_dev->init_phy	= dtsec_init_phy;
 	mac_dev->init		= init;
 	mac_dev->start		= start;
 	mac_dev->stop		= stop;
 	mac_dev->change_promisc	= change_promisc;
-	mac_dev->adjust_link	= adjust_link;
 	mac_dev->uninit		= uninit;
 }
 
 static void __devinit __cold setup_xgmac(struct mac_device *mac_dev)
 {
+	mac_dev->init_phy	= xgmac_init_phy;
 	mac_dev->init		= init;
 	mac_dev->start		= start;
 	mac_dev->stop		= stop;
 	mac_dev->change_promisc	= change_promisc;
-	mac_dev->adjust_link	= adjust_link;
 	mac_dev->uninit		= uninit;
 }
 
