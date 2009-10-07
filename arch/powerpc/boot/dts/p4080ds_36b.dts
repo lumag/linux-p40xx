@@ -25,14 +25,23 @@
 		ethernet1 = &enet1;
 		ethernet2 = &enet2;
 		ethernet3 = &enet3;
-		ethernet5 = &enet5;
-/*
 		ethernet4 = &enet4;
+		ethernet5 = &enet5;
 		ethernet6 = &enet6;
 		ethernet7 = &enet7;
 		ethernet8 = &enet8;
 		ethernet9 = &enet9;
-*/
+		phy_rgmii = &phyrgmii;
+		phy5_slot3 = &phy5slot3;
+		phy6_slot3 = &phy6slot3;
+		phy7_slot3 = &phy7slot3;
+		phy8_slot3 = &phy8slot3;
+		emi1_slot3 = &p4080mdio2;
+		emi1_slot4 = &p4080mdio1;
+		emi1_slot5 = &p4080mdio3;
+		emi1_rgmii = &p4080mdio0;
+		emi2_slot4 = &p4080xmdio2;
+		emi2_slot5 = &p4080xmdio3;
 		serial0 = &serial0;
 		serial1 = &serial1;
 		serial2 = &serial2;
@@ -1014,6 +1023,11 @@
 			interrupt-parent = <&mpic>;
 		};
 
+		gpio: gpio@130000 {
+			compatible = "fsl,qoriq-gpio";
+			reg = <0x130008 0xff8>;
+		};
+
 		crypto: crypto@300000 {
 			compatible = "fsl,p4080-sec4.0", "fsl,sec4.0";
 			#address-cells = <1>;
@@ -1263,31 +1277,97 @@
 				compatible = "fsl,p4080-fman-1g-mac", "fsl,fman-1g-mac";
 				reg = <0xe0000 0x1000>;
 				fsl,port-handles = <&fman0_rx0 &fman0_tx0>;
+				tbi-handle = <&tbi0>;
 				phy-handle = <&phy0>;
 				phy-connection-type = "sgmii";
 			};
 
-			mdio@e1120 {
+			mdio0: mdio@e1120 {
 				#address-cells = <1>;
 				#size-cells = <0>;
 				compatible = "fsl,fman-mdio";
 				reg = <0xe1120 0xee0>;
 				interrupts = <100 1>;
 
-				phy0: ethernet-phy@0 {
-					reg = <0x1c>;
+				tbi0: tbi-phy@8 {
+					reg = <0x8>;
+					device_type = "tbi-phy";
 				};
-				phy1: ethernet-phy@1 {
-					reg = <0x1d>;
+
+				p4080mdio0: p4080ds-mdio0 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					compatible = "fsl,p4080ds-mdio";
+					fsl,mdio-handle = <&mdio0>;
+					fsl,muxval = <0>;
+
+					phyrgmii: ethernet-phy@0 {
+						reg = <0x0>;
+					};
 				};
-				phy2: ethernet-phy@2 {
-					reg = <0x1e>;
+
+				p4080mdio1: p4080ds-mdio1 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					compatible = "fsl,p4080ds-mdio";
+					fsl,mdio-handle = <&mdio0>;
+					fsl,muxval = <1>;
+
+					phy5: ethernet-phy@1c {
+						reg = <0x1c>;
+					};
+					phy6: ethernet-phy@1d {
+						reg = <0x1d>;
+					};
+					phy7: ethernet-phy@1e {
+						reg = <0x1e>;
+					};
+					phy8: ethernet-phy@1f {
+						reg = <0x1f>;
+					};
 				};
-				phy3: ethernet-phy@3 {
-					reg = <0x1f>;
+
+				p4080mdio2: p4080ds-mdio2 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					compatible = "fsl,p4080ds-mdio";
+					fsl,mdio-handle = <&mdio0>;
+					fsl,muxval = <2>;
+					status = "disabled";
+
+					phy5slot3: ethernet-phy@1c {
+						reg = <0x1c>;
+					};
+					phy6slot3: ethernet-phy@1d {
+						reg = <0x1d>;
+					};
+					phy7slot3: ethernet-phy@1e {
+						reg = <0x1e>;
+					};
+					phy8slot3: ethernet-phy@1f {
+						reg = <0x1f>;
+					};
 				};
-				phy4: ethernet-phy@4 {
-					reg = <0>;
+
+				p4080mdio3: p4080ds-mdio3 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					compatible = "fsl,p4080ds-mdio";
+					fsl,mdio-handle = <&mdio0>;
+					fsl,muxval = <3>;
+
+					phy0: ethernet-phy@1c {
+						reg = <0x1c>;
+					};
+					phy1: ethernet-phy@1d {
+						reg = <0x1d>;
+					};
+					phy2: ethernet-phy@1e {
+						reg = <0x1e>;
+					};
+					phy3: ethernet-phy@1f {
+						reg = <0x1f>;
+					};
 				};
 			};
 
@@ -1296,16 +1376,22 @@
 				compatible = "fsl,p4080-fman-1g-mac", "fsl,fman-1g-mac";
 				reg = <0xe2000 0x1000>;
 				fsl,port-handles = <&fman0_rx1 &fman0_tx1>;
+				tbi-handle = <&tbi1>;
 				phy-handle = <&phy1>;
 				phy-connection-type = "sgmii";
 			};
 
-			mdio@e3000 {
+			mdio@e3120 {
 				#address-cells = <1>;
 				#size-cells = <0>;
-				compatible = "fsl,fman-mdio";
-				reg = <0xe3000 0x1000>;
+				compatible = "fsl,fman-tbi";
+				reg = <0xe3120 0xee0>;
 				interrupts = <100 1>;
+
+				tbi1: tbi-phy@8 {
+					reg = <8>;
+					device_type = "tbi-phy";
+				};
 			};
 
 			enet2: ethernet@e4000 {
@@ -1313,16 +1399,22 @@
 				compatible = "fsl,p4080-fman-1g-mac", "fsl,fman-1g-mac";
 				reg = <0xe4000 0x1000>;
 				fsl,port-handles = <&fman0_rx2 &fman0_tx2>;
+				tbi-handle = <&tbi2>;
 				phy-handle = <&phy2>;
 				phy-connection-type = "sgmii";
 			};
 
-			mdio@e5000 {
+			mdio@e5120 {
 				#address-cells = <1>;
 				#size-cells = <0>;
-				compatible = "fsl,fman-mdio";
-				reg = <0xe5000 0x1000>;
+				compatible = "fsl,fman-tbi";
+				reg = <0xe5120 0xee0>;
 				interrupts = <100 1>;
+
+				tbi2: tbi-phy@8 {
+					reg = <8>;
+					device_type = "tbi-phy";
+				};
 			};
 
 			enet3: ethernet@e6000 {
@@ -1330,35 +1422,63 @@
 				compatible = "fsl,p4080-fman-1g-mac", "fsl,fman-1g-mac";
 				reg = <0xe6000 0x1000>;
 				fsl,port-handles = <&fman0_rx3 &fman0_tx3>;
+				tbi-handle = <&tbi3>;
 				phy-handle = <&phy3>;
 				phy-connection-type = "sgmii";
 			};
 
-			mdio@e7000 {
+			mdio@e7120 {
 				#address-cells = <1>;
 				#size-cells = <0>;
-				compatible = "fsl,fman-mdio";
-				reg = <0xe7000 0x1000>;
+				compatible = "fsl,fman-tbi";
+				reg = <0xe7120 0xee0>;
 				interrupts = <100 1>;
+
+				tbi3: tbi-phy@8 {
+					reg = <8>;
+					device_type = "tbi-phy";
+				};
 			};
-/*
 			enet4: ethernet@f0000 {
 				cell-index = <0>;
 				compatible = "fsl,p4080-fman-10g-mac", "fsl,fman-10g-mac";
 				reg = <0xf0000 0x1000>;
 				fsl,port-handles = <&fman0_rx4 &fman0_tx4>;
-				phy-handle = <&phy4>;
+				phy-handle = <&phy10>;
 				phy-connection-type = "xgmii";
 			};
 
-			mdio@f1000 {
+			xmdio0: mdio@f1000 {
 				#address-cells = <1>;
 				#size-cells = <0>;
-				compatible = "fsl,fman-mdio";
+				compatible = "fsl,fman-xmdio";
 				reg = <0xf1000 0x1000>;
 				interrupts = <100 1>;
+
+				p4080xmdio2: p4080ds-xmdio2 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					compatible = "fsl,p4080ds-xmdio";
+					fsl,mdio-handle = <&xmdio0>;
+					fsl,muxval = <2>;
+
+					phy11: ethernet-phy@0 {
+						reg = <0x0>;
+					};
+				};
+
+				p4080xmdio3: p4080ds-xmdio3 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					compatible = "fsl,p4080ds-xmdio";
+					fsl,mdio-handle = <&xmdio0>;
+					fsl,muxval = <3>;
+
+					phy10: ethernet-phy@4 {
+						reg = <0x4>;
+					};
+				};
 			};
-*/
 		};
 
 		fman1: fman@500000 {
@@ -1511,19 +1631,20 @@
 				compatible = "fsl,p4080-fman-1g-mac", "fsl,fman-1g-mac";
 				reg = <0xe0000 0x1000>;
 				fsl,port-handles = <&fman1_rx0 &fman1_tx0>;
-				phy-handle = <&phy4>;
-				phy-connection-type = "rgmii";
+				tbi-handle = <&tbi5>;
+				phy-handle = <&phy5>;
+				phy-connection-type = "sgmii";
 			};
-/*
-			mdio@e1000 {
+			mdio@e1120 {
 				#address-cells = <1>;
 				#size-cells = <0>;
-				compatible = "fsl,fman-mdio";
-				reg = <0xe1000 0x1000>;
+				compatible = "fsl,fman-tbi";
+				reg = <0xe1120 0xee0>;
 				interrupts = <101 1>;
 
-				phy5: ethernet-phy@0 {
-					reg = <0>;
+				tbi5: tbi-phy@8 {
+					reg = <8>;
+					device_type = "tbi-phy";
 				};
 			};
 
@@ -1532,19 +1653,21 @@
 				compatible = "fsl,p4080-fman-1g-mac", "fsl,fman-1g-mac";
 				reg = <0xe2000 0x1000>;
 				fsl,port-handles = <&fman1_rx1 &fman1_tx1>;
+				tbi-handle = <&tbi6>;
 				phy-handle = <&phy6>;
-				phy-connection-type = "rgmii-id";
+				phy-connection-type = "sgmii";
 			};
 
-			mdio@e3000 {
+			mdio@e3120 {
 				#address-cells = <1>;
 				#size-cells = <0>;
-				compatible = "fsl,fman-mdio";
-				reg = <0xe3000 0x1000>;
+				compatible = "fsl,fman-tbi";
+				reg = <0xe3120 0xee0>;
 				interrupts = <101 1>;
 
-				phy6: ethernet-phy@0 {
-					reg = <0>;
+				tbi6: tbi-phy@8 {
+					reg = <8>;
+					device_type = "tbi-phy";
 				};
 			};
 
@@ -1553,19 +1676,21 @@
 				compatible = "fsl,p4080-fman-1g-mac", "fsl,fman-1g-mac";
 				reg = <0xe4000 0x1000>;
 				fsl,port-handles = <&fman1_rx2 &fman1_tx2>;
+				tbi-handle = <&tbi7>;
 				phy-handle = <&phy7>;
-				phy-connection-type = "rgmii-id";
+				phy-connection-type = "sgmii";
 			};
 
-			mdio@e5000 {
+			mdio@e5120 {
 				#address-cells = <1>;
 				#size-cells = <0>;
-				compatible = "fsl,fman-mdio";
-				reg = <0xe5000 0x1000>;
+				compatible = "fsl,fman-tbi";
+				reg = <0xe5120 0xee0>;
 				interrupts = <101 1>;
 
-				phy7: ethernet-phy@0 {
-					reg = <0>;
+				tbi7: tbi-phy@8 {
+					reg = <8>;
+					device_type = "tbi-phy";
 				};
 			};
 
@@ -1574,19 +1699,21 @@
 				compatible = "fsl,p4080-fman-1g-mac", "fsl,fman-1g-mac";
 				reg = <0xe6000 0x1000>;
 				fsl,port-handles = <&fman1_rx3 &fman1_tx3>;
+				tbi-handle = <&tbi8>;
 				phy-handle = <&phy8>;
-				phy-connection-type = "rgmii-id";
+				phy-connection-type = "sgmii";
 			};
 
-			mdio@e7000 {
+			mdio@e7120 {
 				#address-cells = <1>;
 				#size-cells = <0>;
-				compatible = "fsl,fman-mdio";
-				reg = <0xe7000 0x1000>;
+				compatible = "fsl,fman-tbi";
+				reg = <0xe7120 0xee0>;
 				interrupts = <101 1>;
 
-				phy8: ethernet-phy@0 {
-					reg = <0>;
+				tbi8: tbi-phy@8 {
+					reg = <8>;
+					device_type = "tbi-phy";
 				};
 			};
 
@@ -1595,22 +1722,9 @@
 				compatible = "fsl,p4080-fman-10g-mac", "fsl,fman-10g-mac";
 				reg = <0xf0000 0x1000>;
 				fsl,port-handles = <&fman1_rx4 &fman1_tx4>;
-				phy-handle = <&phy9>;
+				phy-handle = <&phy11>;
 				phy-connection-type = "xgmii";
 			};
-
-			mdio@f1000 {
-				#address-cells = <1>;
-				#size-cells = <0>;
-				compatible = "fsl,fman-mdio";
-				reg = <0xf1000 0x1000>;
-				interrupts = <101 1>;
-
-				phy9: ethernet-phy@0 {
-					reg = <0>;
-				};
-			};
-*/
 		};
 	};
 
@@ -1761,19 +1875,16 @@
 			fsl,qman-channel = <&qpool1>;
 			fsl,fman-mac = <&enet3>;
 		};
-/*
 		ethernet@4 {
 			compatible = "fsl,p4080-dpa-ethernet", "fsl,dpa-ethernet";
 			fsl,qman-channel = <&qpool1>;
 			fsl,fman-mac = <&enet4>;
 		};
-*/
 		ethernet@5 {
 			compatible = "fsl,p4080-dpa-ethernet", "fsl,dpa-ethernet";
 			fsl,qman-channel = <&qportal7>;
 			fsl,fman-mac = <&enet5>;
 		};
-/*
 		ethernet@6 {
 			compatible = "fsl,p4080-dpa-ethernet", "fsl,dpa-ethernet";
 			fsl,qman-channel = <&qpool1>;
@@ -1794,7 +1905,6 @@
 			fsl,qman-channel = <&qpool1>;
 			fsl,fman-mac = <&enet9>;
 		};
-*/
 	};
 
 	localbus@ffe124000 {
