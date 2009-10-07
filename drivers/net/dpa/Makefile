@@ -12,5 +12,5 @@ EXTRA_CFLAGS += -I$(NET_DPA)
 obj-$(CONFIG_FSL_FMAN) += NetCommSw/
 obj-$(CONFIG_DPA) += fsl-mac.o fsl-dpa.o
 
-fsl-dpa-objs	:= dpa-ethtool.o dpa.o
+fsl-dpa-objs	:= dpa-ethtool.o dpa.o xgmac_mdio.o
 fsl-mac-objs	:= mac.o mac-api.o
