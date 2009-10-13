@@ -896,7 +896,7 @@ ingress_rx_default_dqrr(struct qman_portal		*portal,
 	percpu_priv->count++;
 	percpu_priv->max = max(percpu_priv->max, percpu_priv->count);
 
-	schedule_work(&priv->fd_work);
+	schedule_work(&percpu_priv->fd_work);
 
 _return:
 	if (netif_msg_intr(priv))
@@ -1319,13 +1319,17 @@ static void __hot dpa_rx(struct work_struct *fd_work)
 	unsigned long flags;
 #endif
 
-	priv = (typeof(priv))container_of(fd_work, struct dpa_priv_s, fd_work);
-	net_dev = priv->net_dev;
+	percpu_priv = (typeof(percpu_priv))container_of(
+		fd_work, struct dpa_percpu_priv_s, fd_work);
+	net_dev = percpu_priv->net_dev;
+	priv = (typeof(priv))netdev_priv(net_dev);
 
 	if (netif_msg_rx_status(priv))
 		cpu_netdev_dbg(net_dev, "-> %s:%s()\n", __file__, __func__);
 
-	percpu_priv = per_cpu_ptr(priv->percpu_priv, smp_processor_id());
+	BUG_ON(percpu_priv != per_cpu_ptr(priv->percpu_priv,
+					  smp_processor_id()));
+
 	list_for_each_entry_safe(dpa_fd, tmp, &percpu_priv->fd_list, list) {
 		skb = NULL;
 
@@ -2192,7 +2196,6 @@ dpa_probe(struct of_device *_of_dev)
 	dev_set_drvdata(dev, net_dev);
 
 	priv = (typeof(priv))netdev_priv(net_dev);
-	priv->net_dev = net_dev;
 
 	priv->msg_enable = netif_msg_init(debug, -1);
 
@@ -2281,8 +2284,6 @@ dpa_probe(struct of_device *_of_dev)
 	for (i = 0; i < ARRAY_SIZE(priv->dpa_fq_list); i++)
 		INIT_LIST_HEAD(priv->dpa_fq_list + i);
 
-	INIT_WORK(&priv->fd_work, dpa_rx);
-
 	priv->percpu_priv = (typeof(priv->percpu_priv))__alloc_percpu(
 		sizeof(*priv->percpu_priv), __alignof__(*priv->percpu_priv));
 	if (unlikely(priv->percpu_priv == NULL)) {
@@ -2297,9 +2298,9 @@ dpa_probe(struct of_device *_of_dev)
 	for_each_online_cpu(i) {
 		percpu_priv = per_cpu_ptr(priv->percpu_priv, i);
 
+		percpu_priv->net_dev = net_dev;
+		INIT_WORK(&percpu_priv->fd_work, dpa_rx);
 		INIT_LIST_HEAD(&percpu_priv->fd_list);
-		percpu_priv->count	= 0;
-		percpu_priv->max	= 0;
 	}
 
 	/* FM */
