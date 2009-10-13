@@ -207,7 +207,7 @@ void __cold dpa_get_pauseparam(struct net_device *net_dev, struct ethtool_pausep
 		cpu_netdev_info(net_dev,
 				"%s:%hu:%s(): This is a MAC-less interface\n",
 				__file__, __LINE__, __func__);
-		return -ENODEV;
+		return;
 	}
 	if (unlikely(priv->mac_dev->phy_dev == NULL)) {
 		cpu_netdev_err(net_dev, "%s:%hu:%s(): phy device not initialized\n",

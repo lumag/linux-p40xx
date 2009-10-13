@@ -115,7 +115,8 @@ static int __devinit __cold init(struct mac_device *mac_dev)
 
 	priv = (typeof(priv))macdev_priv(mac_dev);
 
-	param.baseAddr =  devm_ioremap(mac_dev->dev, mac_dev->res->start, 0x2000);
+	param.baseAddr =  (typeof(param.baseAddr))(uintptr_t)devm_ioremap(
+		mac_dev->dev, mac_dev->res->start, 0x2000);
 	param.enetMode	= macdev2enetinterface(mac_dev);
 	memcpy(&param.addr, mac_dev->addr, min(sizeof(param.addr), sizeof(mac_dev->addr)));
 	param.f_Exceptions	= mac_exception;
