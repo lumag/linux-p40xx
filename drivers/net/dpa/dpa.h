@@ -44,17 +44,17 @@
 
 #include "mac.h"		/* struct mac_device */
 
-struct fd_list_head {
-	struct list_head	list;
-	size_t			count, max;
-};
-
 #ifdef CONFIG_FSL_FMAN_TEST
 struct pcd_range {
 	uint32_t			 base;
 	uint32_t			 count;
 };
 #endif /* CONFIG_FSL_FMAN_TEST */
+
+struct dpa_percpu_priv_s {
+	struct list_head	fd_list;
+	size_t			count, max;
+};
 
 struct dpa_priv_s {
 	struct net_device	*net_dev;
@@ -71,7 +71,7 @@ struct dpa_priv_s {
 	struct mac_device	*mac_dev;
 
 	struct work_struct	 fd_work;
-	struct fd_list_head	*fd_list;
+	struct dpa_percpu_priv_s	*percpu_priv;
 
 	uint32_t		 msg_enable;	/* net_device message level */
 };
