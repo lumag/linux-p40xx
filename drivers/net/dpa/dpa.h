@@ -52,12 +52,13 @@ struct pcd_range {
 #endif /* CONFIG_FSL_FMAN_TEST */
 
 struct dpa_percpu_priv_s {
+	struct net_device	*net_dev;
+	struct work_struct	 fd_work;
 	struct list_head	fd_list;
 	size_t			count, max;
 };
 
 struct dpa_priv_s {
-	struct net_device	*net_dev;
 	struct list_head	 dpa_bp_list;
 
 	uint16_t		 channel;
@@ -70,7 +71,6 @@ struct dpa_priv_s {
 
 	struct mac_device	*mac_dev;
 
-	struct work_struct	 fd_work;
 	struct dpa_percpu_priv_s	*percpu_priv;
 
 	uint32_t		 msg_enable;	/* net_device message level */
