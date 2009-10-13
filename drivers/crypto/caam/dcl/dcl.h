@@ -436,20 +436,33 @@ int32_t cnstr_shdsc_macsec_decap(u_int32_t *descbuf, u_int16_t *bufsize,
 int32_t cnstr_shdsc_snow_f8(u_int32_t *descbuf, u_int16_t *bufsize,
 			    u_int8_t *key, u_int32_t keylen,
 			    enum algdir dir, u_int32_t count,
-			    u_int8_t bearer, u_int8_t direction,
-			    u_int8_t clear);
+			    u_int8_t bearer, u_int8_t direction);
 
 int32_t cnstr_shdsc_snow_f9(u_int32_t *descbuf, u_int16_t *bufsize,
 			    u_int8_t *key, u_int32_t keylen,
 			    enum algdir dir, u_int32_t count,
-			    u_int32_t fresh, u_int8_t direction,
-			    u_int8_t clear);
+			    u_int32_t fresh, u_int8_t direction);
+
+int32_t cnstr_shdsc_kasumi_f8(u_int32_t *descbuf, u_int16_t *bufsize,
+			      u_int8_t *key, u_int32_t keylen,
+			      enum algdir dir, u_int32_t count,
+			      u_int8_t bearer, u_int8_t direction);
+
+int32_t cnstr_shdsc_kasumi_f9(u_int32_t *descbuf, u_int16_t *bufsize,
+			      u_int8_t *key, u_int32_t keylen,
+			      enum algdir dir, u_int32_t count,
+			      u_int32_t fresh, u_int8_t direction);
 
 int32_t cnstr_shdsc_cbc_blkcipher(u_int32_t *descbuf, u_int16_t *bufsize,
 				  u_int8_t *key, u_int32_t keylen,
 				  u_int8_t *iv, u_int32_t ivlen,
 				  enum algdir dir, u_int32_t cipher,
 				  u_int8_t clear);
+
+int32_t cnstr_shdsc_aes_gcm(u_int32_t *descbuf, u_int16_t *bufsize,
+			    u_int8_t *key, u_int32_t keylen, u_int8_t *ctx,
+			    enum mdstatesel mdstate, enum icvsel icv,
+			    enum algdir dir);
 
 int32_t cnstr_shdsc_hmac(u_int32_t *descbuf, u_int16_t *bufsize,
 			 u_int8_t *key, u_int32_t cipher, u_int8_t *icv,
@@ -459,7 +472,7 @@ int32_t cnstr_pcl_shdsc_3gpp_rlc_decap(u_int32_t *descbuf, u_int16_t *bufsize,
 				       u_int8_t *key, u_int32_t keysz,
 				       u_int32_t count, u_int32_t bearer,
 				       u_int32_t direction,
-				       u_int16_t payload_sz, u_int8_t clear);
+				       u_int16_t payload_sz);
 
 int32_t cnstr_pcl_shdsc_3gpp_rlc_encap(u_int32_t *descbuf, u_int16_t *bufsize,
 				       u_int8_t *key, u_int32_t keysz,
