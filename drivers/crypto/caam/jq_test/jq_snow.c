@@ -120,8 +120,7 @@ int jq_snow_f8(struct device *dev, int show)
 	memcpy(inbuf, input_msg_data, inbufsz);
 
 	stat = cnstr_shdsc_snow_f8(sdesc, &sdsz, snow_key, 128,
-				   DIR_ENCRYPT, count, bearer, direction,
-				   0);
+				   DIR_ENCRYPT, count, bearer, direction);
 
 	if (stat) {
 		printk(KERN_INFO
@@ -240,7 +239,7 @@ int jq_snow_f9(struct device *dev, int show)
 
 	stat = cnstr_shdsc_snow_f9(sdesc, &sdsz, (u_int8_t *)uia2_key, 128,
 				   DIR_ENCRYPT, uia2_count, uia2_fresh,
-				   uia2_dir, 0);
+				   uia2_dir);
 
 	if (stat) {
 		printk(KERN_INFO
