@@ -273,7 +273,7 @@ static const char *math_src0[] = {
 	"math0", "math1", "math2", "math3",
 	"imm", "<rsvd>", "<rsvd>", "<rsvd>",
 	"seqin", "seqout", "vseqin", "vseqout",
-	"0" "<rsvd>", "<rsvd>", "<rsvd>",
+	"0", "<rsvd>", "<rsvd>", "<rsvd>",
 };
 
 /* MATH instruction source1 enumerations (not same as src0) */
@@ -281,7 +281,7 @@ static const char *math_src1[] = {
 	"math0", "math1", "math2", "math3",
 	"imm", "<rsvd>", "<rsvd>", "<rsvd>",
 	"<rsvd>", "<rsvd>", "inp-fifo", "out-fifo",
-	"1" "<rsvd>", "<rsvd>", "<rsvd>",
+	"1", "<rsvd>", "<rsvd>", "<rsvd>",
 };
 
 /* MATH instruction destination enumerations */
