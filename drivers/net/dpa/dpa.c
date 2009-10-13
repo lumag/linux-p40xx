@@ -48,6 +48,9 @@
 #include <linux/highmem.h>
 #endif
 #include <linux/percpu.h>
+#ifdef CONFIG_DEBUG_FS
+#include <linux/debugfs.h>
+#endif
 
 #include "linux/fsl_bman.h"
 
@@ -79,6 +82,10 @@ MODULE_PARM_DESC(debug, "Module/Driver verbosity level");
 static uint16_t __devinitdata tx_timeout = 1000;
 module_param(tx_timeout, ushort, S_IRUGO);
 MODULE_PARM_DESC(tx_timeout, "The Tx timeout in ms");
+
+#ifdef CONFIG_DEBUG_FS
+static struct dentry *dpa_debugfs_root;
+#endif
 
 static const char rtx[][3] = {
 	[RX] = "RX",
@@ -879,6 +886,11 @@ ingress_rx_default_dqrr(struct qman_portal		*portal,
 }
 #endif /* CONFIG_FSL_FMAN_TEST */
 
+	percpu_priv = per_cpu_ptr(priv->percpu_priv, smp_processor_id());
+#ifdef CONFIG_DEBUG_FS
+	percpu_priv->hwi[RX]++;
+#endif
+
 	dpa_fd = (typeof(dpa_fd))devm_kzalloc(net_dev->dev.parent,
 			sizeof(*dpa_fd), GFP_ATOMIC);
 	if (unlikely(dpa_fd == NULL)) {
@@ -891,10 +903,11 @@ ingress_rx_default_dqrr(struct qman_portal		*portal,
 
 	dpa_fd->fd = dq->fd;
 
-	percpu_priv = per_cpu_ptr(priv->percpu_priv, smp_processor_id());
 	list_add_tail(&dpa_fd->list, &percpu_priv->fd_list);
+#ifdef CONFIG_DEBUG_FS
 	percpu_priv->count++;
 	percpu_priv->max = max(percpu_priv->max, percpu_priv->count);
+#endif
 
 	schedule_work(&percpu_priv->fd_work);
 
@@ -1078,6 +1091,10 @@ ingress_tx_default_dqrr(struct qman_portal		*portal,
     }
 }
 #endif /* CONFIG_FSL_FMAN_TEST */
+
+#ifdef CONFIG_DEBUG_FS
+	per_cpu_ptr(priv->percpu_priv, smp_processor_id())->hwi[TX]++;
+#endif
 
 	skb = *(typeof(&skb))bus_to_virt(dq->fd.addr_lo);
 
@@ -1330,6 +1347,10 @@ static void __hot dpa_rx(struct work_struct *fd_work)
 	BUG_ON(percpu_priv != per_cpu_ptr(priv->percpu_priv,
 					  smp_processor_id()));
 
+#ifdef CONFIG_DEBUG_FS
+	percpu_priv->swi++;
+#endif
+
 	list_for_each_entry_safe(dpa_fd, tmp, &percpu_priv->fd_list, list) {
 		skb = NULL;
 
@@ -1549,7 +1570,10 @@ _continue:
 
 		local_irq_disable();
 		list_del(&dpa_fd->list);
+#ifdef CONFIG_DEBUG_FS
 		percpu_priv->count--;
+		percpu_priv->total++;
+#endif
 		local_irq_enable();
 
 		devm_kfree(net_dev->dev.parent, dpa_fd);
@@ -2142,6 +2166,64 @@ static int dpa_count_fqs(const uint32_t *fqids, int num)
 	return count;
 }
 
+#ifdef CONFIG_DEBUG_FS
+static int __cold dpa_debugfs_show(struct seq_file *file, void *offset)
+{
+	int				 i, j;
+	struct dpa_priv_s		*priv;
+	struct dpa_percpu_priv_s	*percpu_priv, total;
+
+	BUG_ON(offset == NULL);
+
+	priv = (typeof(priv))netdev_priv((struct net_device *)file->private);
+
+	memset(&total, 0, sizeof(total));
+
+	seq_printf(file, "hardware/logical cpu\thwi[RX]\t\tswi\t\ttotal\t\tmax"
+		   "\t\thwi[TX]\n");
+	for_each_online_cpu(i) {
+		percpu_priv = per_cpu_ptr(priv->percpu_priv, i);
+
+		total.total	+= percpu_priv->total;
+		total.max	+= percpu_priv->max;
+		total.swi	+= percpu_priv->swi;
+		for (j = 0; j < ARRAY_SIZE(total.hwi); j++)
+			total.hwi[j] += percpu_priv->hwi[j];
+
+		seq_printf(file, "%hu/%hu\t\t\t0x%08x\t0x%08x\t0x%08x\t0x%08x\t"
+			   "0x%08x\n",
+			   get_hard_smp_processor_id(i), i,
+			   percpu_priv->hwi[RX], percpu_priv->swi,
+			   percpu_priv->total, percpu_priv->max,
+			   percpu_priv->hwi[TX]);
+	}
+	seq_printf(file, "Total\t\t\t0x%08x\t0x%08x\t0x%08x\t0x%08x\t0x%08x\n",
+		   total.hwi[RX], total.swi, total.total, total.max,
+		   total.hwi[TX]);
+
+	return 0;
+}
+
+static int __cold dpa_debugfs_open(struct inode *inode, struct file *file)
+{
+	int	_errno;
+
+	_errno = single_open(file, dpa_debugfs_show, inode->i_private);
+	if (unlikely(_errno < 0))
+		cpu_netdev_err((struct net_device *)inode->i_private,
+			       "%s:%hu:%s(): single_open() = %d\n",
+			       __file__, __LINE__, __func__, _errno);
+	return _errno;
+}
+
+static const struct file_operations dpa_debugfs_fops = {
+	.open		= dpa_debugfs_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+#endif
+
 static int __devinit __cold __attribute__((nonnull))
 dpa_probe(struct of_device *_of_dev)
 {
@@ -2612,8 +2694,29 @@ dpa_probe(struct of_device *_of_dev)
 		goto _return_dpa_fq_free;
 	}
 
+#ifdef CONFIG_DEBUG_FS
+	priv->debugfs_file = debugfs_create_file(net_dev->name, S_IRUGO,
+						 dpa_debugfs_root, net_dev,
+						 &dpa_debugfs_fops);
+	if (unlikely(priv->debugfs_file == NULL)) {
+		_errno = -ENOMEM;
+		if (netif_msg_probe(priv))
+			cpu_netdev_err(net_dev, "%s:%hu:%s(): "
+				       "debugfs_create_file(%s/%s/%s) = %d\n",
+				       __file__, __LINE__, __func__,
+				       powerpc_debugfs_root->d_iname,
+				       dpa_debugfs_root->d_iname, net_dev->name,
+				       _errno);
+		goto _return_unregister_netdev;
+	}
+#endif
+
 	goto _return;
 
+#ifdef CONFIG_DEBUG_FS
+_return_unregister_netdev:
+	unregister_netdev(net_dev);
+#endif
 _return_dpa_fq_free:
 	for (i = 0; i < ARRAY_SIZE(priv->dpa_fq_list); i++)
 		dpa_fq_free(dev, priv->dpa_fq_list + i);
@@ -2675,6 +2778,11 @@ static int __devexit __cold dpa_remove(struct of_device *of_dev)
 
 	dpa_bp_free(dev, &priv->dpa_bp_list);
 
+#ifdef CONFIG_DEBUG_FS
+	debugfs_remove(priv->debugfs_file);
+	free_percpu(priv->percpu_priv);
+#endif
+
 	free_netdev(net_dev);
 
 	cpu_dev_dbg(dev, "%s:%s() ->\n", __file__, __func__);
@@ -2698,16 +2806,33 @@ static int __init __cold dpa_load(void)
 
 	cpu_pr_info(KBUILD_MODNAME ": " DPA_DESCRIPTION " (" VERSION ")\n");
 
+#ifdef CONFIG_DEBUG_FS
+	dpa_debugfs_root = debugfs_create_dir(KBUILD_MODNAME,
+					      powerpc_debugfs_root);
+	if (unlikely(dpa_debugfs_root == NULL)) {
+		_errno = -ENOMEM;
+		cpu_pr_err(KBUILD_MODNAME ": %s:%hu:%s(): "
+			   "debugfs_create_dir(%s/"KBUILD_MODNAME") = %d\n",
+			   __file__, __LINE__, __func__,
+			   powerpc_debugfs_root->d_iname, _errno);
+		goto _return;
+	}
+#endif
+
 	_errno = of_register_platform_driver(&dpa_driver);
 	if (unlikely(_errno < 0)) {
 		cpu_pr_err(KBUILD_MODNAME
 			": %s:%hu:%s(): of_register_platform_driver() = %d\n",
 			__file__, __LINE__, __func__, _errno);
-		goto _return;
+		goto _return_debugfs_remove;
 	}
 
 	goto _return;
 
+#ifdef CONFIG_DEBUG_FS
+_return_debugfs_remove:
+	debugfs_remove(dpa_debugfs_root);
+#endif
 _return:
 	cpu_pr_debug(KBUILD_MODNAME ": %s:%s() ->\n", __file__, __func__);
 
@@ -2720,6 +2845,10 @@ static void __exit __cold dpa_unload(void)
 	cpu_pr_debug(KBUILD_MODNAME ": -> %s:%s()\n", __file__, __func__);
 
 	of_unregister_platform_driver(&dpa_driver);
+
+#ifdef CONFIG_DEBUG_FS
+	debugfs_remove(dpa_debugfs_root);
+#endif
 
 	cpu_pr_debug(KBUILD_MODNAME ": %s:%s() ->\n", __file__, __func__);
 }

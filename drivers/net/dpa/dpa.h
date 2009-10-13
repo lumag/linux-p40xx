@@ -37,6 +37,9 @@
 #include <linux/netdevice.h>
 #include <linux/list.h>		/* struct list_head */
 #include <linux/workqueue.h>	/* struct work_struct */
+#ifdef CONFIG_DEBUG_FS
+#include <linux/dcache.h>	/* struct dentry */
+#endif
 
 #include "linux/fsl_qman.h"	/* struct qman_fq */
 
@@ -55,7 +58,9 @@ struct dpa_percpu_priv_s {
 	struct net_device	*net_dev;
 	struct work_struct	 fd_work;
 	struct list_head	fd_list;
-	size_t			count, max;
+#ifdef CONFIG_DEBUG_FS
+	size_t			 count, total, max, hwi[2], swi;
+#endif
 };
 
 struct dpa_priv_s {
@@ -72,6 +77,9 @@ struct dpa_priv_s {
 	struct mac_device	*mac_dev;
 
 	struct dpa_percpu_priv_s	*percpu_priv;
+#ifdef CONFIG_DEBUG_FS
+	struct dentry			*debugfs_file;
+#endif
 
 	uint32_t		 msg_enable;	/* net_device message level */
 };
