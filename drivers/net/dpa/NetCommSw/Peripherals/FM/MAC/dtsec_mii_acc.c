@@ -112,7 +112,7 @@ t_Error DTSEC_MII_ReadPhyReg(t_Handle h_Dtsec,
     tmpReg = GET_UINT32(p_MiiAccess->miimcom);
 
     if (*p_Data == 0xffff)
-        RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("Read wrong data: phyAddr"));
+        RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("Read wrong data (0xffff): phyAddr 0x%x, reg 0x%x", phyAddr, reg));
 
     return E_OK;
 }

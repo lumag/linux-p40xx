@@ -59,6 +59,47 @@
 *//***************************************************************************/
 
 /**************************************************************************//**
+ @Description   FM MAC Exceptions
+*//***************************************************************************/
+typedef enum e_FmMacExceptions {
+    e_FM_MAC_EX_10G_MDIO_SCAN_EVENTMDIO
+   ,e_FM_MAC_EX_10G_MDIO_CMD_CMPL
+   ,e_FM_MAC_EX_10G_REM_FAULT
+   ,e_FM_MAC_EX_10G_LOC_FAULT
+   ,e_FM_MAC_EX_10G_1TX_ECC_ER
+   ,e_FM_MAC_EX_10G_TX_FIFO_UNFL
+   ,e_FM_MAC_EX_10G_TX_FIFO_OVFL
+   ,e_FM_MAC_EX_10G_TX_ER
+   ,e_FM_MAC_EX_10G_RX_FIFO_OVFL
+   ,e_FM_MAC_EX_10G_RX_ECC_ER
+   ,e_FM_MAC_EX_10G_RX_JAB_FRM
+   ,e_FM_MAC_EX_10G_RX_OVRSZ_FRM
+   ,e_FM_MAC_EX_10G_RX_RUNT_FRM
+   ,e_FM_MAC_EX_10G_RX_FRAG_FRM
+   ,e_FM_MAC_EX_10G_RX_LEN_ER
+   ,e_FM_MAC_EX_10G_RX_CRC_ER
+   ,e_FM_MAC_EX_10G_RX_ALIGN_ER
+   ,e_FM_MAC_EX_1G_BAB_RX
+   ,e_FM_MAC_EX_1G_RX_CTL
+   ,e_FM_MAC_EX_1G_MIB_CNT_OVFL
+   ,e_FM_MAC_EX_1G_GRATEFUL_TX_STP_COMPLET
+   ,e_FM_MAC_EX_1G_BAB_TX
+   ,e_FM_MAC_EX_1G_TX_CTL
+   ,e_FM_MAC_EX_1G_TX_ERR
+   ,e_FM_MAC_EX_1G_LATE_COL
+   ,e_FM_MAC_EX_1G_COL_RET_LMT
+   ,e_FM_MAC_EX_1G_TX_FIFO_UNDRN
+   ,e_FM_MAC_EX_1G_MAG_PCKT
+   ,e_FM_MAC_EX_1G_MII_MNG_RD_COMPLET
+   ,e_FM_MAC_EX_1G_MII_MNG_WR_COMPLET
+   ,e_FM_MAC_EX_1G_GRATEFUL_RX_STP_COMPLET
+   ,e_FM_MAC_EX_1G_TX_DATA_ERR
+   ,e_FM_MAC_EX_1G_RX_DATA_ERR
+   ,e_FM_MAC_EX_1G_1588_TS_RX_ERR
+} e_FmMacExceptions;
+
+#if 0
+/**************************************************************************//**
  @Description   interrupt setup option
 *//***************************************************************************/
 typedef enum e_FmMacIntOption {
@@ -76,7 +117,7 @@ typedef enum e_FmMacExceptions {
     e_FM_MAC_INT_MINOR                      /**<   Disable all Interrupts */
 } e_FmMacExceptions;
 
-
+#endif /* 0*/
 /**************************************************************************//**
  @Function      t_FmMacExceptionCallback
 
@@ -84,13 +125,12 @@ typedef enum e_FmMacExceptions {
 
  @Param[in]     h_App             - Handle to the upper layer handler
 
- @Param[in]     exceptions        - Exceptions clasification
+ @Param[in]     exceptions        - The exception that occured
 
- @Param[in]     events            - bitwise denition of the exact mac event register
 
  @Return        void.
 *//***************************************************************************/
-typedef void (t_FmMacExceptionCallback)(t_Handle h_App, e_FmMacExceptions exceptions, uint32_t events);
+typedef void (t_FmMacExceptionCallback)(t_Handle h_App, e_FmMacExceptions exceptions);
 
 
 /**************************************************************************//**
@@ -117,26 +157,26 @@ typedef struct t_FmMacStatistics {
     uint64_t  reStatPause;             /**< Pause MAC Control sent */
 
 /* MIB II */
-    uint64_t  ifInOctets;               /**< Total number of byte received. */
-    uint64_t  ifInPkts;                 /**< Total number of packets received.*/
-    uint64_t  ifInMcastPkts;            /**< Total number of multicast frame received*/
-    uint64_t  ifInBcastPkts;            /**< Total number of broadcast frame received */
-    uint64_t  ifInDiscards;             /**< Frames received, but discarded due to problems within the MAC RX. */
-    uint64_t  ifInErrors;               /**< Number of frames received with error:
-                                                • FIFO Overflow Error
-                                                • CRC Error
-                                                • Frame Too Long Error
-                                                • Alignment Error
-                                                • The dedicated Error Code (0xfe, not a code error) was received */
-    uint64_t  ifOutOctets;              /**< Total number of byte sent. */
-    uint64_t  ifOutPkts;                /**< Total number of packets sent .*/
-    uint64_t  ifOutMcastPkts;           /**< Total number of multicast frame sent */
-    uint64_t  ifOutBcastPkts;           /**< Total number of multicast frame sent */
-    uint64_t  ifOutDiscards;            /**< Frames received, but discarded due to problems within the MAC TX N/A!.*/
-    uint64_t  ifOutErrors;              /**< Number of frames transmitted with error:
-                                                • FIFO Overflow Error
-                                                • FIFO Underflow Error
-                                                • Other*/
+    uint64_t  ifInOctets;              /**< Total number of byte received. */
+    uint64_t  ifInPkts;                /**< Total number of packets received.*/
+    uint64_t  ifInMcastPkts;           /**< Total number of multicast frame received*/
+    uint64_t  ifInBcastPkts;           /**< Total number of broadcast frame received */
+    uint64_t  ifInDiscards;            /**< Frames received, but discarded due to problems within the MAC RX. */
+    uint64_t  ifInErrors;              /**< Number of frames received with error:
+                                               • FIFO Overflow Error
+                                               • CRC Error
+                                               • Frame Too Long Error
+                                               • Alignment Error
+                                               • The dedicated Error Code (0xfe, not a code error) was received */
+    uint64_t  ifOutOctets;             /**< Total number of byte sent. */
+    uint64_t  ifOutPkts;               /**< Total number of packets sent .*/
+    uint64_t  ifOutMcastPkts;          /**< Total number of multicast frame sent */
+    uint64_t  ifOutBcastPkts;          /**< Total number of multicast frame sent */
+    uint64_t  ifOutDiscards;           /**< Frames received, but discarded due to problems within the MAC TX N/A!.*/
+    uint64_t  ifOutErrors;             /**< Number of frames transmitted with error:
+                                               • FIFO Overflow Error
+                                               • FIFO Underflow Error
+                                               • Other*/
 } t_FmMacStatistics;
 
 
@@ -156,12 +196,15 @@ typedef struct t_FmMacParams {
     uint8_t                     macId;              /**< MAC ID <dTSEC 0-3> <10G 0>         */
     t_EnetAddr                  addr;               /**< MAC address of device; First octet is sent first */
     e_EnetMode                  enetMode;           /**< Ethernet operation mode (MAC-PHY interface and speed) */
+    t_Handle                    h_Fm;               /**< A handle to the FM object this port related to */
+    int                         mdioIrq;            /**< MDIO exceptions interrupt source - not valid for all
+                                                         MACs; for MACs that don't have mdio-irq, leave this
+                                                         parameters 0; For polling, put this parameter - NO_IRQ */
+    t_FmMacExceptionCallback    *f_Events;          /**< MDIO Events Callback Routine         */
     t_FmMacExceptionCallback    *f_Exceptions;      /**< Exception Callback Routine         */
     t_Handle                    h_App;              /**< A handle to an application layer object; This handle will
                                                          be passed by the driver upon calling the above callbacks */
-    t_Handle                    h_Fm;               /**< A handle to the FM object this port related to */
 } t_FmMacParams;
-
 
 /**************************************************************************//**
  @Function      FM_MAC_Config
@@ -213,6 +256,21 @@ t_Error  FM_MAC_Free (t_Handle h_FmMac);
 
  @{
 *//***************************************************************************/
+
+/**************************************************************************//**
+ @Function      FM_MAC_ConfigResetOnInit
+
+ @Description   Tell the driver whether to reset the FM MAC before initialization or
+                not. It changes the default configuration [DEFAULT_resetOnInit].
+
+ @Param[in]     h_FmMac    A handle to a FM MAC Module.
+ @Param[in]     enable     When TRUE, FM will be reset before any initialization.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_MAC_Config() and before FM_MAC_Init().
+*//***************************************************************************/
+t_Error FM_MAC_ConfigResetOnInit (t_Handle h_FmMac, bool enable);
 
 /**************************************************************************//**
  @Function      FM_MAC_ConfigStatistics
@@ -311,6 +369,23 @@ t_Error FM_MAC_ConfigHalfDuplex (t_Handle h_FmMac, bool enable);
  @Cautions      Allowed only following FM_MAC_Config() and before FM_MAC_Init().
 *//***************************************************************************/
 t_Error FM_MAC_ConfigHugeFrames (t_Handle h_FmMac, bool enable);
+
+/**************************************************************************//**
+ @Function      FM_MAC_ConfigException
+
+ @Description   Change Excption selection from default
+
+ @Param[in]     h_FmMac         A handle to a FM MAC Module.
+ @Param[in]     ex              Type of the desired excpetions
+ @Param[in]     enable          TRUE to enable the specified exception, FALSE to disable it.
+
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_MAC_Config() and before FM_MAC_Init().
+*//***************************************************************************/
+t_Error FM_MAC_ConfigException(t_Handle h_FmMac, e_FmMacExceptions ex, bool enable);
+
 /** @} */ /* end of FM_mac_advanced_init_grp group */
 /** @} */ /* end of FM_mac_init_grp group */
 
@@ -366,21 +441,6 @@ t_Error FM_MAC_Disable (t_Handle h_FmMac, e_CommMode mode);
 t_Error FM_MAC_Restart (t_Handle h_FmMac, e_CommMode mode);
 
 /**************************************************************************//**
- @Function      FM_MAC_Reset
-
- @Description   Reset FM-MAC controller. The controller will be back to default setup.
-
- @Param[in]     h_FmMac    A handle to a FM MAC Module.
- @Param[in]     wait       Reset the MAC to this mode
-
- @Return        E_OK on success; Error code otherwise.
-
- @Cautions      Allowed only following FM_MAC_Disable(). After this routine is
-                being called, the only operation allowed is FM_MAC_Free().
-*//***************************************************************************/
-t_Error FM_MAC_Reset (t_Handle h_FmMac, bool wait);
-
-/**************************************************************************//**
  @Function      FM_MAC_TxMacPause
 
  @Description   Enable transmition of  Pause frame
@@ -409,18 +469,20 @@ t_Error FM_MAC_TxMacPause (t_Handle h_FmMac, uint16_t pauseTime, uint16_t exPaus
 t_Error FM_MAC_ResetCounters (t_Handle h_FmMac);
 
 /**************************************************************************//**
- @Function      FM_MAC_SetExceptions
+ @Function      FM_MAC_SetException
 
- @Description   Setup Excption Handler
+ @Description   Enable/Disable a sspecific Excption
 
  @Param[in]     h_FmMac         A handle to a FM MAC Module.
  @Param[in]     ex              Type of the desired excpetions
+ @Param[in]     enable          TRUE to enable the specified exception, FALSE to disable it.
+
 
  @Return        E_OK on success; Error code otherwise.
 
  @Cautions      Allowed only following FM_MAC_Init().
 *//***************************************************************************/
-t_Error FM_MAC_SetExceptions(t_Handle h_FmMac, e_FmMacExceptions ex);
+t_Error FM_MAC_SetException(t_Handle h_FmMac, e_FmMacExceptions ex, bool enable);
 
 /**************************************************************************//**
  @Function      FM_MAC_GetStatistics

@@ -195,10 +195,10 @@ typedef enum e_TimerMode
 *//***************************************************************************/
 typedef enum e_CommMode
 {
-      e_COMM_MODE_NONE         = 0  /**< No transmit/receive communication */
-    , e_COMM_MODE_RX           = 1  /**< Only receive communication */
-    , e_COMM_MODE_TX           = 2  /**< Only transmit communication */
-    , e_COMM_MODE_RX_AND_TX    = 3  /**< Both transmit and receive communication */
+    e_COMM_MODE_NONE        = 0,    /**< No transmit/receive communication */
+    e_COMM_MODE_RX          = 1,    /**< Only receive communication */
+    e_COMM_MODE_TX          = 2,    /**< Only transmit communication */
+    e_COMM_MODE_RX_AND_TX   = 3     /**< Both transmit and receive communication */
 } e_CommMode;
 
 /**************************************************************************//**
@@ -207,12 +207,15 @@ typedef enum e_CommMode
 typedef enum e_DiagMode
 {
     e_DIAG_MODE_NONE = 0,
-    e_DIAG_MODE_CTRL_LOOPBACK,
-    e_DIAG_MODE_PHY_LOOPBACK,
-    e_DIAG_MODE_LINE_LOOPBACK,
-    e_DIAG_MODE_CTRL_ECHO,
-    e_DIAG_MODE_PHY_ECHO
-
+    e_DIAG_MODE_CTRL_LOOPBACK,      /**< loopback in the controller; E.g. MAC, TDM, etc. */
+#ifdef P4080
+    e_DIAG_MODE_CHIP_LOOPBACK,      /**< loopback in the chip but not in controller;
+                                         E.g. IO-pins, SerDes, etc. */
+#endif /* P4080 */
+    e_DIAG_MODE_PHY_LOOPBACK,       /**< loopback in the external PHY */
+    e_DIAG_MODE_LINE_LOOPBACK,      /**< loopback in the external line */
+    e_DIAG_MODE_CTRL_ECHO,          /**< */
+    e_DIAG_MODE_PHY_ECHO            /**< */
 } e_DiagMode;
 
 /**************************************************************************//**

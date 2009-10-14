@@ -100,58 +100,59 @@
 /**************************************************************************//**
  @Description       defaults
 *//***************************************************************************/
-#define DEFAULT_exceptions              (FM_EX_DMA_BUS_ERROR            |\
-                                        FM_EX_DMA_READ_ECC              |\
-                                        FM_EX_DMA_SYSTEM_WRITE_ECC      |\
-                                        FM_EX_DMA_FM_WRITE_ECC          |\
-                                        FM_EX_FPM_STALL_ON_TASKS        |\
-                                        FM_EX_FPM_SINGLE_ECC            |\
-                                        FM_EX_FPM_DOUBLE_ECC            |\
-                                        FM_EX_QMI_SINGLE_ECC            |\
-                                        FM_EX_QMI_DEQ_FROM_DEFQ         |\
-                                        FM_EX_QMI_DOUBLE_ECC            |\
-                                        FM_EX_BMI_LIST_RAM_ECC          |\
-                                        FM_EX_BMI_PIPELINE_ECC          |\
-                                        FM_EX_BMI_STATISTICS_RAM_ECC    |\
-                                        FM_EX_IRAM_ECC                  |\
-                                        FM_EX_NURAM_ECC                 )
-#define DEFAULT_totalNumOfTasks         96
-#define DEFAULT_totalFifoSize           (128*KILOBYTE)
-#define DEFAULT_maxNumOfOpenDmas      24
-#define DEFAULT_eccEnable               FALSE
-#define DEFAULT_dispLimit               16
-#define DEFAULT_prsDispTh               16
-#define DEFAULT_plcrDispTh              16
-#define DEFAULT_kgDispTh                16
-#define DEFAULT_bmiDispTh               16
-#define DEFAULT_qmiEnqDispTh            16
-#define DEFAULT_qmiDeqDispTh            16
-#define DEFAULT_fmCtl1DispTh             16
-#define DEFAULT_fmCtl2DispTh             16
-#define DEFAULT_cacheOverride           e_FM_DMA_NO_CACHE_OR
-#define DEFAULT_aidOverride             FALSE
-#define DEFAULT_aidMode                 e_FM_DMA_AID_OUT_PORT_ID
-#define DEFAULT_secureBusProtect        FALSE
-#define DEFAULT_privilegeBusProtect     FALSE
-#define DEFAULT_dmaStopOnBusError       FALSE
-#define DEFAULT_busProtectionType       e_FM_DMA_DATA_BUS_PROT
-#define DEFAULT_stopAtBusError          FALSE
-#define DEFAULT_axiDbgNumOfBeats        1
-#define DEFAULT_dmaCamNumOfEntries      32
-#define DEFAULT_dmaCommQLow             16
-#define DEFAULT_dmaCommQHigh            24
-#define DEFAULT_dmaReadIntBufLow        64
-#define DEFAULT_dmaReadIntBufHigh       96
-#define DEFAULT_dmaWriteIntBufLow       64
-#define DEFAULT_dmaWriteIntBufHigh      96
-#define DEFAULT_dmaSosEmergency         0
-#define DEFAULT_dmaDbgCntMode           e_FM_DMA_DBG_NO_CNT
-#define DEFAULT_catastrophicErr         e_FM_CATASTROPHIC_ERR_STALL_PORT
-#define DEFAULT_dmaErr                  e_FM_DMA_ERR_CATASTROPHIC
-#define DEFAULT_resetOnInit             FALSE
-#define DEFAULT_haltOnExternalActivation        FALSE
-#define DEFAULT_haltOnUnrecoverableEccError     FALSE
-#define DEFAULT_externalEccRamsEnable           FALSE
+#define DEFAULT_exceptions                  (FM_EX_DMA_BUS_ERROR            |\
+                                            FM_EX_DMA_READ_ECC              |\
+                                            FM_EX_DMA_SYSTEM_WRITE_ECC      |\
+                                            FM_EX_DMA_FM_WRITE_ECC          |\
+                                            FM_EX_FPM_STALL_ON_TASKS        |\
+                                            FM_EX_FPM_SINGLE_ECC            |\
+                                            FM_EX_FPM_DOUBLE_ECC            |\
+                                            FM_EX_QMI_SINGLE_ECC            |\
+                                            FM_EX_QMI_DEQ_FROM_DEFQ         |\
+                                            FM_EX_QMI_DOUBLE_ECC            |\
+                                            FM_EX_BMI_LIST_RAM_ECC          |\
+                                            FM_EX_BMI_PIPELINE_ECC          |\
+                                            FM_EX_BMI_STATISTICS_RAM_ECC    |\
+                                            FM_EX_IRAM_ECC                  |\
+                                            FM_EX_NURAM_ECC                 )
+#define DEFAULT_totalNumOfTasks             96
+#define DEFAULT_totalFifoSize               (128*KILOBYTE)
+#define DEFAULT_maxNumOfOpenDmas            24
+#define DEFAULT_eccEnable                   FALSE
+#define DEFAULT_dispLimit                   16
+#define DEFAULT_prsDispTh                   16
+#define DEFAULT_plcrDispTh                  16
+#define DEFAULT_kgDispTh                    16
+#define DEFAULT_bmiDispTh                   16
+#define DEFAULT_qmiEnqDispTh                16
+#define DEFAULT_qmiDeqDispTh                16
+#define DEFAULT_fmCtl1DispTh                16
+#define DEFAULT_fmCtl2DispTh                16
+#define DEFAULT_cacheOverride               e_FM_DMA_NO_CACHE_OR
+#define DEFAULT_aidOverride                 FALSE
+#define DEFAULT_aidMode                     e_FM_DMA_AID_OUT_PORT_ID
+#define DEFAULT_privilegeBusProtect         FALSE
+#define DEFAULT_dmaStopOnBusError           FALSE
+#define DEFAULT_busProtectionType           e_FM_DMA_DATA_BUS_PROT
+#define DEFAULT_stopAtBusError              FALSE
+#define DEFAULT_axiDbgNumOfBeats            1
+#define DEFAULT_dmaCamNumOfEntries          32
+#define DEFAULT_dmaCommQLow                 16
+#define DEFAULT_dmaCommQHigh                24
+#define DEFAULT_dmaReadIntBufLow            64
+#define DEFAULT_dmaReadIntBufHigh           96
+#define DEFAULT_dmaWriteIntBufLow           64
+#define DEFAULT_dmaWriteIntBufHigh          96
+#define DEFAULT_dmaSosEmergency             0
+#define DEFAULT_dmaDbgCntMode               e_FM_DMA_DBG_NO_CNT
+#define DEFAULT_catastrophicErr             e_FM_CATASTROPHIC_ERR_STALL_PORT
+#define DEFAULT_dmaErr                      e_FM_DMA_ERR_CATASTROPHIC
+#define DEFAULT_resetOnInit                 FALSE
+#define DEFAULT_haltOnExternalActivation    FALSE
+#define DEFAULT_haltOnUnrecoverableEccError FALSE
+#define DEFAULT_externalEccRamsEnable       FALSE
+#define DEFAULT_VerifyUcode                 FALSE
+
 /**************************************************************************//**
  @Description       Modules registers offsets
 *//***************************************************************************/
@@ -271,7 +272,6 @@ typedef _Packed struct
     }t_FmQmiDbgTraps[NUM_OF_DBG_TRAPS];
 } _PackedType t_FmQmiRegs;
 
-
 typedef _Packed struct
 {
     volatile uint32_t   fmdmsr;         /**<    FM DMA status register 0x04 */
@@ -304,10 +304,10 @@ typedef _Packed struct
 
 typedef _Packed struct
 {
-     volatile uint32_t      iadd;               /**<    FM IRAM instruction address register */
-    volatile uint32_t      idata;               /**<    FM IRAM instruction data register */
-    volatile uint32_t      itcfg;               /**<    FM IRAM timing config register */
-    volatile uint32_t      iready;               /**<    FM IRAM ready register */
+    volatile uint32_t   iadd;           /**<    FM IRAM instruction address register */
+    volatile uint32_t   idata;          /**<    FM IRAM instruction data register */
+    volatile uint32_t   itcfg;          /**<    FM IRAM timing config register */
+    volatile uint32_t   iready;         /**<    FM IRAM ready register */
     volatile uint8_t    res[0x80000-0x10];
 } _PackedType t_FMIramRegs;
 
@@ -315,6 +315,7 @@ typedef _Packed struct
 #ifdef __MWERKS__
 #pragma pack(pop)
 #endif /* __MWERKS__ */
+
 
 /**************************************************************************//**
  @Description       General defines
@@ -391,13 +392,13 @@ typedef _Packed struct
 *//***************************************************************************/
 
 /* masks */
-#define FPM_EV_MASK_DOUBLE_ECC_EN       0x00008000
-#define FPM_EV_MASK_STALL_EN            0x00004000
-#define FPM_EV_MASK_SINGLE_ECC_EN       0x00002000
 #define FPM_EV_MASK_DOUBLE_ECC          0x80000000
 #define FPM_EV_MASK_STALL               0x40000000
 #define FPM_EV_MASK_SINGLE_ECC          0x20000000
 #define FPM_EV_MASK_RELEASE_FM          0x00010000
+#define FPM_EV_MASK_DOUBLE_ECC_EN       0x00008000
+#define FPM_EV_MASK_STALL_EN            0x00004000
+#define FPM_EV_MASK_SINGLE_ECC_EN       0x00002000
 #define FPM_EV_MASK_EXTERNAL_HALT       0x00000008
 #define FPM_EV_MASK_ECC_ERR_HALT        0x00000004
 
@@ -577,6 +578,7 @@ typedef struct
     bool                        enIramTestMode;
     bool                        externalEccRamsEnable;
     t_FmPcdFirmwareParams       firmware;
+    bool                        fwVerify;
 } t_FmDriverParam;
 
 typedef void (t_FmCtlIsr)( t_Handle h_Fm, uint32_t event);
@@ -588,6 +590,10 @@ typedef struct
     t_Handle                    h_FmPorts[FM_MAX_NUM_OF_PORTS]; /* Handles to all partitions ports */
     e_FmPortType                portsTypes[FM_MAX_NUM_OF_PORTS];
     char                        fmModuleName[MODULE_NAME_SIZE];
+    t_FmIntrSrc                 intrMng[e_FM_EV_DUMMY_LAST];    /* FM exceptions user callback */
+#ifdef CONFIG_MULTI_PARTITION_SUPPORT
+    uint8_t                     partitionId;
+#endif /* CONFIG_MULTI_PARTITION_SUPPORT */
 #ifndef CONFIG_GUEST_PARTITION
     uint64_t                    baseAddr;
     t_Handle                    h_FmMuram;
@@ -615,7 +621,6 @@ typedef struct
     t_FmExceptionsCallback      *f_Exceptions;
     t_FmBusErrorCallback        *f_BusError;
     t_Handle                    h_App;                          /* Application handle */
-    t_FmIntrSrc                 intrMng[e_FM_EV_DUMMY_LAST];    /* FM exceptions user callback */
     t_FmCtlIsr                  *f_FmCtlIsr[NUM_OF_FM_CTL_EVENT_REGS];
     bool                        ramsEccEnable;
     uint32_t                    extraFifoPoolSize;
@@ -624,6 +629,20 @@ typedef struct
     t_FmDriverParam             *p_FmDriverParam;
 #endif /* ! CONFIG_GUEST_PARTITION */
 } t_Fm;
+
+/**************************************************************************//**
+ @Function      FM_Isr
+
+ @Description   FM interrupt-service-routine.
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+#ifdef CONFIG_GUEST_PARTITION
+void FM_ErrorIsr(t_Handle h_Fm);
+void FM_EventIsr(t_Handle h_Fm);
+#endif /* !CONFIG_GUEST_PARTITION */
 
 #endif /* __FM_H */
 

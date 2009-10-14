@@ -45,6 +45,64 @@
 #include "fm_mac.h"
 
 
+#define PEMASK_TSRE                 0x00010000
+#define PEMASK_EVENTS               0x00000301
+
+#define IMASK_BREN                  0x80000000
+#define IMASK_RXCEN                 0x40000000
+#define IMASK_MSROEN                0x04000000
+#define IMASK_GTSCEN                0x02000000
+#define IMASK_BTEN                  0x01000000
+#define IMASK_TXCEN                 0x00800000
+#define IMASK_TXEEN                 0x00400000
+#define IMASK_LCEN                  0x00040000
+#define IMASK_CRLEN                 0x00020000
+#define IMASK_XFUNEN                0x00010000
+#define IMASK_ABRTEN                0x00008000
+#define IMASK_IFERREN               0x00004000
+#define IMASK_MAGEN                 0x00000800
+#define IMASK_MMRDEN                0x00000400
+#define IMASK_MMWREN                0x00000200
+#define IMASK_GRSCEN                0x00000100
+#define IMASK_TDPEEN                0x00000002
+#define IMASK_RDPEEN                0x00000001
+
+#define GET_EXCEPTION_FLAG(bitMask, exception)       switch(exception){ \
+    case e_FM_MAC_EX_1G_BAB_RX:                                   \
+        bitMask = IMASK_BREN; break;                              \
+    case e_FM_MAC_EX_1G_RX_CTL:                                   \
+        bitMask = IMASK_RXCEN; break;                             \
+    case e_FM_MAC_EX_1G_MIB_CNT_OVFL:                             \
+        bitMask = IMASK_MSROEN ; break;                           \
+    case e_FM_MAC_EX_1G_GRATEFUL_TX_STP_COMPLET:                  \
+        bitMask = IMASK_GTSCEN ; break;                           \
+    case e_FM_MAC_EX_1G_BAB_TX:                                   \
+        bitMask = IMASK_BTEN   ; break;                           \
+    case e_FM_MAC_EX_1G_TX_CTL:                                   \
+        bitMask = IMASK_TXCEN  ; break;                           \
+    case e_FM_MAC_EX_1G_TX_ERR:                                   \
+        bitMask = IMASK_TXEEN  ; break;                           \
+    case e_FM_MAC_EX_1G_LATE_COL:                                 \
+        bitMask = IMASK_LCEN   ; break;                           \
+    case e_FM_MAC_EX_1G_COL_RET_LMT:                              \
+        bitMask = IMASK_CRLEN  ; break;                           \
+    case e_FM_MAC_EX_1G_TX_FIFO_UNDRN:                            \
+        bitMask = IMASK_XFUNEN ; break;                           \
+    case e_FM_MAC_EX_1G_MAG_PCKT:                                 \
+        bitMask = IMASK_MAGEN ; break;                            \
+    case e_FM_MAC_EX_1G_MII_MNG_RD_COMPLET:                       \
+        bitMask = IMASK_MMRDEN; break;                            \
+    case e_FM_MAC_EX_1G_MII_MNG_WR_COMPLET:                       \
+        bitMask = IMASK_MMWREN  ; break;                          \
+    case e_FM_MAC_EX_1G_GRATEFUL_RX_STP_COMPLET:                  \
+        bitMask = IMASK_GRSCEN; break;                            \
+    case e_FM_MAC_EX_1G_TX_DATA_ERR:                              \
+        bitMask = IMASK_TDPEEN; break;                            \
+    case e_FM_MAC_EX_1G_RX_DATA_ERR:                              \
+        bitMask = IMASK_RDPEEN ; break;                           \
+    default: bitMask = 0;break;}
+
+
 #define MAX_PACKET_ALIGNMENT        31
 #define MAX_INTER_PACKET_GAP        0x7f
 #define MAX_INTER_PALTERNATE_BEB    0x0f
@@ -134,13 +192,12 @@ typedef  uint32_t t_ErrorDisable;
 #define DEFAULT_fifoRxWatermarkL    0x08
 #define DEFAULT_tbiPhyAddr          5
 
-#define DEFAULT_imask               ((uint32_t)(IMASK_BREN | IMASK_RXCEN | IMASK_MSROEN | IMASK_GTSCEN | \
-                                                IMASK_BTEN | IMASK_TXCEN | IMASK_TXEEN |  IMASK_ABRTEN | \
-                                                IMASK_LCEN | IMASK_CRLEN | IMASK_XFUNEN) |IMASK_IFERREN| \
-                                                IMASK_MAGEN | IMASK_MMRDEN | IMASK_MMWREN |IMASK_GRSCEN| \
-                                                IMASK_TDPEEN |IMASK_RDPEEN)
+#define DEFAULT_exceptions         ((uint32_t)(IMASK_BREN | IMASK_RXCEN | IMASK_MSROEN | \
+                                               IMASK_BTEN | IMASK_TXCEN | IMASK_TXEEN |  IMASK_ABRTEN | \
+                                               IMASK_LCEN | IMASK_CRLEN | IMASK_XFUNEN |IMASK_IFERREN| \
+                                               IMASK_MAGEN | IMASK_TDPEEN |IMASK_RDPEEN))
 
-#define MAX_PHYS                    31 /* maximum number of phys */
+#define MAX_PHYS                    32 /* maximum number of phys */
 
 #define DTSEC_ID1_ID                0xffff0000
 #define DTSEC_ID1_REV_MJ            0x0000FF00
@@ -238,29 +295,11 @@ typedef  uint32_t t_ErrorDisable;
 /* Pause Time Value Register  */
 #define PTV_PTE_SHIFT    16
 
-#define IEVENT_BABR    IMASK_BREN                  /* 0x80000000 */
-#define IEVENT_RXC     IMASK_RXCEN                 /* 0x40000000 */
-#define IEVENT_MSRO    IMASK_MSROEN                /* 0x04000000 */
-#define IEVENT_GTSC    IMASK_GTSCEN                /* 0x02000000 */
-#define IEVENT_BABT    IMASK_BTEN                  /* 0x01000000 */
-#define IEVENT_TXC     IMASK_TXCEN                 /* 0x00800000 */
-#define IEVENT_TXE     IMASK_TXEEN                 /* 0x00400000 */
-#define IEVENT_LC      IMASK_LCEN                  /* 0x00040000 */
-#define IEVENT_CRL     IMASK_CRLEN                 /* 0x00020000 */
-#define IEVENT_XFUN    IMASK_XFUNEN                /* 0x00010000 */
-#define IEVENT_ABRT    IMASK_ABRTEN                /* 0x00008000 */
-#define IEVENT_IFERR   IMASK_IFERREN               /* 0x00004000 */
-#define IEVENT_MAG     IMASK_MAGEN                 /* 0x00000800 */
-#define IEVENT_MMRD    IMASK_MMRDEN                /* 0x00000400 */
-#define IEVENT_MMWR    IMASK_MMWREN                /* 0x00000200 */
-#define IEVENT_GRSC    IMASK_GRSCEN                /* 0x00000100 */
-#define IEVENT_DPE     IMASK_TDPEEN                /* 0x00000002 */
-#define IEVENT_RDPE    IMASK_RDPEEN                /* 0x00000001 */
-
-#define IEVENT_ERRORS   (IEVENT_BABR | IMASK_RXCEN | IMASK_MSROEN | IMASK_BTEN | \
-                         IMASK_TXCEN | IMASK_TXEEN | IMASK_LCEN | IMASK_CRLEN | \
-                         IMASK_XFUNEN | IMASK_ABRTEN | IMASK_IFERREN | IMASK_MAGEN | \
-                         IMASK_MMRDEN | IMASK_MMWREN | IMASK_TDPEEN | IMASK_RDPEEN)
+#define EVENTS_MASK                 ((uint32_t)(IMASK_BREN | IMASK_RXCEN | IMASK_MSROEN | IMASK_GTSCEN | \
+                                                IMASK_BTEN | IMASK_TXCEN | IMASK_TXEEN  | IMASK_ABRTEN | \
+                                                IMASK_LCEN | IMASK_CRLEN | IMASK_XFUNEN | IMASK_IFERREN| \
+                                                IMASK_MAGEN | IMASK_MMRDEN | IMASK_MMWREN | \
+                                                IMASK_TDPEEN |IMASK_RDPEEN))
 
 #define     MASK22BIT   0x003FFFFF
 #define     MASK16BIT   0x0000FFFF
@@ -319,7 +358,7 @@ typedef _Packed struct
     volatile uint32_t ipgifg;               /* 0x108 IPG/IFG */
     volatile uint32_t hafdup;               /* 0x10C Half-duplex */
     volatile uint32_t maxfrm;               /* 0x110 Maximum frame */
-    volatile uint32_t DTSEC_RESERVED7[3];   /* 0x114–0x11C register */
+    volatile uint32_t DTSEC_RESERVED7[3];  /* 0x114–0x11C register */
     volatile uint32_t miimcfg;              /* 0x120 MII Mgmt:configuration */
     volatile uint32_t miimcom;              /* 0x124 MII Mgmt:command */
     volatile uint32_t miimadd;              /* 0x128 MII Mgmt:address */
@@ -477,8 +516,6 @@ typedef struct {
     uint8_t     fifoTxThr;
     uint8_t     fifoTxWatermarkH;
     uint8_t     fifoRxWatermarkL;
-
-    uint32_t    imask;
 } t_DtsecDriverParam;
 
 typedef struct {
@@ -489,6 +526,8 @@ typedef struct {
     uint64_t                    addr;             /**< MAC address of device;                             */
     e_EnetMode                  enetMode;         /**< Ethernet physical interface  */
     t_FmMacExceptionCallback    *f_Exceptions;
+    int                         mdioIrq;
+    t_FmMacExceptionCallback    *f_Events;
     bool                        indAddrRegUsed[DTSEC_NUM_OF_PADDRS]; /**< Whether a particular individual address recognition register is being used */
     uint64_t                    paddr[DTSEC_NUM_OF_PADDRS]; /**< MAC address for particular individual address recognition register */
     uint8_t                     numOfIndAddrInRegs; /**< Number of individual addresses in registers for this station. */
@@ -498,8 +537,15 @@ typedef struct {
     t_EthHash                   *p_MulticastAddrHash;      /* pointer to driver's global address hash table  */
     t_EthHash                   *p_UnicastAddrHash;    /* pointer to driver's individual address hash table  */
     uint8_t                     macId;
+    uint32_t                    exceptions;
     t_DtsecDriverParam          *p_DtsecDriverParam;
+/* TODO - tmp, for Moti to set names and structs */
+    bool                        support1588;
+    struct{
+            bool    enErrExeption;
+    }structFor1588;
 } t_Dtsec;
+
 
 t_Error DTSEC_MII_WritePhyReg(t_Handle h_Dtsec, uint8_t phyAddr, uint8_t reg, uint16_t data);
 t_Error DTSEC_MII_ReadPhyReg(t_Handle  h_Dtsec, uint8_t phyAddr, uint8_t reg, uint16_t *p_Data);

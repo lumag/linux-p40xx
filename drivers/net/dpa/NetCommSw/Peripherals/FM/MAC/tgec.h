@@ -44,6 +44,114 @@
 #include "tgec_mii_acc.h"
 #include "fm_mac.h"
 
+/* Interrupt Mask Register (IMASK) */
+#define IMASK_MDIO_SCAN_EVENTMDIO   0x00010000  /* MDIO_SCAN_EVENTMDIO scan event interrupt mask.
+                                                 * 0 masked
+                                                 * 1 enabled
+                                                 */
+#define IMASK_MDIO_CMD_CMPL         0x00008000  /* 16 MDIO_CMD_CMPL MDIO command completion interrupt mask.
+                                                 * 0 masked
+                                                 * 1 enabled
+                                                 */
+#define IMASK_REM_FAULT             0x00004000  /* 17 REM_FAULT Remote fault interrupt mask.
+                                                 * 0 masked
+                                                 * 1 enabled
+                                                 */
+#define IMASK_LOC_FAULT             0x00002000  /* 18 LOC_FAULT Local fault interrupt mask.
+                                                 * 0 masked
+                                                 * 1 enabled
+                                                 */
+#define IMASK_1TX_ECC_ER            0x00001000  /* 19 TX_ECC_ER Transmit frame ECC error interrupt mask.
+                                                 * 0 masked
+                                                 * 1 enabled
+                                                 */
+#define IMASK_TX_FIFO_UNFL          0x00000800  /* 20 TX_FIFO_UNFL Transmit FIFO underflow interrupt mask.
+                                                 * 0 masked
+                                                 * 1 enabled
+                                                 */
+#define IMASK_TX_FIFO_OVFL          0x00000400  /* 21 TX_FIFO_OVFL Transmit FIFO overflow interrupt mask.
+                                                 * 0 masked
+                                                 * 1 enabled
+                                                 */
+#define IMASK_TX_ER                 0x00000200  /* 22 TX_ER Transmit frame error interrupt mask.
+                                                 * 0 masked
+                                                 * 1 enabled
+                                                 */
+#define IMASK_RX_FIFO_OVFL          0x00000100  /* 23 RX_FIFO_OVFL Receive FIFO overflow interrupt mask.
+                                                 * 0 masked
+                                                 * 1 enabled
+                                                 */
+#define IMASK_RX_ECC_ER             0x00000080  /* 24 RX_ECC_ER Receive frame ECC error interrupt mask.
+                                                 * 0 masked
+                                                 * 1 enabled
+                                                 */
+#define IMASK_RX_JAB_FRM            0x00000040  /* 25 RX_JAB_FRM Receive jabber frame interrupt mask.
+                                                 * 0 masked
+                                                 * 1 enabled
+                                                 */
+#define IMASK_RX_OVRSZ_FRM          0x00000020  /* 26 RX_OVRSZ_FRM Receive oversized frame interrupt mask.
+                                                 * 0 masked
+                                                 * 1 enabled
+                                                 */
+#define IMASK_RX_RUNT_FRM           0x00000010  /* 27 RX_RUNT_FRM Receive runt frame interrupt mask.
+                                                 * 0 masked
+                                                 * 1 enabled
+                                                 */
+#define IMASK_RX_FRAG_FRM           0x00000008  /* 28 RX_FRAG_FRM Receive fragment frame interrupt mask.
+                                                 * 0 masked
+                                                 * 1 enabled
+                                                 */
+#define IMASK_RX_LEN_ER             0x00000004  /* 29 RX_LEN_ER Receive payload length error interrupt mask.
+                                                 * 0 masked
+                                                 * 1 enabled
+                                                 */
+#define IMASK_RX_CRC_ER             0x00000002  /* 30 RX_CRC_ER Receive CRC error interrupt mask.
+                                                 * 0 masked
+                                                 * 1 enabled
+                                                 */
+#define IMASK_RX_ALIGN_ER           0x00000001  /* 31 RX_ALIGN_ER Receive alignment error interrupt mask.
+                                                 * 0 masked
+                                                 * 1 enabled
+                                                 */
+
+
+#define GET_EXCEPTION_FLAG(bitMask, exception)       switch(exception){ \
+    case e_FM_MAC_EX_10G_MDIO_SCAN_EVENTMDIO:                                    \
+        bitMask = IMASK_MDIO_SCAN_EVENTMDIO; break;                              \
+    case e_FM_MAC_EX_10G_MDIO_CMD_CMPL:                                          \
+        bitMask = IMASK_MDIO_CMD_CMPL      ; break;                              \
+    case e_FM_MAC_EX_10G_REM_FAULT:                                              \
+        bitMask = IMASK_REM_FAULT          ; break;                              \
+    case e_FM_MAC_EX_10G_LOC_FAULT:                                              \
+        bitMask = IMASK_LOC_FAULT          ; break;                              \
+    case e_FM_MAC_EX_10G_1TX_ECC_ER:                                             \
+        bitMask = IMASK_1TX_ECC_ER         ; break;                              \
+    case e_FM_MAC_EX_10G_TX_FIFO_UNFL:                                           \
+        bitMask = IMASK_TX_FIFO_UNFL       ; break;                              \
+    case e_FM_MAC_EX_10G_TX_FIFO_OVFL:                                           \
+        bitMask = IMASK_TX_FIFO_OVFL       ; break;                              \
+    case e_FM_MAC_EX_10G_TX_ER:                                                  \
+        bitMask = IMASK_TX_ER              ; break;                              \
+    case e_FM_MAC_EX_10G_RX_FIFO_OVFL:                                           \
+        bitMask = IMASK_RX_FIFO_OVFL       ; break;                              \
+    case e_FM_MAC_EX_10G_RX_ECC_ER:                                              \
+        bitMask = IMASK_RX_ECC_ER          ; break;                              \
+    case e_FM_MAC_EX_10G_RX_JAB_FRM:                                             \
+        bitMask = IMASK_RX_JAB_FRM         ; break;                              \
+    case e_FM_MAC_EX_10G_RX_OVRSZ_FRM:                                           \
+        bitMask = IMASK_RX_OVRSZ_FRM       ; break;                              \
+    case e_FM_MAC_EX_10G_RX_RUNT_FRM:                                            \
+        bitMask = IMASK_RX_RUNT_FRM        ; break;                              \
+    case e_FM_MAC_EX_10G_RX_FRAG_FRM:                                            \
+        bitMask = IMASK_RX_FRAG_FRM        ; break;                              \
+    case e_FM_MAC_EX_10G_RX_LEN_ER:                                              \
+        bitMask = IMASK_RX_LEN_ER          ; break;                              \
+    case e_FM_MAC_EX_10G_RX_CRC_ER:                                              \
+        bitMask = IMASK_RX_CRC_ER          ; break;                              \
+    case e_FM_MAC_EX_10G_RX_ALIGN_ER:                                            \
+        bitMask = IMASK_RX_ALIGN_ER        ; break;                              \
+    default: bitMask = 0;break;}
+
 
 /* Default Config Params */
 #define DEFAULT_wanModeEnable               FALSE
@@ -60,7 +168,8 @@
 #define DEFAULT_rxErrorDiscard              FALSE
 #define DEFAULT_phyTxenaOn                  FALSE
 #define DEFAULT_sendIdleEnable              FALSE
-#define DEFAULT_noLengthCheckEnable         FALSE
+/* TODO - change it back to check length!!! */
+#define DEFAULT_noLengthCheckEnable         TRUE
 #define DEFAULT_lgthCheckNostdr             FALSE
 #define DEFAULT_timeStampEnable             FALSE
 #define DEFAULT_rxSfdAny                    FALSE
@@ -74,7 +183,42 @@
 
 #define DEFAULT_debugMode                   FALSE
 #define DEFAULT_pauseTime                   0xf000
+#define DEFAULT_imask                       0xf000
 
+#define DEFAULT_exceptions         ((uint32_t)(IMASK_MDIO_SCAN_EVENTMDIO |  \
+                                               IMASK_REM_FAULT           |  \
+                                               IMASK_LOC_FAULT           |  \
+                                               IMASK_1TX_ECC_ER          |  \
+                                               IMASK_TX_FIFO_UNFL        |  \
+                                               IMASK_TX_FIFO_OVFL        |  \
+                                               IMASK_TX_ER               |  \
+                                               IMASK_RX_FIFO_OVFL        |  \
+                                               IMASK_RX_ECC_ER           |  \
+                                               IMASK_RX_JAB_FRM          |  \
+                                               IMASK_RX_OVRSZ_FRM        |  \
+                                               IMASK_RX_RUNT_FRM         |  \
+                                               IMASK_RX_FRAG_FRM         |  \
+                                               IMASK_RX_LEN_ER           |  \
+                                               IMASK_RX_CRC_ER           |  \
+                                               IMASK_RX_ALIGN_ER))
+
+
+#define EVENTS_MASK         ((uint32_t)(IMASK_MDIO_SCAN_EVENTMDIO |  \
+                                        IMASK_REM_FAULT           |  \
+                                        IMASK_LOC_FAULT           |  \
+                                        IMASK_1TX_ECC_ER          |  \
+                                        IMASK_TX_FIFO_UNFL        |  \
+                                        IMASK_TX_FIFO_OVFL        |  \
+                                        IMASK_TX_ER               |  \
+                                        IMASK_RX_FIFO_OVFL        |  \
+                                        IMASK_RX_ECC_ER           |  \
+                                        IMASK_RX_JAB_FRM          |  \
+                                        IMASK_RX_OVRSZ_FRM        |  \
+                                        IMASK_RX_RUNT_FRM         |  \
+                                        IMASK_RX_FRAG_FRM         |  \
+                                        IMASK_RX_LEN_ER           |  \
+                                        IMASK_RX_CRC_ER           |  \
+                                        IMASK_RX_ALIGN_ER))
 
 #define MAX_PACKET_ALIGNMENT        31
 #define MAX_INTER_PACKET_GAP        0x7f
@@ -89,7 +233,7 @@
 
 #define HASH_TABLE_SIZE             512                 /* Hash table size (= 32 bits * 8 regs) */
 
-#define TGEC_TO_MII_OFFSET          0x1000              /* Offset from the MEM map to the MDIO mem map */
+#define TGEC_TO_MII_OFFSET          0x1030              /* Offset from the MEM map to the MDIO mem map */
 
 /* 10-gigabit Ethernet MAC Controller ID (10GEC_ID) */
 #define TGEC_ID_ID                  0xffff0000
@@ -195,95 +339,6 @@
 /* Transmit Inter-Packet Gap Length Register (TX_IPG_LENGTH) */
 #define TX_IPG_LENGTH_MASK          0x000003ff
 
-/* Interrupt Mask Register (IMASK) */
-#define IMASK_MDIO_SCAN_EVENTMDIO   0x00010000  /* MDIO_SCAN_EVENTMDIO scan event interrupt mask.
-                                                 * 0 masked
-                                                 * 1 enabled
-                                                 */
-#define IMASK_MDIO_CMD_CMPL         0x00008000  /* 16 MDIO_CMD_CMPL MDIO command completion interrupt mask.
-                                                 * 0 masked
-                                                 * 1 enabled
-                                                 */
-#define IMASK_REM_FAULT             0x00004000  /* 17 REM_FAULT Remote fault interrupt mask.
-                                                 * 0 masked
-                                                 * 1 enabled
-                                                 */
-#define IMASK_LOC_FAULT             0x00002000  /* 18 LOC_FAULT Local fault interrupt mask.
-                                                 * 0 masked
-                                                 * 1 enabled
-                                                 */
-#define IMASK_1TX_ECC_ER            0x00001000  /* 19 TX_ECC_ER Transmit frame ECC error interrupt mask.
-                                                 * 0 masked
-                                                 * 1 enabled
-                                                 */
-#define IMASK_TX_FIFO_UNFL          0x00000800  /* 20 TX_FIFO_UNFL Transmit FIFO underflow interrupt mask.
-                                                 * 0 masked
-                                                 * 1 enabled
-                                                 */
-#define IMASK_TX_FIFO_OVFL          0x00000400  /* 21 TX_FIFO_OVFL Transmit FIFO overflow interrupt mask.
-                                                 * 0 masked
-                                                 * 1 enabled
-                                                 */
-#define IMASK_TX_ER                 0x00000200  /* 22 TX_ER Transmit frame error interrupt mask.
-                                                 * 0 masked
-                                                 * 1 enabled
-                                                 */
-#define IMASK_RX_FIFO_OVFL          0x00000100  /* 23 RX_FIFO_OVFL Receive FIFO overflow interrupt mask.
-                                                 * 0 masked
-                                                 * 1 enabled
-                                                 */
-#define IMASK_RX_ECC_ER             0x00000080  /* 24 RX_ECC_ER Receive frame ECC error interrupt mask.
-                                                 * 0 masked
-                                                 * 1 enabled
-                                                 */
-#define IMASK_RX_JAB_FRM            0x00000040  /* 25 RX_JAB_FRM Receive jabber frame interrupt mask.
-                                                 * 0 masked
-                                                 * 1 enabled
-                                                 */
-#define IMASK_RX_OVRSZ_FRM          0x00000020  /* 26 RX_OVRSZ_FRM Receive oversized frame interrupt mask.
-                                                 * 0 masked
-                                                 * 1 enabled
-                                                 */
-#define IMASK_RX_RUNT_FRM           0x00000010  /* 27 RX_RUNT_FRM Receive runt frame interrupt mask.
-                                                 * 0 masked
-                                                 * 1 enabled
-                                                 */
-#define IMASK_RX_FRAG_FRM           0x00000008  /* 28 RX_FRAG_FRM Receive fragment frame interrupt mask.
-                                                 * 0 masked
-                                                 * 1 enabled
-                                                 */
-#define IMASK_RX_LEN_ER             0x00000004  /* 29 RX_LEN_ER Receive payload length error interrupt mask.
-                                                 * 0 masked
-                                                 * 1 enabled
-                                                 */
-#define IMASK_RX_CRC_ER             0x00000002  /* 30 RX_CRC_ER Receive CRC error interrupt mask.
-                                                 * 0 masked
-                                                 * 1 enabled
-                                                 */
-#define IMASK_RX_ALIGN_ER           0x00000001  /* 31 RX_ALIGN_ER Receive alignment error interrupt mask.
-                                                 * 0 masked
-                                                 * 1 enabled
-                                                 */
-
-#ifdef TBD
-#define IEVENT_MDIO_SCAN_EVENTMDIO  IMASK_MDIO_SCAN_EVENTMDIO
-#define IEVENT_MDIO_CMD_CMPL        IMASK_MDIO_CMD_CMPL
-#define IEVENT_REM_FAULT            IMASK_REM_FAULT
-#define IEVENT_LOC_FAULT            IMASK_LOC_FAULT
-#define IEVENT_TX_ECC_ER            IMASK_1TX_ECC_ER
-#define IEVENT_TX_FIFO_UNFL         IMASK_TX_FIFO_UNFL
-#define IEVENT_TX_FIFO_OVFL         IMASK_TX_FIFO_OVFL
-#define IEVENT_TX_ER                IMASK_TX_ER
-#define IEVENT_RX_FIFO_OVFL         IMASK_RX_FIFO_OVFL
-#define IEVENT_RX_ECC_ER            IMASK_RX_ECC_ER
-#define IEVENT_RX_JAB_FRM           IMASK_RX_JAB_FRM
-#define IEVENT_RX_OVRSZ_FRM         IMASK_RX_OVRSZ_FRM
-#define IEVENT_RX_RUNT_FRM          IMASK_RX_RUNT_FRM
-#define IEVENT_RX_FRAG_FRM          IMASK_RX_FRAG_FRM
-#define IEVENT_RX_LEN_ER            IMASK_RX_LEN_ER
-#define IEVENT_RX_CRC_ER            IMASK_RX_CRC_ER
-#define IEVENT_RX_ALIGN_ER          IMASK_RX_ALIGN_ER
-#endif
 
 
 #ifdef __MWERKS__
@@ -407,11 +462,9 @@ typedef struct {
     bool        padAndCrcEnable;
     bool        debugMode;
     uint16_t    pauseTime;
-
 #if 0
     uint32_t    imask;
 #endif
-
 } t_TgecDriverParam;
 
 typedef struct {
@@ -422,6 +475,8 @@ typedef struct {
     uint64_t                    addr;                               /**< MAC address of device; */
     e_EnetMode                  enetMode;                           /**< Ethernet physical interface  */
     t_FmMacExceptionCallback    *f_Exceptions;
+    int                         mdioIrq;
+    t_FmMacExceptionCallback    *f_Events;
     bool                        indAddrRegUsed[TGEC_NUM_OF_PADDRS]; /**< Whether a particular individual address recognition register is being used */
     uint64_t                    paddr[TGEC_NUM_OF_PADDRS];          /**< MAC address for particular individual address recognition register */
     uint8_t                     numOfIndAddrInRegs;                 /**< Number of individual addresses in registers for this station. */
@@ -429,8 +484,10 @@ typedef struct {
     t_EthHash                   *p_UnicastAddrHash;                 /**< pointer to driver's individual address hash table  */
     bool                        debugMode;
     uint8_t                     macId;
+    uint32_t                    exceptions;
     t_TgecDriverParam           *p_TgecDriverParam;
 } t_Tgec;
+
 
 t_Error TGEC_MII_WritePhyReg(t_Handle h_Tgec, uint8_t phyAddr, uint8_t reg, uint16_t data);
 t_Error TGEC_MII_ReadPhyReg(t_Handle h_Tgec,  uint8_t phyAddr, uint8_t reg, uint16_t *p_Data);

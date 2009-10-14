@@ -108,7 +108,7 @@
 #define MAX_ALLOCATION_SIZE     128 * 1024 /* Maximum size allocated with kmalloc is 128K */
 
 
-/* FIXME: large allocations => use big phys area */
+/* TODO: large allocations => use big phys area */
 /******************************************************************************
  * routine:     get_nr_pages
  *
@@ -136,7 +136,7 @@ static bool in_big_phys_area (uint32_t addr)
 }
 #endif /* BIGPHYSAREA_ENABLE */
 
-static void * xx_Malloc(uint32_t n)
+void * xx_Malloc(uint32_t n)
 {
     void        *a;
     uint32_t    flags;
@@ -155,7 +155,7 @@ static void * xx_Malloc(uint32_t n)
     return a;
 }
 
-static void xx_Free(void *p)
+void xx_Free(void *p)
 {
 #ifdef BIGPHYSAREA_ENABLE
     if (in_big_phys_area ((uint32_t)p))
@@ -164,35 +164,6 @@ static void xx_Free(void *p)
 #endif /* BIGPHYSAREA_ENABLE */
     kfree(p);
 }
-
-static void * xx_MallocSmart(uint32_t size, int memPartitionId, uint32_t alignment)
-{
-    void        *returnCode;
-    uint32_t    tmp;
-
-    switch(memPartitionId) {
-       case(0):
-       case(e_MEM_1ST_DDR_CACHEABLE):
-            if (alignment < 4)
-                alignment = 4;
-            tmp = (uint32_t)(xx_Malloc((uint32_t)(size + alignment)));
-            if (tmp == 0)
-                return NULL;
-            returnCode = (void*)((tmp + alignment) & ~(alignment - 1));
-            *(uint32_t*)((uint32_t)returnCode - 4) = tmp;
-            break;
-        default:
-            XX_Print("XX_MallocSmart:Mem type not supported\r\n");
-            return NULL;
-    }
-    return returnCode;
-}
-
-static void xx_FreeSmart(void *p)
-{
-    xx_Free((void *)(*(uint32_t *)((uint32_t)(p)-4)));
-}
-
 
 void XX_Exit(int status)
 {

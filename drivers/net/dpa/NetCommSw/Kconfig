@@ -10,10 +10,10 @@ menuconfig FSL_FMAN
 if FSL_FMAN
 
 config FSL_FMAN_TEST
-	bool "Fman test module"
+	bool "FMan test module"
 	default n
 	---help---
-	  This option compiles test code for Fman.
+	  This option compiles test code for FMan.
 
 endif # FSL_FMAN
 

@@ -71,6 +71,8 @@ typedef struct t_FmTestFq {
 
 typedef struct {
     uint8_t                     id;
+    int                         minor;
+    char                        name[20];
     bool                        active;
     bool                        initialized;
     uint64_t                    baseAddr;
@@ -107,6 +109,7 @@ typedef struct {
 
 typedef struct {
     uint8_t                     id;
+    char                        name[10];
     bool                        active;
     bool                        pcdActive;
     bool                        prsActive;
@@ -123,8 +126,8 @@ typedef struct {
     uint32_t                    fmMemSize;
     uint64_t                    fmMuramBaseAddr;
     uint32_t                    fmMuramMemSize;
-    int                         irq1;
-    int                         irq2;
+    int                         irq;
+    int                         err_irq;
     t_WrpFmDevSettings          fmDevSettings;
     t_WrpFmPcdDevSettings       fmPcdDevSettings;
     t_Handle                    h_Dev;
@@ -134,7 +137,7 @@ typedef struct {
     t_Handle                    h_PcdDev;
 
     t_LnxWrpFmPortDev           hcPort;
-    t_LnxWrpFmPortDev           opPorts[FM_MAX_NUM_OF_OP_PORTS];
+    t_LnxWrpFmPortDev           opPorts[FM_MAX_NUM_OF_OH_PORTS-1];
     t_LnxWrpFmPortDev           rxPorts[FM_MAX_NUM_OF_RX_PORTS];
     t_LnxWrpFmPortDev           txPorts[FM_MAX_NUM_OF_TX_PORTS];
     t_LnxWrpFmMacDev            macs[FM_MAX_NUM_OF_MACS];
@@ -142,6 +145,7 @@ typedef struct {
     struct device               *dev;
     struct resource             *res;
     int                         major;
+    struct class                *fm_class;
     struct proc_dir_entry       *proc_fm;
     struct proc_dir_entry       *proc_fm_regs;
     struct proc_dir_entry       *proc_fm_stats;

@@ -42,7 +42,6 @@
 #include "std_ext.h"
 #include "sys_ext.h"
 
-
 /**************************************************************************//**
  @Group         platform_grp PLATFORM Application Programming Interface
 
@@ -54,6 +53,7 @@
 
 #define MAX_CHIP_NAME_LEN   9   /* (including null character) */
 
+#define PLATFORM_IO_MODE_ANY    (-1)    /**< Unspecified I/O mode */
 
 /**************************************************************************//**
  @Description   Cache Operation Mode
@@ -100,6 +100,76 @@ typedef struct t_ChipRevInfo
                     /**< Minor chip revision */
 } t_ChipRevInfo;
 
+/**************************************************************************//**
+ @Description   Platform Events
+*//***************************************************************************/
+typedef enum e_PlatformEvent
+{
+    e_PLATFORM_EVENT_LINK_DOWN, /**< Link-up event */
+    e_PLATFORM_EVENT_LINK_UP    /**< Link-down event */
+
+} e_PlatformEvent;
+
+/**************************************************************************//**
+ @Description   Callback Function Prototype for Link Events
+*//***************************************************************************/
+typedef void (t_PlatformLinkEventsCb)(t_Handle          h_Controller,
+                                      uint8_t           linkId,
+                                      e_PlatformEvent   event);
+
+
+
+/**************************************************************************//**
+ @Description   Interrupt Source Types
+*//***************************************************************************/
+typedef enum e_InterruptType
+{
+    e_INTR_TYPE_GENERAL,
+    e_INTR_TYPE_IRQ,
+    e_INTR_TYPE_ERR,
+    e_INTR_TYPE_GTIMERS_TIMER,
+    e_INTR_TYPE_RTC_COUNT,
+    e_INTR_TYPE_RTC_ALARM,
+    e_INTR_TYPE_PCI_IRQ,
+    e_INTR_TYPE_PCI_PME,
+    e_INTR_TYPE_PCI_MSI,
+    e_INTR_TYPE_ETSEC_TX,
+    e_INTR_TYPE_ETSEC_RX,
+    e_INTR_TYPE_ETSEC_ERROR,
+    e_INTR_TYPE_RIO_PW,
+    e_INTR_TYPE_RIO_DB_OUT,
+    e_INTR_TYPE_RIO_DB_IN,
+    e_INTR_TYPE_RIO_MSG_OUT,
+    e_INTR_TYPE_RIO_MSG_IN,
+    e_INTR_TYPE_QE_LOW,
+    e_INTR_TYPE_QE_HIGH,
+    e_INTR_TYPE_QE_IO_PORTS,
+    e_INTR_TYPE_QE_IRAM_ERR,
+    e_INTR_TYPE_QE_MURAM_ERR,
+    e_INTR_TYPE_QE_RTT,
+    e_INTR_TYPE_QE_SDMA,
+    e_INTR_TYPE_QE_VT,
+    e_INTR_TYPE_QE_EXT_REQ
+} e_InterruptType;
+
+/**************************************************************************//**
+ @Description   Descriptor of Board Connections
+*//***************************************************************************/
+typedef struct t_BoardConnectorDesc
+{
+    struct
+    {
+        e_SysModule module;
+        uint32_t    id;
+    } source;
+
+    struct
+    {
+        e_SysModule module;
+        uint32_t    id;
+    } dest;
+
+} t_BoardConnectorDesc;
 
 /**************************************************************************//**
  @Description   Platform configuration parameters structure.
@@ -120,7 +190,19 @@ uint32_t PLATFORM_GetMemoryMappedModuleBase(t_Handle    h_Platform,
                                             e_SysModule module,
                                             uint32_t    id);
 
-/** @} */ /* end of platform_grp */
+int PLATFORM_GetInterruptId(t_Handle        h_Platform,
+                            e_SysModule     module,
+                            uint32_t        id,
+                            e_InterruptType intrType,
+                            uint32_t        intrRelatedId);
 
+uint32_t PLATFORM_GetCoreClk(t_Handle h_Platform);
+
+uint32_t PLATFORM_GetSystemBusClk(t_Handle h_Platform);
+
+uint32_t PLATFORM_GetControllerClk(t_Handle     h_Platform,
+                                   e_SysModule  module,
+                                   uint32_t     id);
+/** @} */ /* end of platform_grp */
 
 #endif /* __PLATFORM_EXT_H */

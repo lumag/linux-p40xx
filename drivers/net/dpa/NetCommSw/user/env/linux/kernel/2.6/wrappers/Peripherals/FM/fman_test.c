@@ -57,6 +57,7 @@
 #include <linux/ioport.h>
 #include <linux/fsl_qman.h>     /*struct qman_fq */
 #include <linux/of_platform.h>
+#include <linux/ip.h>
 #include <asm/uaccess.h>
 #include <asm/errno.h>
 
@@ -95,6 +96,8 @@ typedef struct {
     bool                valid;
     uint8_t             id;
     ioc_fmt_port_type   portType;
+    ioc_diag_mode       diag;
+    bool                ip_header_manip;
     struct fm_port      *p_TxPort;
     t_Handle            h_TxFmPortDev;
     struct fm_port      *p_RxPort;
@@ -116,19 +119,14 @@ typedef struct {
 static t_FmTest fmTest;
 
 
-static t_Error SetMacLoopback(t_FmTestPort *p_FmTestPort, bool en)
+static t_Error Set1GMacIntLoopback(t_FmTestPort *p_FmTestPort, bool en)
 {
 #define FM_1GMAC0_OFFSET                0x000e0000
 #define FM_1GMAC1_OFFSET                0x000e2000
 #define FM_1GMAC2_OFFSET                0x000e4000
 #define FM_1GMAC3_OFFSET                0x000e6000
-#define FM_10GMAC0_OFFSET               0x000f0000
-
 #define FM_1GMAC_CMD_CONF_CTRL_OFFSET   0x100
-#define FM_10GMAC_CMD_CONF_CTRL_OFFSET  0x8
-
 #define MACCFG1_LOOPBACK                0x00000100
-#define CMD_CFG_LOOPBACK_EN             0x00000400
 
     uint64_t    tmpAddr = p_FmTestPort->fmPhysBaseAddr;
     uint32_t    tmpVal;
@@ -147,9 +145,6 @@ static t_Error SetMacLoopback(t_FmTestPort *p_FmTestPort, bool en)
             break;
         case 3:
             tmpAddr += FM_1GMAC3_OFFSET;
-            break;
-        case 4:
-            tmpAddr += FM_10GMAC0_OFFSET;
             break;
         default:
             RETURN_ERROR(MINOR, E_INVALID_VALUE, ("fm-port-test id!"));
@@ -171,6 +166,39 @@ static t_Error SetMacLoopback(t_FmTestPort *p_FmTestPort, bool en)
                 tmpVal &= ~MACCFG1_LOOPBACK;
             WRITE_UINT32(*CAST_UINT64_TO_POINTER_TYPE(uint32_t,tmpAddr), tmpVal);
             break;
+        default:
+            break;
+    }
+
+    iounmap(CAST_UINT64_TO_POINTER(tmpAddr));
+
+    return E_OK;
+}
+
+#ifndef FM_10G_MAC_NO_CTRL_LOOPBACK
+static t_Error Set10GMacIntLoopback(t_FmTestPort *p_FmTestPort, bool en)
+{
+#define FM_10GMAC0_OFFSET               0x000f0000
+#define FM_10GMAC_CMD_CONF_CTRL_OFFSET  0x8
+#define CMD_CFG_LOOPBACK_EN             0x00000400
+
+    uint64_t    tmpAddr = p_FmTestPort->fmPhysBaseAddr;
+    uint32_t    tmpVal;
+
+    if (p_FmTestPort->portType == e_IOC_FMT_PORT_T_RXTX)
+        switch (p_FmTestPort->id)
+        {
+            case 4:
+                tmpAddr += FM_10GMAC0_OFFSET;
+                break;
+            default:
+                RETURN_ERROR(MINOR, E_INVALID_VALUE, ("fm-port-test id!"));
+        }
+
+    tmpAddr = CAST_POINTER_TO_UINT64(ioremap(tmpAddr, 0x1000));
+
+    switch (p_FmTestPort->id)
+    {
         case 4:
             tmpAddr += FM_10GMAC_CMD_CONF_CTRL_OFFSET;
             tmpVal = GET_UINT32(*CAST_UINT64_TO_POINTER_TYPE(uint32_t,tmpAddr));
@@ -187,6 +215,31 @@ static t_Error SetMacLoopback(t_FmTestPort *p_FmTestPort, bool en)
     iounmap(CAST_UINT64_TO_POINTER(tmpAddr));
 
     return E_OK;
+}
+#endif /* !FM_10G_MAC_NO_CTRL_LOOPBACK */
+
+static t_Error SetMacIntLoopback(t_FmTestPort *p_FmTestPort, bool en)
+{
+    if (p_FmTestPort->portType == e_IOC_FMT_PORT_T_RXTX)
+        switch (p_FmTestPort->id)
+        {
+            case 0:
+            case 1:
+            case 2:
+            case 3:
+                return Set1GMacIntLoopback(p_FmTestPort, en);
+                break;
+            case 4:
+#ifndef FM_10G_MAC_NO_CTRL_LOOPBACK
+                return Set10GMacIntLoopback(p_FmTestPort, en);
+#else
+                RETURN_ERROR(MINOR, E_NOT_SUPPORTED, ("TGEC don't have internal-loopback"));
+#endif /* !FM_10G_MAC_NO_CTRL_LOOPBACK */
+                break;
+            default:
+                RETURN_ERROR(MINOR, E_INVALID_VALUE, ("fm-port-test id!"));
+        }
+    RETURN_ERROR(MINOR, E_INVALID_STATE, NO_MSG);
 }
 
 static void EnqueueFrameToRxQ(t_FmTestPort *p_FmTestPort, t_FmTestFrame *p_FmTestFrame)
@@ -294,9 +347,11 @@ static t_Error PortInit (t_FmTestPort *p_FmTestPort, ioc_fmt_port_param_t *p_Par
     uint32_t            i;
 
     INIT_LIST(&p_FmTestPort->rxFrmsQ);
-    p_FmTestPort->numOfTxQs = p_Params->num_tx_queues;
-    p_FmTestPort->id        = p_Params->fm_port_id;
-    p_FmTestPort->portType  = p_Params->fm_port_type;
+    p_FmTestPort->numOfTxQs         = p_Params->num_tx_queues;
+    p_FmTestPort->id                = p_Params->fm_port_id;
+    p_FmTestPort->portType          = p_Params->fm_port_type;
+    p_FmTestPort->diag              = e_IOC_DIAG_MODE_NONE;
+    p_FmTestPort->ip_header_manip   = FALSE;
 
     /* Get all the FM nodes */
     memset(&name, 0, sizeof(struct of_device_id));
@@ -400,8 +455,6 @@ static t_Error PortInit (t_FmTestPort *p_FmTestPort, ioc_fmt_port_param_t *p_Par
             RETURN_ERROR(MAJOR, E_INVALID_HANDLE, ("Tx FQs!"));
     }
 
-    SetMacLoopback(p_FmTestPort, TRUE);
-
     p_FmTestPort->valid     = TRUE;
 
     return E_OK;
@@ -480,6 +533,97 @@ bool is_fman_test (void     *mac_dev,
     return false;
 }
 
+void fman_test_ip_manip (void *mac_dev, uint8_t *data)
+{
+    t_FmTest                *p_FmTest = &fmTest;
+    t_FmTestPort            *p_FmTestPort=NULL;
+    struct iphdr            *iph;
+    uint32_t                *p_Data = (uint32_t *)data;
+    uint32_t                net;
+    uint32_t                saddr, daddr;
+    uint8_t                 i;
+
+    /* Get the FM-test-port object */
+    for (i=0; i<IOC_FMT_MAX_NUM_OF_PORTS; i++)
+        if (mac_dev == p_FmTest->ports[i].h_Mac)
+            p_FmTestPort = &p_FmTest->ports[i];
+#ifdef SIMULATOR
+    if (!p_FmTestPort || !p_FmTestPort->ip_header_manip)
+        return;
+#endif /* SIMULATOR */
+
+    iph = (struct iphdr *)p_Data;
+    saddr = iph->saddr;
+    daddr = iph->daddr;
+
+    /* If it is ARP packet ... */
+    if (*p_Data == 0x00010800)
+    {
+        saddr = *CAST_UINT64_TO_POINTER_TYPE(uint32_t,(CAST_POINTER_TO_UINT64(p_Data)+14));
+        daddr = *CAST_UINT64_TO_POINTER_TYPE(uint32_t,(CAST_POINTER_TO_UINT64(p_Data)+24));
+    }
+
+    DBG(TRACE,
+        ("\nSrc  IP before header-manipulation: %d.%d.%d.%d"
+         "\nDest IP before header-manipulation: %d.%d.%d.%d",
+         (int)((saddr & 0xff000000) >> 24),
+         (int)((saddr & 0x00ff0000) >> 16),
+         (int)((saddr & 0x0000ff00) >> 8),
+         (int)((saddr & 0x000000ff) >> 0),
+         (int)((daddr & 0xff000000) >> 24),
+         (int)((daddr & 0x00ff0000) >> 16),
+         (int)((daddr & 0x0000ff00) >> 8),
+         (int)((daddr & 0x000000ff) >> 0)));
+
+#ifdef SIMULATOR
+    if ((p_FmTestPort->diag == e_IOC_DIAG_MODE_CTRL_LOOPBACK) ||
+        (p_FmTestPort->diag == e_IOC_DIAG_MODE_CHIP_LOOPBACK) ||
+        (p_FmTestPort->diag == e_IOC_DIAG_MODE_PHY_LOOPBACK) ||
+        (p_FmTestPort->diag == e_IOC_DIAG_MODE_LINE_LOOPBACK))
+#else
+    if (true)
+#endif /* SIMULATOR */
+    {
+        net   = saddr;
+        saddr = daddr;
+        daddr = net;
+    }
+    else
+    {
+        /* We allow only up to 10 eth ports */
+        net   = ((daddr & 0x000000ff) % 10);
+        saddr = (uint32_t)((saddr & ~0x0000ff00) | (net << 8));
+        daddr = (uint32_t)((daddr & ~0x0000ff00) | (net << 8));
+    }
+
+    /* If not ARP ... */
+    if (*p_Data != 0x00010800)
+    {
+        iph->check = 0;
+
+        iph->saddr = saddr;
+        iph->daddr = daddr;
+        iph->check = ip_fast_csum((unsigned char *)iph, iph->ihl);
+    }
+    else /* The packet is ARP */
+    {
+        *CAST_UINT64_TO_POINTER_TYPE(uint32_t,(CAST_POINTER_TO_UINT64(p_Data)+14)) = saddr;
+        *CAST_UINT64_TO_POINTER_TYPE(uint32_t,(CAST_POINTER_TO_UINT64(p_Data)+24)) = daddr;
+    }
+
+    DBG(TRACE,
+        ("\nSrc  IP after  header-manipulation: %d.%d.%d.%d"
+         "\nDest IP after  header-manipulation: %d.%d.%d.%d",
+         (int)((saddr & 0xff000000) >> 24),
+         (int)((saddr & 0x00ff0000) >> 16),
+         (int)((saddr & 0x0000ff00) >> 8),
+         (int)((saddr & 0x000000ff) >> 0),
+         (int)((daddr & 0xff000000) >> 24),
+         (int)((daddr & 0x00ff0000) >> 16),
+         (int)((daddr & 0x0000ff00) >> 8),
+         (int)((daddr & 0x000000ff) >> 0)));
+}
+
 
 /*****************************************************************************/
 /*               API routines for the FM Linux Device                        */
@@ -519,8 +663,6 @@ static int fm_test_close(struct inode *inode, struct file *file)
 
     p_FmTestPort->valid = FALSE;
 
-    SetMacLoopback(p_FmTestPort, FALSE);
-
     /* Complete!!! */
     return err;
 }
@@ -554,6 +696,30 @@ static int fm_test_ioctl(struct inode *inode, struct file *file, unsigned int cm
 
             return PortInit(p_FmTestPort, &param);
         }
+
+        case FMT_PORT_IOC_SET_DIAG_MODE:
+        {
+            if (get_user(p_FmTestPort->diag, (ioc_diag_mode *)arg)) {
+                REPORT_ERROR(MINOR, E_INVALID_STATE, NO_MSG);
+                return -EFAULT;
+            }
+
+            if (p_FmTestPort->diag == e_IOC_DIAG_MODE_CTRL_LOOPBACK)
+                return SetMacIntLoopback(p_FmTestPort, TRUE);
+            else
+                return SetMacIntLoopback(p_FmTestPort, FALSE);
+            break;
+        }
+
+        case FMT_PORT_IOC_SET_IP_HEADER_MANIP:
+        {
+            if (get_user(p_FmTestPort->ip_header_manip, (int *)arg)) {
+                REPORT_ERROR(MINOR, E_INVALID_STATE, NO_MSG);
+                return -EFAULT;
+            }
+            break;
+        }
+
         default:
             REPORT_ERROR(MINOR, E_NOT_SUPPORTED, ("IOCTL"));
             return -EFAULT;

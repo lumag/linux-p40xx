@@ -30,10 +30,11 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __MII_ACC_H
-#define __MII_ACC_H
+#ifndef __TGEC_MII_ACC_H
+#define __TGEC_MII_ACC_H
 
-/* #define __ERR_MODULE__ MODULE_MII */
+#include "std_ext.h"
+
 
 /* MII  Management Command Register */
 #define MIIMCOM_READ_POST_INCREMENT 0x00004000
@@ -44,6 +45,12 @@
 /* MII Management Indicator Register */
 #define MIIMIND_BUSY                0x00000001
 #define MIIMIND_READ_ERROR          0x00000002
+
+
+#ifdef __MWERKS__
+#pragma pack(push,1)
+#endif /*__MWERKS__ */
+#define MEM_MAP_START
 
 /*----------------------------------------------------*/
 /* MII Configuration Control Memory Map Registers     */
@@ -56,5 +63,10 @@ typedef _Packed struct t_TgecMiiAccessMemMap
     volatile uint32_t   mdio_regaddr;       /* 0x03c  */
 } _PackedType t_TgecMiiAccessMemMap ;
 
+#define MEM_MAP_END
+#ifdef __MWERKS__
+#pragma pack(pop)
+#endif /* __MWERKS__ */
 
-#endif /* __MII_ACC_H */
+
+#endif /* __TGEC_MII_ACC_H */

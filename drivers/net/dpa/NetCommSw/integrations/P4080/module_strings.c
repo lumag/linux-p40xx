@@ -45,4 +45,5 @@ const char *moduleStrings[] =
     ,"FM"                       /* MODULE_FM */
     ,"QM"                       /* MODULE_QM */
     ,"BM"                       /* MODULE_BM */
+    ,"DUART"                    /* MODULE_DUART */
 };

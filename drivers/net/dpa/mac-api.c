@@ -94,15 +94,13 @@ macdev2enetinterface(const struct mac_device *mac_dev)
 	}
 }
 
-static void mac_exception(t_Handle _mac_dev, e_FmMacExceptions exceptions, uint32_t events)
+static void mac_exception(t_Handle _mac_dev, e_FmMacExceptions exception)
 {
 	struct mac_device	*mac_dev;
 
 	mac_dev = (typeof(mac_dev))_mac_dev;
 
-	cpu_dev_dbg(mac_dev->dev, "-> %s:%s()\n", __file__, __func__);
-
-	cpu_dev_dbg(mac_dev->dev, "%s:%s() ->\n", __file__, __func__);
+	cpu_dev_dbg(mac_dev->dev, "%s:%s() -> %d\n", __file__, __func__, exception);
 }
 
 static int __devinit __cold init(struct mac_device *mac_dev)
@@ -119,10 +117,12 @@ static int __devinit __cold init(struct mac_device *mac_dev)
 		mac_dev->dev, mac_dev->res->start, 0x2000);
 	param.enetMode	= macdev2enetinterface(mac_dev);
 	memcpy(&param.addr, mac_dev->addr, min(sizeof(param.addr), sizeof(mac_dev->addr)));
+	param.macId			= mac_dev->cell_index;
+	param.h_Fm 			= (t_Handle)mac_dev->fm;
+	param.mdioIrq		= NO_IRQ;
 	param.f_Exceptions	= mac_exception;
-	param.h_App		= mac_dev;
-	param.macId		= mac_dev->cell_index;
-	param.h_Fm = (t_Handle)mac_dev->fm;
+	param.f_Events		= mac_exception;
+	param.h_App			= mac_dev;
 
 	priv->mac = FM_MAC_Config(&param);
 	if (unlikely(priv->mac == NULL)) {
@@ -149,13 +149,22 @@ static int __devinit __cold init(struct mac_device *mac_dev)
 			goto _return_fm_mac_free;
 		}
 	}
+	else  {
+		err = FM_MAC_ConfigResetOnInit(priv->mac, true);
+		_errno = -GET_ERROR_TYPE(err);
+		if (unlikely(_errno < 0)) {
+			cpu_dev_err(mac_dev->dev, "%s:%hu:%s(): FM_MAC_ConfigResetOnInit() = 0x%08x\n",
+				    __file__, __LINE__, __func__, err);
+			goto _return_fm_mac_free;
+		}
+	}
 
 	err = FM_MAC_Init(priv->mac);
 	_errno = -GET_ERROR_TYPE(err);
 	if (unlikely(_errno < 0)) {
 		cpu_dev_err(mac_dev->dev, "%s:%hu:%s(): FM_MAC_Init() = 0x%08x\n",
 			    __file__, __LINE__, __func__, err);
-		goto _return_fm_mac_reset;
+		goto _return_fm_mac_free;
 	}
 
 	err = FM_MAC_GetVesrion(priv->mac, &version);
@@ -163,7 +172,7 @@ static int __devinit __cold init(struct mac_device *mac_dev)
 	if (unlikely(_errno < 0)) {
 		cpu_dev_err(mac_dev->dev, "%s:%hu:%s(): FM_MAC_GetVesrion() = 0x%08x\n",
 			    __file__, __LINE__, __func__, err);
-		goto _return_fm_mac_reset;
+		goto _return_fm_mac_free;
 	}
 	cpu_dev_info(mac_dev->dev, "FMan %s version: 0x%08x\n",
 				 ((macdev2enetinterface(mac_dev) != e_ENET_MODE_XGMII_10000) ? "dTSEC" : "XGEC"),
@@ -172,11 +181,6 @@ static int __devinit __cold init(struct mac_device *mac_dev)
 	goto _return;
 
 
-_return_fm_mac_reset:
-	err = FM_MAC_Reset(priv->mac, true);
-	if (unlikely(-GET_ERROR_TYPE(err) < 0))
-		cpu_dev_err(mac_dev->dev, "%s:%hu:%s(): FM_MAC_Reset() = 0x%08x\n",
-			    __file__, __LINE__, __func__, err);
 _return_fm_mac_free:
 	err = FM_MAC_Free(priv->mac);
 	if (unlikely(-GET_ERROR_TYPE(err) < 0))
@@ -200,10 +204,12 @@ static int __cold start(struct mac_device *mac_dev)
 				"%s:%hu:%s(): FM_MAC_Enable() = 0x%08x\n",
 				__file__, __LINE__, __func__, err);
 
-	if (macdev2enetinterface(mac_dev) != e_ENET_MODE_XGMII_10000)
-		phy_start(phy_dev);
-	else if (phy_dev->drv->read_status)
-		phy_dev->drv->read_status(phy_dev);
+	if (phy_dev) {
+		if (macdev2enetinterface(mac_dev) != e_ENET_MODE_XGMII_10000)
+			phy_start(phy_dev);
+		else if (phy_dev->drv->read_status)
+			phy_dev->drv->read_status(phy_dev);
+	}
 
 	return _errno;
 }
@@ -213,7 +219,8 @@ static int __cold stop(struct mac_device *mac_dev)
 	int	 _errno;
 	t_Error	 err;
 
-	if (macdev2enetinterface(mac_dev) != e_ENET_MODE_XGMII_10000)
+	if (mac_dev->phy_dev &&
+		(macdev2enetinterface(mac_dev) != e_ENET_MODE_XGMII_10000))
 		phy_stop(mac_dev->phy_dev);
 
 	err = FM_MAC_Disable(((struct mac_priv_s *)macdev_priv(mac_dev))->mac,
@@ -244,6 +251,7 @@ static int __cold change_promisc(struct mac_device *mac_dev)
 	return _errno;
 }
 
+#ifndef CONFIG_P4080_SIM
 static void adjust_link(struct net_device *net_dev)
 {
 	struct dpa_priv_s *priv = netdev_priv(net_dev);
@@ -329,6 +337,18 @@ static int xgmac_init_phy(struct net_device *net_dev)
 	return 0;
 }
 
+#else
+static int dtsec_init_phy(struct net_device *net_dev)
+{
+	return 0;
+}
+
+static int xgmac_init_phy(struct net_device *net_dev)
+{
+	return 0;
+}
+#endif /* !CONFIG_P4080_SIM */
+
 static int __cold uninit(struct mac_device *mac_dev)
 {
 	int			 _errno, __errno;
@@ -337,10 +357,10 @@ static int __cold uninit(struct mac_device *mac_dev)
 
 	priv = (typeof(priv))macdev_priv(mac_dev);
 
-	err = FM_MAC_Reset(priv->mac, true);
+	err = FM_MAC_Disable(priv->mac, e_COMM_MODE_RX_AND_TX);
 	_errno = -GET_ERROR_TYPE(err);
 	if (unlikely(_errno < 0))
-		cpu_dev_err(mac_dev->dev, "%s:%hu:%s(): FM_MAC_Reset() = 0x%08x\n",
+		cpu_dev_err(mac_dev->dev, "%s:%hu:%s(): FM_MAC_Disable() = 0x%08x\n",
 			    __file__, __LINE__, __func__, err);
 
 	err = FM_MAC_Free(priv->mac);

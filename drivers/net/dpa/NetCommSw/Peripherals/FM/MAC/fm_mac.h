@@ -45,6 +45,9 @@
 #include "fm_mac_ext.h"
 
 
+#define DEFAULT_resetOnInit                 FALSE
+
+
 typedef struct
 {
     t_Error (*f_FM_MAC_Init) (t_Handle h_FmMac);
@@ -57,8 +60,9 @@ typedef struct
     t_Error (*f_FM_MAC_ConfigPadAndCrc) (t_Handle h_FmMac, bool newVal);
     t_Error (*f_FM_MAC_ConfigHalfDuplex) (t_Handle h_FmMac, bool newVal);
     t_Error (*f_FM_MAC_ConfigHugeFrames) (t_Handle h_FmMac, bool newVal);
+    t_Error (*f_FM_MAC_ConfigException) (t_Handle h_FmMac, e_FmMacExceptions, bool enable);
 
-    t_Error (*f_FM_MAC_SetExceptions) (t_Handle h_FmMac, e_FmMacExceptions ex);
+    t_Error (*f_FM_MAC_SetException) (t_Handle h_FmMac, e_FmMacExceptions ex, bool enable);
 
     t_Error (*f_FM_MAC_Enable)  (t_Handle h_FmMac,  e_CommMode mode);
     t_Error (*f_FM_MAC_Disable) (t_Handle h_FmMac, e_CommMode mode);
@@ -93,6 +97,7 @@ typedef struct
     t_Handle        h_Fm;
     e_EnetMode      enetMode;
     uint8_t         macId;
+    bool            resetOnInit;
 } t_FmMacControllerDriver;
 
 typedef struct {

@@ -84,7 +84,11 @@
 #define DEFAULT_PORT_l4Checksum                         TRUE
 #define DEFAULT_PORT_BufMargins_startMargins            32
 #define DEFAULT_PORT_BufMargins_endMargins              0
+#ifdef FM_PORT_SYNC_ERRATA
+#define DEFAULT_PORT_syncReq                            FALSE
+#else
 #define DEFAULT_PORT_syncReq                            TRUE
+#endif /* FM_PORT_SYNC_ERRATA */
 #define DEFAULT_PORT_color                              e_FM_PORT_COLOR_GREEN
 #define DEFAULT_PORT_errorsToDiscard                    0
 
@@ -344,7 +348,7 @@ typedef _Packed struct
     volatile uint8_t    reserved0[0x10];    /**< 0x10 - 0x1f */
     t_FmPortImQd        rxQd;
     t_FmPortImQd        txQd;
-    volatile uint8_t    reserved1[0xa0];    /**< 0x10 - 0x1f */
+    volatile uint8_t    reserved1[0xa0];    /**< 0x60 - 0xff */
 } _PackedType t_FmPortImPram;
 
 #define MEM_MAP_END
@@ -756,7 +760,7 @@ t_Error FmPortImRx  (t_FmPort *p_FmPort);
 
 static __inline__ uint8_t * BD_BUFFER (t_FmImBd *p_Bd)
 {
-//#warning complete
+/* TODO - complete */
     return XX_PhysToVirt(CAST_UINT32_TO_POINTER(GET_UINT32(p_Bd->buff.low)));
 }
 

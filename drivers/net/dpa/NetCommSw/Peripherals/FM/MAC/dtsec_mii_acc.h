@@ -30,10 +30,11 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef __MII_ACC_H
-#define __MII_ACC_H
+#ifndef __DTSEC_MII_ACC_H
+#define __DTSEC_MII_ACC_H
 
-/* #define __ERR_MODULE__ MODULE_MII */
+#include "std_ext.h"
+
 
 /* MII Management Configuration Register */
 #define MIIMCFG_RESET_MGMT          0x80000000
@@ -49,6 +50,12 @@
 /* MII Management Indicator Register */
 #define MIIMIND_BUSY                0x00000001
 
+
+#ifdef __MWERKS__
+#pragma pack(push,1)
+#endif /*__MWERKS__ */
+#define MEM_MAP_START
+
 /*----------------------------------------------------*/
 /* MII Configuration Control Memory Map Registers     */
 /*----------------------------------------------------*/
@@ -62,5 +69,10 @@ typedef _Packed struct t_MiiAccessMemMap
     volatile uint32_t miimind;    /* MII Mgmt:indicators    */
 } _PackedType t_MiiAccessMemMap ;
 
+#define MEM_MAP_END
+#ifdef __MWERKS__
+#pragma pack(pop)
+#endif /* __MWERKS__ */
 
-#endif /* __MII_ACC_H */
+
+#endif /* __DTSEC_MII_ACC_H */

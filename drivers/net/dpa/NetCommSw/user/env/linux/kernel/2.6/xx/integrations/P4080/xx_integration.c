@@ -163,3 +163,34 @@ void * XX_VirtToPhys(void * addr)
 {
     return CAST_UINT64_TO_POINTER(SYS_VirtToPhys(CAST_POINTER_TO_UINT64(addr)));
 }
+
+/*****************************************************************************/
+void * xx_MallocSmart(uint32_t size, int memPartitionId, uint32_t alignment)
+{
+    void        *returnCode;
+    uint32_t    tmp;
+
+    switch(memPartitionId) {
+       case(0):
+       case(e_MEM_1ST_DDR_CACHEABLE):
+            if (alignment < 4)
+                alignment = 4;
+            tmp = (uint32_t)(xx_Malloc((uint32_t)(size + alignment)));
+            if (tmp == 0)
+                return NULL;
+            returnCode = (void*)((tmp + alignment) & ~(alignment - 1));
+            *(uint32_t*)((uint32_t)returnCode - 4) = tmp;
+            break;
+        default:
+            XX_Print("XX_MallocSmart:Mem type not supported\r\n");
+            return NULL;
+    }
+    return returnCode;
+}
+
+void xx_FreeSmart(void *p)
+{
+    xx_Free((void *)(*(uint32_t *)((uint32_t)(p)-4)));
+}
+
+

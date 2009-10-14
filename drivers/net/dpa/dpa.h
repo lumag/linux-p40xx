@@ -47,12 +47,10 @@
 
 #include "mac.h"		/* struct mac_device */
 
-#ifdef CONFIG_FSL_FMAN_TEST
 struct pcd_range {
 	uint32_t			 base;
 	uint32_t			 count;
 };
-#endif /* CONFIG_FSL_FMAN_TEST */
 
 struct dpa_percpu_priv_s {
 	struct net_device	*net_dev;
@@ -69,10 +67,9 @@ struct dpa_priv_s {
 	uint16_t		 channel;
 	struct list_head	 dpa_fq_list[2];
 	struct qman_fq		*egress_fqs[8];
-#ifdef CONFIG_FSL_FMAN_TEST
+
 	int					 num;
 	struct pcd_range	 ranges[4];
-#endif /* CONFIG_FSL_FMAN_TEST */
 
 	struct mac_device	*mac_dev;
 

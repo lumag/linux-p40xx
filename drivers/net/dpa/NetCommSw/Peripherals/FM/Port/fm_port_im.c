@@ -198,7 +198,7 @@ t_Error FmPortImRx(t_FmPort *p_FmPort)
 
         BD_STATUS_AND_LENGTH_SET(BD_GET(p_FmPort->im.currBdId), BD_R_E);
 
-//#warning "add here support for errors!!!"
+/* TODO - add here support for errors!!! */
         errors = (uint16_t)((bdStatus & BD_RX_ERRORS) >> 16);
 #if 0
         /* find out which errors the user wants reported. The BD will
@@ -211,29 +211,31 @@ t_Error FmPortImRx(t_FmPort *p_FmPort)
         }
 #endif /* 0 */
 
+        p_FmPort->im.p_BdShadow[p_FmPort->im.currBdId] = h_NewUserPriv;
+
+        p_FmPort->im.currBdId = GetNextBdId(p_FmPort, p_FmPort->im.currBdId);
+        MY_WRITE_UINT16(p_FmPort->im.p_FmPortImPram->rxQd.offsetOut, (uint16_t)(p_FmPort->im.currBdId<<4));
+
         /* Pass the buffer if one of the conditions is true:
         - There are no errors
         - This is a part of a larger frame ( the application has already received some buffers )
         - There is an error, but it was defined to be passed anyway. */
         if ((buffPos != SINGLE_BUF) || !errors || (errors & (uint16_t)(BD_ERROR_PASS_FRAME>>16)))
         {
-            p_FmPort->im.f_RxStoreCB(p_FmPort->im.h_App,
-                                     p_CurData,
-                                     length,
-                                     errors,
-                                     buffPos,
-                                     h_CurrUserPriv);
+            if (p_FmPort->im.f_RxStoreCB(p_FmPort->im.h_App,
+                                         p_CurData,
+                                         length,
+                                         errors,
+                                         buffPos,
+                                         h_CurrUserPriv) == e_RX_STORE_RESPONSE_PAUSE)
+                break;
         }
         else if (p_FmPort->im.rxPool.f_PutBuf(p_FmPort->im.rxPool.h_BufferPool,
                                               p_CurData,
                                               h_CurrUserPriv))
             RETURN_ERROR(MAJOR, E_INVALID_STATE, ("Failed freeing data buffer"));
 
-        p_FmPort->im.p_BdShadow[p_FmPort->im.currBdId] = h_NewUserPriv;
-
-        p_FmPort->im.currBdId = GetNextBdId(p_FmPort, p_FmPort->im.currBdId);
         bdStatus = BD_STATUS_AND_LENGTH(BD_GET(p_FmPort->im.currBdId));
-        MY_WRITE_UINT16(p_FmPort->im.p_FmPortImPram->rxQd.offsetOut, (uint16_t)(p_FmPort->im.currBdId<<4));
     }
 
     return E_OK;
@@ -293,11 +295,11 @@ t_Error FmPortImCheckInitParameters(t_FmPort *p_FmPort)
             RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("max Rx buffer length must at least 256!!!"));
         if(p_FmPort->p_FmPortDriverParam->partitionId >= FM_MAX_NUM_OF_PARTITIONS)
              RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("partitionId can't be larger than %d", FM_MAX_NUM_OF_PARTITIONS-1));
-//#warning "add checks"
+/* TODO - add checks */
     }
     else
     {
-//#warning "add checks"
+/* TODO - add checks */
     }
 
     return E_OK;

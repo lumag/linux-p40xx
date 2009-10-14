@@ -42,6 +42,7 @@
 #include "sprint_ext.h"
 #include "debug_ext.h"
 #include "fm_muram_ext.h"
+
 #include "fm_common.h"
 #ifdef FM_MASTER_PARTITION
 #include "fm_ipc.h"
@@ -60,10 +61,8 @@ static t_Error CheckFmParameters(t_Fm *p_Fm)
     uint8_t     i;
 
     if(p_Fm->p_FmDriverParam->enTimeStamp)
-    {
         if(!p_Fm->timeStampPeriod)
             RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("timeStampPeriod may not be 0"));
-    }
     if(!p_Fm->p_FmDriverParam->dmaAxiDbgNumOfBeats || (p_Fm->p_FmDriverParam->dmaAxiDbgNumOfBeats > DMA_MODE_MAX_AXI_DBG_NUM_OF_BEATS))
         RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("axiDbgNumOfBeats has to be in the range 1 - %d", DMA_MODE_MAX_AXI_DBG_NUM_OF_BEATS));
     if(p_Fm->p_FmDriverParam->dmaCamNumOfEntries % DMA_CAM_UNITS)
@@ -117,6 +116,28 @@ static t_Error CheckFmParameters(t_Fm *p_Fm)
     return E_OK;
 }
 
+#ifdef FM_MASTER_PARTITION
+static void SendIpcIsr(t_Fm *p_Fm, uint32_t macEvent, uint32_t pendingReg)
+{
+    char        moduleName[MODULE_NAME_SIZE];
+    t_Error     err;
+    t_FmIpcIsr  fmIpcIsr;
+
+    if (p_Fm->partitionId != p_Fm->intrMng[macEvent].partitionId)
+    {
+        memset(moduleName, 0, MODULE_NAME_SIZE);
+        if(Sprint (moduleName, "FM-%d-%d",p_Fm->fmId, p_Fm->intrMng[macEvent].partitionId) != 6)
+        fmIpcIsr.pendingReg = pendingReg;
+        fmIpcIsr.err = FALSE;
+        err = XX_SendMessage(moduleName, FM_GUEST_ISR, (uint8_t*)&fmIpcIsr, NULL, NULL);
+        if(err)
+            REPORT_ERROR(MINOR, err, NO_MSG);
+    }
+    else
+        p_Fm->intrMng[macEvent].f_Isr(p_Fm->intrMng[macEvent].h_SrcHandle);
+}
+#endif /*FM_MASTER_PARTITION */
+
 static uint8_t  GetPartition(t_Fm *p_Fm, uint16_t liodn)
 {
     int         i;
@@ -140,7 +161,13 @@ static void    BmiErrEvent(t_Fm *p_Fm)
 
     event = GET_UINT32(p_Fm->p_FmBmiRegs->fmbm_ievr);
     mask = GET_UINT32(p_Fm->p_FmBmiRegs->fmbm_ier);
+
+    /* clear the forced events */
+    if(GET_UINT32(p_Fm->p_FmBmiRegs->fmbm_ifr)& event)
+        WRITE_UINT32(p_Fm->p_FmBmiRegs->fmbm_ifr, event & ~(event & mask));
+
     event &= mask;
+
     /* clear the acknowledged events */
     WRITE_UINT32(p_Fm->p_FmBmiRegs->fmbm_ievr, event);
 
@@ -158,7 +185,12 @@ static void    QmiErrEvent(t_Fm *p_Fm)
 
     event = GET_UINT32(p_Fm->p_FmQmiRegs->fmqm_eie);
     mask = GET_UINT32(p_Fm->p_FmQmiRegs->fmqm_eien);
+    /* clear the forced events */
+    if(GET_UINT32(p_Fm->p_FmQmiRegs->fmqm_eif)& event)
+        WRITE_UINT32(p_Fm->p_FmQmiRegs->fmqm_eif, event & ~(event & mask));
+
     event &= mask;
+
     /* clear the acknowledged events */
     WRITE_UINT32(p_Fm->p_FmQmiRegs->fmqm_eie, event);
 
@@ -218,6 +250,7 @@ static void    FpmErrEvent(t_Fm *p_Fm)
     uint32_t    event;
 
     event = GET_UINT32(p_Fm->p_FmFpmRegs->fpmem);
+
     /* clear the all occured events */
     WRITE_UINT32(p_Fm->p_FmFpmRegs->fpmem, event);
 
@@ -231,31 +264,47 @@ static void    FpmErrEvent(t_Fm *p_Fm)
 
 static void    MuramErrIntr(t_Fm *p_Fm)
 {
-    uint32_t    event;
+    uint32_t    event, mask;
 
     event = GET_UINT32(p_Fm->p_FmFpmRegs->fmrcr);
+    mask = GET_UINT32(p_Fm->p_FmFpmRegs->fmeie);
 
     /* clear MURAM event bit */
     WRITE_UINT32(p_Fm->p_FmFpmRegs->fmrcr, event & ~FPM_RAM_CTL_IRAM_ECC);
 
+
     ASSERT_COND(event  & FPM_RAM_CTL_MURAM_ECC);
     ASSERT_COND(event  & FPM_RAM_CTL_RAMS_ECC_EN);
 
-    p_Fm->f_Exceptions(p_Fm->h_App, e_FM_EX_MURAM_ECC);
+    if ((mask & FPM_MURAM_ECC_ERR_EX_EN))
+        p_Fm->f_Exceptions(p_Fm->h_App, e_FM_EX_MURAM_ECC);
+
+#ifdef BUP_ERRATA_RAM_INTR
+    else
+        DBG(WARNING, ("MURAM masked Interrupt ..."));
+#endif /* BUP_ERRATA_RAM_INTR */
+
 }
 
 static void    IramErrIntr(t_Fm *p_Fm)
 {
-    uint32_t    event;
+    uint32_t    event, mask;
 
     event = GET_UINT32(p_Fm->p_FmFpmRegs->fmrcr) ;
+    mask = GET_UINT32(p_Fm->p_FmFpmRegs->fmeie);
     /* clear the acknowledged events (do not clear IRAM event) */
     WRITE_UINT32(p_Fm->p_FmFpmRegs->fmrcr, event & ~FPM_RAM_CTL_MURAM_ECC );
 
     ASSERT_COND(event  & FPM_RAM_CTL_IRAM_ECC);
     ASSERT_COND(event  & FPM_RAM_CTL_IRAM_ECC_EN);
 
-    p_Fm->f_Exceptions(p_Fm->h_App, e_FM_EX_IRAM_ECC);
+    if ((mask & FPM_IRAM_ECC_ERR_EX_EN))
+        p_Fm->f_Exceptions(p_Fm->h_App, e_FM_EX_IRAM_ECC);
+
+#ifdef BUP_ERRATA_RAM_INTR
+    else
+        DBG(WARNING, ("IRAM masked Interrupt ..."));
+#endif /* BUP_ERRATA_RAM_INTR */
 }
 
 static void     QmiEvent(t_Fm *p_Fm)
@@ -264,7 +313,12 @@ static void     QmiEvent(t_Fm *p_Fm)
 
     event = GET_UINT32(p_Fm->p_FmQmiRegs->fmqm_ie);
     mask = GET_UINT32(p_Fm->p_FmQmiRegs->fmqm_ien);
+    /* clear the forced events */
+    if(GET_UINT32(p_Fm->p_FmQmiRegs->fmqm_if)& event)
+        WRITE_UINT32(p_Fm->p_FmQmiRegs->fmqm_if,  event & ~(event & mask));
+
     event &= mask;
+
     /* clear the acknowledged events */
     WRITE_UINT32(p_Fm->p_FmQmiRegs->fmqm_ie, event);
 
@@ -313,12 +367,19 @@ static void FmFreeInitResources(t_Fm *p_Fm)
        FM_MURAM_FreeMem(p_Fm->h_FmMuram, CAST_UINT64_TO_POINTER(p_Fm->fifoBaseAddr));
 }
 
-static void LoadPatch(t_Fm *p_Fm)
+static t_Error LoadUCode(t_Fm *p_Fm)
 {
     t_FMIramRegs    *p_Iram = CAST_UINT64_TO_POINTER_TYPE(t_FMIramRegs, (p_Fm->baseAddr + FM_MM_IMEM));
+    uint32_t        *p_Muram = CAST_UINT64_TO_POINTER_TYPE(uint32_t, (p_Fm->baseAddr + FM_MM_MURAM));
     int             i;
+    uint32_t        tmp;
+    uint8_t         compTo16;
 
-    SANITY_CHECK_RETURN(p_Fm, E_INVALID_HANDLE);
+    SANITY_CHECK_RETURN_ERROR(p_Fm, E_INVALID_HANDLE);
+
+    /* clear MURAM */
+    for (i=0; i < FM_MURAM_SIZE/4; i++)
+        WRITE_UINT32(*(p_Muram+i), 0);
 
     DBG(TRACE, ("Loading firmware to IRAM ..."));
 
@@ -329,12 +390,31 @@ static void LoadPatch(t_Fm *p_Fm)
     for (i=0; i < (p_Fm->p_FmDriverParam->firmware.size / 4); i++)
         WRITE_UINT32(p_Iram->idata, p_Fm->p_FmDriverParam->firmware.p_Code[i]);
 
+    compTo16 = p_Fm->p_FmDriverParam->firmware.size %16;
+    if(compTo16)
+        for (i=0; i < ((16-compTo16) / 4); i++)
+            WRITE_UINT32(p_Iram->idata, 0);
+
     WRITE_UINT32(p_Iram->iadd,0x0);
     /* verify that writing has completed */
     while (GET_UINT32(p_Iram->idata) != p_Fm->p_FmDriverParam->firmware.p_Code[0]) ;
 
+    if (p_Fm->p_FmDriverParam->fwVerify)
+    {
+        WRITE_UINT32(p_Iram->iadd, IRAM_IADD_AIE);
+        while (GET_UINT32(p_Iram->iadd) != IRAM_IADD_AIE) ;
+        for (i=0; i < (p_Fm->p_FmDriverParam->firmware.size / 4); i++)
+            if ((tmp=GET_UINT32(p_Iram->idata)) != p_Fm->p_FmDriverParam->firmware.p_Code[i])
+                RETURN_ERROR(MAJOR, E_WRITE_FAILED,
+                             ("UCode write error : write 0x%x, read 0x%x",
+                              p_Fm->p_FmDriverParam->firmware.p_Code[i],tmp));
+        WRITE_UINT32(p_Iram->iadd,0x0);
+    }
+
     /* Enable patch from IRAM */
     WRITE_UINT32(p_Iram->iready, IRAM_READY);
+
+    return E_OK;
 }
 
 /****************************************/
@@ -365,6 +445,9 @@ t_Error     FmHandleIpcMsg(t_Handle h_Fm, uint32_t msgId, uint8_t msgBody[MSG_BO
         }
         case (FM_FREE_PORT):
             FmFreePortParams(h_Fm, (t_FmInterModulePortFreeParams*)msgBody);
+            break;
+        case (FM_REGISTER_INTR):
+            p_Fm->intrMng[((t_FmIpcRegisterIntr*)msgBody)->event].partitionId = ((t_FmIpcRegisterIntr*)msgBody)->partitionId;
             break;
 #if (defined(DEBUG_ERRORS) && (DEBUG_ERRORS > 0))
         case (FM_DUMP_PORT_REGS):
@@ -428,12 +511,18 @@ t_Error FmGetPhysicalMuramBase(t_Handle h_Fm, t_FmPhysAddr *fmPhysAddr)
 
 
 void FmRegisterIntr(t_Handle h_Fm,
-                        e_FmInterModuleEvent   event,
+                        e_FmEventModules        module,
+                        uint8_t                 modId,
+                        e_FmIntrType            intrType,
                         void (*f_Isr) (t_Handle h_Arg),
                         t_Handle    h_Arg)
 {
     t_Fm       *p_Fm = (t_Fm*)h_Fm;
+    uint8_t     event= 0;
 
+    GET_MODULE_EVENT(module, modId,intrType, event);
+
+    ASSERT_COND(event != e_FM_EV_DUMMY_LAST);
     p_Fm->intrMng[event].f_Isr = f_Isr;
     p_Fm->intrMng[event].h_SrcHandle = h_Arg;
 }
@@ -553,7 +642,7 @@ t_Error FmGetSetPortParams(t_Handle h_Fm,t_FmInterModulePortInitParams *p_PortPa
         p_Fm->extraOpenDmasPoolSize = p_PortParams->numOfExtraOpenDmas;
 
     if((p_Fm->accumulatedNumOfOpenDmas + p_PortParams->numOfOpenDmas) > p_Fm->maxNumOfOpenDmas)
-        RETURN_ERROR(MAJOR, E_NOT_AVAILABLE, ("Requested numOfOpenDmas exceeds total numOfTasks."));
+        RETURN_ERROR(MAJOR, E_NOT_AVAILABLE, ("Requested numOfOpenDmas exceeds total numOfOpenDmas."));
     else
     {
         p_Fm->accumulatedNumOfOpenDmas += p_PortParams->numOfOpenDmas;
@@ -768,6 +857,15 @@ bool FmRamsEccIsExternalCtl(t_Handle h_Fm)
         return FALSE;
 }
 
+#ifdef CONFIG_MULTI_PARTITION_SUPPORT
+uint8_t FmGetPartitionId(t_Handle h_Fm)
+{
+    t_Fm     *p_Fm = (t_Fm*)h_Fm;
+
+    return p_Fm->partitionId;
+}
+#endif /* CONFIG_MULTI_PARTITION_SUPPORT */
+
 #if (defined(DEBUG_ERRORS) && (DEBUG_ERRORS > 0))
 t_Error FmDumpPortRegs (t_Handle h_Fm,uint8_t hardwarePortId)
 {
@@ -906,10 +1004,11 @@ t_Handle FM_Config(t_FmParams *p_FmParam)
     p_Fm->p_FmDriverParam->enMuramTestMode                      = FALSE;
     p_Fm->p_FmDriverParam->externalEccRamsEnable                = DEFAULT_externalEccRamsEnable;
 
-     p_Fm->p_FmDriverParam->firmware.size = p_FmParam->firmware.size;
-     if (p_Fm->p_FmDriverParam->firmware.size)
-     {
-         p_Fm->p_FmDriverParam->firmware.p_Code = (uint32_t *)XX_Malloc(p_Fm->p_FmDriverParam->firmware.size);
+    p_Fm->p_FmDriverParam->fwVerify                             = DEFAULT_VerifyUcode;
+    p_Fm->p_FmDriverParam->firmware.size                        = p_FmParam->firmware.size;
+    if (p_Fm->p_FmDriverParam->firmware.size)
+    {
+        p_Fm->p_FmDriverParam->firmware.p_Code = (uint32_t *)XX_Malloc(p_Fm->p_FmDriverParam->firmware.size);
         if (!p_Fm->p_FmDriverParam->firmware.p_Code)
         {
             XX_Free(p_Fm->p_FmDriverParam);
@@ -918,19 +1017,19 @@ t_Handle FM_Config(t_FmParams *p_FmParam)
             return NULL;
         }
          memcpy(p_Fm->p_FmDriverParam->firmware.p_Code ,p_FmParam->firmware.p_Code ,p_Fm->p_FmDriverParam->firmware.size);
-     }
+    }
 
-#ifdef CONFIG_GUEST_PARTITION
+#ifdef CONFIG_MULTI_PARTITION_SUPPORT
     /* register to inter-core messaging mechanism */
     memset(p_Fm->fmModuleName, 0, MODULE_NAME_SIZE);
-    if(Sprint (p_Fm->fmModuleName, "FM-%d",p_Fm->fmId) != 4)
+    if(Sprint (p_Fm->fmModuleName, "FM-%d-Master",p_Fm->fmId) != 11)
     {
         XX_Free(p_Fm->p_FmDriverParam);
         XX_Free(p_Fm);
         REPORT_ERROR(MAJOR, E_INVALID_STATE, ("Sprint failed"));
         return NULL;
     }
-#endif /* CONFIG_GUEST_PARTITION */
+#endif /* CONFIG_MULTI_PARTITION_SUPPORT  */
 
     return p_Fm;
 }
@@ -949,7 +1048,7 @@ t_Error FM_Init(t_Handle h_Fm)
     t_Fm                    *p_Fm = (t_Fm*)h_Fm;
     t_FmDriverParam         *p_FmDriverParam = NULL;
 #ifdef FM_MASTER_PARTITION
-    t_Error                 err;
+    t_Error                 err = E_OK;
 #endif /* FM_MASTER_PARTITION */
     uint32_t                tmpReg, cfgReg = 0;
     int                     i;
@@ -969,8 +1068,9 @@ t_Error FM_Init(t_Handle h_Fm)
     /**********************/
     /* Load patch to Iram */
     /**********************/
-    if (p_Fm->p_FmDriverParam->firmware.p_Code)
-        LoadPatch(p_Fm);
+    if (p_Fm->p_FmDriverParam->firmware.p_Code &&
+        (LoadUCode(p_Fm) != E_OK))
+        RETURN_ERROR(MAJOR, E_INVALID_STATE, NO_MSG);
 
     /* General FM driver initialization */
     p_Fm->fmMuramPhysBaseAddr = CAST_POINTER_TO_UINT64(XX_VirtToPhys(CAST_UINT64_TO_POINTER(p_Fm->baseAddr + FM_MM_MURAM)));
@@ -991,17 +1091,11 @@ t_Error FM_Init(t_Handle h_Fm)
     tmpReg = 0;
     tmpReg |= p_FmDriverParam->dmaCacheOverride << DMA_MODE_CACHE_OR_SHIFT;
     if(p_FmDriverParam->dmaAidOverride)
-    {
         tmpReg |= DMA_MODE_AID_OR;
-    }
     if (p_Fm->exceptions & FM_EX_DMA_BUS_ERROR)
-    {
         tmpReg |= DMA_MODE_BER;
-    }
     if ((p_Fm->exceptions & FM_EX_DMA_SYSTEM_WRITE_ECC) | (p_Fm->exceptions & FM_EX_DMA_READ_ECC) | (p_Fm->exceptions & FM_EX_DMA_FM_WRITE_ECC))
-    {
         tmpReg |= DMA_MODE_ECC;
-    }
     if(p_FmDriverParam->dmaStopOnBusError)
         tmpReg |= DMA_MODE_SBER;
     tmpReg |= (uint32_t)(p_FmDriverParam->dmaAxiDbgNumOfBeats - 1) << DMA_MODE_AXI_DBG_SHIFT;
@@ -1088,17 +1182,11 @@ t_Error FM_Init(t_Handle h_Fm)
     tmpReg |= (FPM_EV_MASK_STALL | FPM_EV_MASK_DOUBLE_ECC | FPM_EV_MASK_SINGLE_ECC);
     /* enable interrupts */
     if(p_Fm->exceptions & FM_EX_FPM_STALL_ON_TASKS)
-    {
         tmpReg |= FPM_EV_MASK_STALL_EN;
-    }
     if(p_Fm->exceptions & FM_EX_FPM_SINGLE_ECC)
-    {
         tmpReg |= FPM_EV_MASK_SINGLE_ECC_EN;
-    }
     if(p_Fm->exceptions & FM_EX_FPM_DOUBLE_ECC)
-    {
-        tmpReg |= FPM_EV_MASK_DOUBLE_ECC_EN ;
-    }
+        tmpReg |= FPM_EV_MASK_DOUBLE_ECC_EN;
     tmpReg |= (p_Fm->p_FmDriverParam->catastrophicErr  << FPM_EV_MASK_CAT_ERR_SHIFT);
     tmpReg |= (p_Fm->p_FmDriverParam->dmaErr << FPM_EV_MASK_DMA_ERR_SHIFT);
     if(!p_Fm->p_FmDriverParam->haltOnExternalActivation)
@@ -1149,9 +1237,9 @@ t_Error FM_Init(t_Handle h_Fm)
     /* RAM ECC -  enable and clear events*/
     /* first we need to clear all parser memory, as it is uninitialized and
     may cause ECC errors */
-    for(i=0;i<FM_SW_PRS_SIZE;i+=4)
+   /* for(i=0;i<FM_SW_PRS_SIZE;i+=4)
         WRITE_UINT32(*CAST_UINT64_TO_POINTER_TYPE(uint32_t, (p_Fm->baseAddr + FM_MM_PRS + i)), 0);
-
+*/
     tmpReg = 0;
     if(p_Fm->exceptions & FM_EX_IRAM_ECC)
     {
@@ -1260,13 +1348,13 @@ t_Error FM_Init(t_Handle h_Fm)
 
     if (p_Fm->irq != NO_IRQ)
     {
-        XX_SetIntr(p_Fm->irq, FM_Isr, p_Fm);
+        XX_SetIntr(p_Fm->irq, FM_EventIsr, p_Fm);
         XX_EnableIntr(p_Fm->irq);
     }
 
     if (p_Fm->errIrq != NO_IRQ)
     {
-        XX_SetIntr(p_Fm->errIrq, FM_Isr, p_Fm);
+        XX_SetIntr(p_Fm->errIrq, FM_ErrorIsr, p_Fm);
         XX_EnableIntr(p_Fm->errIrq);
     }
 
@@ -1732,7 +1820,98 @@ t_Handle FM_GetPcdHandle(t_Handle h_Fm)
     return ((t_Fm*)h_Fm)->h_Pcd;
 }
 
-void FM_Isr(t_Handle h_Fm)
+void FM_EventIsr(t_Handle h_Fm)
+{
+    t_Fm                    *p_Fm = (t_Fm*)h_Fm;
+    uint32_t                pending;
+
+    SANITY_CHECK_RETURN(h_Fm, E_INVALID_HANDLE);
+
+    /* normal interrupts */
+    pending = GET_UINT32(p_Fm->p_FmFpmRegs->fmnpi);
+    ASSERT_COND(pending);
+    if(pending & INTR_EN_BMI)
+        REPORT_ERROR(MAJOR, E_NOT_SUPPORTED, ("BMI Event - undefined!"));
+    if(pending & INTR_EN_QMI)
+        QmiEvent(p_Fm);
+    if(pending & INTR_EN_PRS)
+        p_Fm->intrMng[e_FM_EV_PRS].f_Isr(p_Fm->intrMng[e_FM_EV_PRS].h_SrcHandle);
+    if(pending & INTR_EN_PLCR)
+        p_Fm->intrMng[e_FM_EV_PLCR].f_Isr(p_Fm->intrMng[e_FM_EV_PLCR].h_SrcHandle);
+    if(pending & INTR_EN_KG)
+        p_Fm->intrMng[e_FM_EV_KG].f_Isr(p_Fm->intrMng[e_FM_EV_KG].h_SrcHandle);
+    if(pending & FPM_EVENT_FM_CTL)
+        FmCtlEvent(p_Fm, pending  & FPM_EVENT_FM_CTL);
+    if(pending & INTR_EN_TMR)
+            p_Fm->intrMng[e_FM_EV_TMR].f_Isr(p_Fm->intrMng[e_FM_EV_TMR].h_SrcHandle);
+
+    /* MAC events may belong to different partitions */
+    if(pending & INTR_EN_1G_MAC1)
+    {
+#ifdef FM_MASTER_PARTITION
+        if (p_Fm->partitionId != p_Fm->intrMng[e_FM_EV_1G_MAC1].partitionId)
+            SendIpcIsr(p_Fm, e_FM_EV_1G_MAC1, pending);
+        else
+#endif /* FM_MASTER_PARTITION */
+            p_Fm->intrMng[e_FM_EV_1G_MAC1].f_Isr(p_Fm->intrMng[e_FM_EV_1G_MAC1].h_SrcHandle);
+    }
+    if(pending & INTR_EN_1G_MAC2)
+    {
+#ifdef FM_MASTER_PARTITION
+        if (p_Fm->partitionId != p_Fm->intrMng[e_FM_EV_1G_MAC2].partitionId)
+            SendIpcIsr(p_Fm, e_FM_EV_1G_MAC2, pending);
+        else
+#endif /* FM_MASTER_PARTITION */
+            p_Fm->intrMng[e_FM_EV_1G_MAC2].f_Isr(p_Fm->intrMng[e_FM_EV_1G_MAC2].h_SrcHandle);
+    }
+    if(pending & INTR_EN_1G_MAC3)
+    {
+#ifdef FM_MASTER_PARTITION
+        if (p_Fm->partitionId != p_Fm->intrMng[e_FM_EV_1G_MAC3].partitionId)
+            SendIpcIsr(p_Fm, e_FM_EV_1G_MAC3, pending);
+        else
+#endif /* FM_MASTER_PARTITION */
+           p_Fm->intrMng[e_FM_EV_1G_MAC3].f_Isr(p_Fm->intrMng[e_FM_EV_1G_MAC3].h_SrcHandle);
+    }
+    if(pending & INTR_EN_1G_MAC0_TMR)
+    {
+#ifdef FM_MASTER_PARTITION
+        if (p_Fm->partitionId != p_Fm->intrMng[e_FM_EV_1G_MAC0_TMR].partitionId)
+            SendIpcIsr(p_Fm, e_FM_EV_1G_MAC0_TMR, pending);
+        else
+#endif /* FM_MASTER_PARTITION */
+            p_Fm->intrMng[e_FM_EV_1G_MAC0_TMR].f_Isr(p_Fm->intrMng[e_FM_EV_1G_MAC0_TMR].h_SrcHandle);
+    }
+    if(pending & INTR_EN_1G_MAC1_TMR)
+    {
+#ifdef FM_MASTER_PARTITION
+        if (p_Fm->partitionId != p_Fm->intrMng[e_FM_EV_1G_MAC1_TMR].partitionId)
+            SendIpcIsr(p_Fm, e_FM_EV_1G_MAC1_TMR, pending);
+        else
+#endif /* FM_MASTER_PARTITION */
+            p_Fm->intrMng[e_FM_EV_1G_MAC1_TMR].f_Isr(p_Fm->intrMng[e_FM_EV_1G_MAC1_TMR].h_SrcHandle);
+    }
+    if(pending & INTR_EN_1G_MAC2_TMR)
+    {
+#ifdef FM_MASTER_PARTITION
+        if (p_Fm->partitionId != p_Fm->intrMng[e_FM_EV_1G_MAC2_TMR].partitionId)
+            SendIpcIsr(p_Fm, e_FM_EV_1G_MAC2_TMR, pending);
+        else
+#endif /* FM_MASTER_PARTITION */
+            p_Fm->intrMng[e_FM_EV_1G_MAC2_TMR].f_Isr(p_Fm->intrMng[e_FM_EV_1G_MAC2_TMR].h_SrcHandle);
+    }
+    if(pending & INTR_EN_1G_MAC3_TMR)
+    {
+#ifdef FM_MASTER_PARTITION
+       if (p_Fm->partitionId != p_Fm->intrMng[e_FM_EV_1G_MAC3_TMR].partitionId)
+            SendIpcIsr(p_Fm, e_FM_EV_1G_MAC3_TMR, pending);
+        else
+#endif /* FM_MASTER_PARTITION */
+           p_Fm->intrMng[e_FM_EV_1G_MAC3_TMR].f_Isr(p_Fm->intrMng[e_FM_EV_1G_MAC3_TMR].h_SrcHandle);
+    }
+}
+
+void FM_ErrorIsr(t_Handle h_Fm)
 {
     t_Fm                    *p_Fm = (t_Fm*)h_Fm;
     uint32_t                pending;
@@ -1741,70 +1920,74 @@ void FM_Isr(t_Handle h_Fm)
 
     /* error interrupts */
     pending = GET_UINT32(p_Fm->p_FmFpmRegs->fmepi);
-    if(pending) /* remove if separate sources */
-    {
-        if(pending & ERR_INTR_EN_BMI)
-            BmiErrEvent(p_Fm);
-        if(pending & ERR_INTR_EN_QMI)
-            QmiErrEvent(p_Fm);
-        if(pending & ERR_INTR_EN_FPM)
-            FpmErrEvent(p_Fm);
-        if(pending & ERR_INTR_EN_DMA)
-            DmaErrEvent(p_Fm);
-        if(pending & ERR_INTR_EN_IRAM)
-            IramErrIntr(p_Fm);
-        if(pending & ERR_INTR_EN_MURAM)
-            MuramErrIntr(p_Fm);
-        if(pending & ERR_INTR_EN_PRS)
-            p_Fm->intrMng[e_FM_EV_ERR_PRS].f_Isr(p_Fm->intrMng[e_FM_EV_ERR_PRS].h_SrcHandle);
-        if(pending & ERR_INTR_EN_PLCR)
-            p_Fm->intrMng[e_FM_EV_ERR_PLCR].f_Isr(p_Fm->intrMng[e_FM_EV_ERR_PLCR].h_SrcHandle);
-        if(pending & ERR_INTR_EN_KG)
-            p_Fm->intrMng[e_FM_EV_ERR_KG].f_Isr(p_Fm->intrMng[e_FM_EV_ERR_KG].h_SrcHandle);
-        if(pending & ERR_INTR_EN_1G_MAC0)
-            p_Fm->intrMng[e_FM_EV_ERR_1G_MAC0].f_Isr(p_Fm->intrMng[e_FM_EV_ERR_1G_MAC0].h_SrcHandle);
-        if(pending & ERR_INTR_EN_1G_MAC1)
-            p_Fm->intrMng[e_FM_EV_ERR_1G_MAC1].f_Isr(p_Fm->intrMng[e_FM_EV_ERR_1G_MAC1].h_SrcHandle);
-        if(pending & ERR_INTR_EN_1G_MAC2)
-            p_Fm->intrMng[e_FM_EV_ERR_1G_MAC2].f_Isr(p_Fm->intrMng[e_FM_EV_ERR_1G_MAC2].h_SrcHandle);
-        if(pending & ERR_INTR_EN_1G_MAC3)
-            p_Fm->intrMng[e_FM_EV_ERR_1G_MAC3].f_Isr(p_Fm->intrMng[e_FM_EV_ERR_1G_MAC3].h_SrcHandle);
-        if(pending & ERR_INTR_EN_10G_MAC0)
-            p_Fm->intrMng[e_FM_EV_ERR_10G_MAC0].f_Isr(p_Fm->intrMng[e_FM_EV_ERR_10G_MAC0].h_SrcHandle);
-    }
+    if (!pending)
+        return;
 
-    /* normal interrupts */
-    pending = GET_UINT32(p_Fm->p_FmFpmRegs->fmnpi);
-    if(pending) /* remove if separate sources */
+    if(pending & ERR_INTR_EN_BMI)
+        BmiErrEvent(p_Fm);
+    if(pending & ERR_INTR_EN_QMI)
+        QmiErrEvent(p_Fm);
+    if(pending & ERR_INTR_EN_FPM)
+        FpmErrEvent(p_Fm);
+    if(pending & ERR_INTR_EN_DMA)
+        DmaErrEvent(p_Fm);
+    if(pending & ERR_INTR_EN_IRAM)
+        IramErrIntr(p_Fm);
+    if(pending & ERR_INTR_EN_MURAM)
+        MuramErrIntr(p_Fm);
+    if(pending & ERR_INTR_EN_PRS)
+        p_Fm->intrMng[e_FM_EV_ERR_PRS].f_Isr(p_Fm->intrMng[e_FM_EV_ERR_PRS].h_SrcHandle);
+    if(pending & ERR_INTR_EN_PLCR)
+        p_Fm->intrMng[e_FM_EV_ERR_PLCR].f_Isr(p_Fm->intrMng[e_FM_EV_ERR_PLCR].h_SrcHandle);
+    if(pending & ERR_INTR_EN_KG)
+        p_Fm->intrMng[e_FM_EV_ERR_KG].f_Isr(p_Fm->intrMng[e_FM_EV_ERR_KG].h_SrcHandle);
+
+    /* MAC events may belong to different partitions */
+    if(pending & ERR_INTR_EN_1G_MAC0)
     {
-        if(pending & INTR_EN_BMI)
-            REPORT_ERROR(MAJOR, E_NOT_SUPPORTED, ("BMI Event - undefined!"));
-        if(pending & INTR_EN_QMI)
-            QmiEvent(p_Fm);
-        if(pending & INTR_EN_PRS)
-            p_Fm->intrMng[e_FM_EV_PRS].f_Isr(p_Fm->intrMng[e_FM_EV_PRS].h_SrcHandle);
-        if(pending & INTR_EN_PLCR)
-            p_Fm->intrMng[e_FM_EV_PLCR].f_Isr(p_Fm->intrMng[e_FM_EV_PLCR].h_SrcHandle);
-        if(pending & INTR_EN_KG)
-            p_Fm->intrMng[e_FM_EV_KG].f_Isr(p_Fm->intrMng[e_FM_EV_KG].h_SrcHandle);
-        if(pending & FPM_EVENT_FM_CTL)
-            FmCtlEvent(p_Fm, pending  & FPM_EVENT_FM_CTL);
-        if(pending & INTR_EN_1G_MAC1)
-            p_Fm->intrMng[e_FM_EV_1G_MAC1].f_Isr(p_Fm->intrMng[e_FM_EV_1G_MAC1].h_SrcHandle);
-        if(pending & INTR_EN_1G_MAC2)
-            p_Fm->intrMng[e_FM_EV_1G_MAC2].f_Isr(p_Fm->intrMng[e_FM_EV_1G_MAC2].h_SrcHandle);
-        if(pending & INTR_EN_1G_MAC3)
-            p_Fm->intrMng[e_FM_EV_1G_MAC3].f_Isr(p_Fm->intrMng[e_FM_EV_1G_MAC3].h_SrcHandle);
-        if(pending & INTR_EN_1G_MAC0_TMR)
-            p_Fm->intrMng[e_FM_EV_1G_MAC0_TMR].f_Isr(p_Fm->intrMng[e_FM_EV_1G_MAC0_TMR].h_SrcHandle);
-        if(pending & INTR_EN_1G_MAC1_TMR)
-            p_Fm->intrMng[e_FM_EV_1G_MAC1_TMR].f_Isr(p_Fm->intrMng[e_FM_EV_1G_MAC1_TMR].h_SrcHandle);
-        if(pending & INTR_EN_1G_MAC2_TMR)
-            p_Fm->intrMng[e_FM_EV_1G_MAC2_TMR].f_Isr(p_Fm->intrMng[e_FM_EV_1G_MAC2_TMR].h_SrcHandle);
-        if(pending & INTR_EN_1G_MAC3_TMR)
-            p_Fm->intrMng[e_FM_EV_1G_MAC3_TMR].f_Isr(p_Fm->intrMng[e_FM_EV_1G_MAC3_TMR].h_SrcHandle);
-        if(pending & INTR_EN_TMR)
-            p_Fm->intrMng[e_FM_EV_TMR].f_Isr(p_Fm->intrMng[e_FM_EV_TMR].h_SrcHandle);
+#ifdef FM_MASTER_PARTITION
+       if (p_Fm->partitionId != p_Fm->intrMng[e_FM_EV_ERR_1G_MAC0].partitionId)
+            SendIpcIsr(p_Fm, e_FM_EV_ERR_1G_MAC0, pending);
+        else
+#endif /* FM_MASTER_PARTITION */
+            p_Fm->intrMng[e_FM_EV_ERR_1G_MAC0].f_Isr(p_Fm->intrMng[e_FM_EV_ERR_1G_MAC0].h_SrcHandle);
+    }
+    if(pending & ERR_INTR_EN_1G_MAC1)
+    {
+#ifdef FM_MASTER_PARTITION
+       if (p_Fm->partitionId != p_Fm->intrMng[e_FM_EV_ERR_1G_MAC1].partitionId)
+            SendIpcIsr(p_Fm, e_FM_EV_ERR_1G_MAC1, pending);
+        else
+#endif /* FM_MASTER_PARTITION */
+            p_Fm->intrMng[e_FM_EV_ERR_1G_MAC1].f_Isr(p_Fm->intrMng[e_FM_EV_ERR_1G_MAC1].h_SrcHandle);
+    }
+    if(pending & ERR_INTR_EN_1G_MAC2)
+    {
+#ifdef FM_MASTER_PARTITION
+       if (p_Fm->partitionId != p_Fm->intrMng[e_FM_EV_ERR_1G_MAC2].partitionId)
+            SendIpcIsr(p_Fm, e_FM_EV_ERR_1G_MAC2, pending);
+        else
+#endif /* FM_MASTER_PARTITION */
+            p_Fm->intrMng[e_FM_EV_ERR_1G_MAC2].f_Isr(p_Fm->intrMng[e_FM_EV_ERR_1G_MAC2].h_SrcHandle);
+    }
+    if(pending & ERR_INTR_EN_1G_MAC3)
+    {
+#ifdef FM_MASTER_PARTITION
+       if (p_Fm->partitionId != p_Fm->intrMng[e_FM_EV_ERR_1G_MAC3].partitionId)
+            SendIpcIsr(p_Fm, e_FM_EV_ERR_1G_MAC3, pending);
+        else
+#endif /* FM_MASTER_PARTITION */
+            p_Fm->intrMng[e_FM_EV_ERR_1G_MAC3].f_Isr(p_Fm->intrMng[e_FM_EV_ERR_1G_MAC3].h_SrcHandle);
+    }
+    if(pending & ERR_INTR_EN_10G_MAC0)
+    {
+#ifdef FM_MASTER_PARTITION
+       if (p_Fm->partitionId != p_Fm->intrMng[e_FM_EV_ERR_10G_MAC0].partitionId)
+            SendIpcIsr(p_Fm, e_FM_EV_ERR_10G_MAC0, pending);
+        else
+#endif /* FM_MASTER_PARTITION */
+            p_Fm->intrMng[e_FM_EV_ERR_10G_MAC0].f_Isr(p_Fm->intrMng[e_FM_EV_ERR_10G_MAC0].h_SrcHandle);
+
     }
 }
 
@@ -2041,7 +2224,6 @@ t_Error FM_SetException(t_Handle h_Fm, e_FmExceptions exception, bool enable)
                     /* enable ECC if not enabled */
                     if(!p_Fm->ramsEccEnable)
                     {
-
                         WRITE_UINT32(p_Fm->p_FmFpmRegs->fmrcr, GET_UINT32(p_Fm->p_FmFpmRegs->fmrcr) |
                                                                 (FPM_RAM_CTL_IRAM_ECC_EN | FPM_RAM_CTL_RAMS_ECC_EN));
                         p_Fm->ramsEccEnable = TRUE;
@@ -2050,7 +2232,8 @@ t_Error FM_SetException(t_Handle h_Fm, e_FmExceptions exception, bool enable)
                     tmpReg |= FPM_IRAM_ECC_ERR_EX_EN;
                 }
                 else
-                    tmpReg &= FPM_IRAM_ECC_ERR_EX_EN;
+                    /* ECC mechanism will remain enabled, but interrupts disabled */
+                    tmpReg &= ~FPM_IRAM_ECC_ERR_EX_EN;
                 WRITE_UINT32(p_Fm->p_FmFpmRegs->fmeie, tmpReg);
                 break;
 
@@ -2065,13 +2248,13 @@ t_Error FM_SetException(t_Handle h_Fm, e_FmExceptions exception, bool enable)
                     tmpReg |= FPM_MURAM_ECC_ERR_EX_EN;
                 }
                 else
-                    tmpReg &= FPM_MURAM_ECC_ERR_EX_EN;
-                WRITE_UINT32(p_Fm->p_FmFpmRegs->fmeie, tmpReg);
+                    /* ECC mechanism will remain enabled, but interrupts disabled */
+                    tmpReg &= ~FPM_MURAM_ECC_ERR_EX_EN;
 
+                WRITE_UINT32(p_Fm->p_FmFpmRegs->fmeie, tmpReg);
                 break;
             default:
                 RETURN_ERROR(MINOR, E_INVALID_SELECTION, NO_MSG);
-
         }
     }
     else
@@ -2233,7 +2416,7 @@ t_Error  FM_SetCounter(t_Handle h_Fm, e_FmCounters counter, uint32_t val)
     return E_OK;
 }
 
-void FM_DmaEmergencyCtrl(t_Handle h_Fm, e_FmDmaMuramPort muramPort, bool enable)
+void FM_SetDmaEmergency(t_Handle h_Fm, e_FmDmaMuramPort muramPort, bool enable)
 {
     t_Fm *p_Fm = (t_Fm*)h_Fm;
     uint32_t    bitMask;

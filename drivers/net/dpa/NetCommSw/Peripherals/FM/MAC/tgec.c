@@ -43,6 +43,7 @@
 #include "endian_ext.h"
 #include "crc_mac_addr_ext.h"
 #include "debug_ext.h"
+#include "fm_common.h"
 
 #include "tgec.h"
 
@@ -95,11 +96,74 @@ static void SetDefaultParam(t_TgecDriverParam *p_TgecDriverParam)
     p_TgecDriverParam->debugMode                = DEFAULT_debugMode;
 
     p_TgecDriverParam->pauseTime                = DEFAULT_pauseTime;
-
-//Temp    p_TgecDriverParam->imask              = DEFAULT_imask;
 }
 
 /* ........................................................................... */
+
+static void TgecErrException(t_Handle h_Tgec)
+{
+    t_Tgec             *p_Tgec = (t_Tgec *)h_Tgec;
+    uint32_t            event;
+    t_TgecMemMap        *p_TgecMemMap = p_Tgec->p_MemMap;
+
+    event = GET_UINT32(p_TgecMemMap->ievent);
+    /* do not handle MDIO events */
+    event &= ~(IMASK_MDIO_SCAN_EVENTMDIO | IMASK_MDIO_CMD_CMPL);
+
+    event &= GET_UINT32(p_TgecMemMap->imask);
+
+    WRITE_UINT32(p_TgecMemMap->ievent, event);
+
+    if(event & IMASK_REM_FAULT)
+        p_Tgec->f_Exceptions(p_Tgec->h_App, e_FM_MAC_EX_10G_REM_FAULT);
+    if(event & IMASK_LOC_FAULT)
+        p_Tgec->f_Exceptions(p_Tgec->h_App, e_FM_MAC_EX_10G_LOC_FAULT);
+    if(event & IMASK_1TX_ECC_ER)
+        p_Tgec->f_Exceptions(p_Tgec->h_App, e_FM_MAC_EX_10G_1TX_ECC_ER);
+    if(event & IMASK_TX_FIFO_UNFL)
+        p_Tgec->f_Exceptions(p_Tgec->h_App, e_FM_MAC_EX_10G_TX_FIFO_UNFL);
+    if(event & IMASK_TX_FIFO_OVFL)
+        p_Tgec->f_Exceptions(p_Tgec->h_App, e_FM_MAC_EX_10G_TX_FIFO_OVFL);
+    if(event & IMASK_TX_ER )
+        p_Tgec->f_Exceptions(p_Tgec->h_App, e_FM_MAC_EX_10G_TX_ER);
+    if(event & IMASK_RX_FIFO_OVFL )
+        p_Tgec->f_Exceptions(p_Tgec->h_App, e_FM_MAC_EX_10G_RX_FIFO_OVFL);
+    if(event & IMASK_RX_ECC_ER )
+        p_Tgec->f_Exceptions(p_Tgec->h_App, e_FM_MAC_EX_10G_RX_ECC_ER);
+    if(event & IMASK_RX_JAB_FRM)
+        p_Tgec->f_Exceptions(p_Tgec->h_App, e_FM_MAC_EX_10G_RX_JAB_FRM);
+    if(event & IMASK_RX_OVRSZ_FRM)
+        p_Tgec->f_Exceptions(p_Tgec->h_App, e_FM_MAC_EX_10G_RX_OVRSZ_FRM);
+    if(event & IMASK_RX_RUNT_FRM )
+        p_Tgec->f_Exceptions(p_Tgec->h_App, e_FM_MAC_EX_10G_RX_RUNT_FRM);
+    if(event & IMASK_RX_FRAG_FRM)
+        p_Tgec->f_Exceptions(p_Tgec->h_App, e_FM_MAC_EX_10G_RX_FRAG_FRM);
+    if(event & IMASK_RX_LEN_ER)
+        p_Tgec->f_Exceptions(p_Tgec->h_App, e_FM_MAC_EX_10G_RX_LEN_ER);
+    if(event & IMASK_RX_CRC_ER)
+        p_Tgec->f_Exceptions(p_Tgec->h_App, e_FM_MAC_EX_10G_RX_CRC_ER);
+    if(event & IMASK_RX_ALIGN_ER)
+        p_Tgec->f_Exceptions(p_Tgec->h_App, e_FM_MAC_EX_10G_RX_ALIGN_ER);
+
+}
+static void TgecException(t_Handle h_Tgec)
+{
+    t_Tgec             *p_Tgec = (t_Tgec *)h_Tgec;
+     uint32_t            event;
+     t_TgecMemMap        *p_TgecMemMap = p_Tgec->p_MemMap;
+
+     event = GET_UINT32(p_TgecMemMap->ievent);
+     /* handle only MDIO events */
+     event &= (IMASK_MDIO_SCAN_EVENTMDIO | IMASK_MDIO_CMD_CMPL);
+     event &= GET_UINT32(p_TgecMemMap->imask);
+
+     WRITE_UINT32(p_TgecMemMap->ievent, event);
+
+     if(event & IMASK_MDIO_SCAN_EVENTMDIO)
+         p_Tgec->f_Events(p_Tgec->h_App, e_FM_MAC_EX_10G_MDIO_SCAN_EVENTMDIO);
+     if(event & IMASK_MDIO_CMD_CMPL)
+         p_Tgec->f_Events(p_Tgec->h_App, e_FM_MAC_EX_10G_MDIO_CMD_CMPL);
+}
 
 static void FreeInitResources(t_Tgec *p_Tgec)
 {
@@ -262,6 +326,19 @@ static t_Error TgecInit(t_Handle h_Tgec)
         RETURN_ERROR(MAJOR, E_NO_MEMORY, ("allocation hash table is FAILED"));
     }
 
+    /* interrupts */
+    WRITE_UINT32(p_MemMap->ievent, EVENTS_MASK);
+    WRITE_UINT32(p_MemMap->imask, p_Tgec->exceptions);
+
+    FmRegisterIntr(p_Tgec->fmMacControllerDriver.h_Fm, e_FM_MOD_10G_MAC, p_Tgec->macId, e_FM_INTR_TYPE_ERR, TgecErrException , p_Tgec);
+    if ((p_Tgec->mdioIrq != 0) && (p_Tgec->mdioIrq != NO_IRQ))
+    {
+        XX_SetIntr(p_Tgec->mdioIrq, TgecException, p_Tgec);
+        XX_EnableIntr(p_Tgec->mdioIrq);
+    }
+    else if (p_Tgec->mdioIrq == 0)
+        REPORT_ERROR(MINOR, E_NOT_SUPPORTED, (NO_MSG));
+
     XX_Free(p_TgecDriverParam);
     p_Tgec->p_TgecDriverParam = NULL;
 
@@ -287,6 +364,7 @@ static t_Error TgecConfigStatistics(t_Handle h_Tgec, bool newVal)
     return E_OK;
 }
 
+#ifndef FM_10G_MAC_NO_CTRL_LOOPBACK
 /* .............................................................................. */
 
 static t_Error TgecConfigLoopback(t_Handle h_Tgec, bool newVal)
@@ -300,6 +378,7 @@ static t_Error TgecConfigLoopback(t_Handle h_Tgec, bool newVal)
 
     return E_OK;
 }
+#endif /* !FM_10G_MAC_NO_CTRL_LOOPBACK */
 
 /* .............................................................................. */
 
@@ -363,6 +442,28 @@ static t_Error TgecConfigHugeFrames(t_Handle h_Tgec, bool newVal)
 /*****************************************************************************/
 
 /* .............................................................................. */
+
+static t_Error TgecConfigException(t_Handle h_Tgec, e_FmMacExceptions exception, bool enable)
+{
+    t_Tgec      *p_Tgec = (t_Tgec *)h_Tgec;
+    uint32_t    bitMask = 0;
+
+    SANITY_CHECK_RETURN_ERROR(p_Tgec, E_INVALID_HANDLE);
+    SANITY_CHECK_RETURN_ERROR(p_Tgec->p_TgecDriverParam, E_INVALID_STATE);
+
+    GET_EXCEPTION_FLAG(bitMask, exception);
+    if(bitMask)
+    {
+        if (enable)
+            p_Tgec->exceptions |= bitMask;
+        else
+            p_Tgec->exceptions &= ~bitMask;
+    }
+    else
+        RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("Undefined exception"));
+
+    return E_OK;
+}
 
 static t_Error TgecEnable(t_Handle h_Tgec,  e_CommMode mode)
 {
@@ -464,8 +565,6 @@ static t_Error TgecGetStatistics(t_Handle h_Tgec, t_FmMacStatistics *p_Statistic
 
     SANITY_CHECK_RETURN_ERROR(p_Tgec, E_INVALID_HANDLE);
     SANITY_CHECK_RETURN_ERROR(p_Statistics, E_NULL_POINTER);
-
-
 
     p_Statistics->eStatPkts64           = GET_UINT64(p_TgecMemMap->R64);
     p_Statistics->eStatPkts65to127      = GET_UINT64(p_TgecMemMap->R127);
@@ -806,15 +905,33 @@ RETURN_ERROR(MINOR, E_NOT_SUPPORTED, NO_MSG);
 
 /* .............................................................................. */
 
-static t_Error TgecSetExcpetions(t_Handle h_Tgec, e_FmMacExceptions ex)
+static t_Error TgecSetExcpetion(t_Handle h_Tgec, e_FmMacExceptions exception, bool enable)
 {
     t_Tgec              *p_Tgec = (t_Tgec *)h_Tgec;
+    uint32_t            bitMask = 0, tmpReg;
+    t_TgecMemMap        *p_TgecMemMap = p_Tgec->p_MemMap;
 
     SANITY_CHECK_RETURN_ERROR(p_Tgec, E_INVALID_HANDLE);
     SANITY_CHECK_RETURN_ERROR(!p_Tgec->p_TgecDriverParam, E_INVALID_HANDLE);
-UNUSED(ex);
 
-    RETURN_ERROR(MINOR, E_NOT_SUPPORTED, NO_MSG);
+    GET_EXCEPTION_FLAG(bitMask, exception);
+    if(bitMask)
+    {
+        if (enable)
+            p_Tgec->exceptions |= bitMask;
+        else
+            p_Tgec->exceptions &= ~bitMask;
+   }
+    else
+        RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("Undefined exception"));
+
+    tmpReg = GET_UINT32(p_TgecMemMap->imask);
+    if(enable)
+        tmpReg |= bitMask;
+    else
+        tmpReg &= ~bitMask;
+    WRITE_UINT32(p_TgecMemMap->imask, tmpReg);
+    return E_OK;
 }
 
 /* .............................................................................. */
@@ -829,6 +946,34 @@ static t_Error TgecDumpRegs(t_Handle h_Tgec)
     if (p_Tgec->p_MemMap)
     {
         DUMP_TITLE(p_Tgec->p_MemMap, ("10G MAC %d: ", p_Tgec->macId));
+        DUMP_VAR(p_Tgec->p_MemMap, tgec_id);
+        DUMP_VAR(p_Tgec->p_MemMap, scratch);
+        DUMP_VAR(p_Tgec->p_MemMap, cmd_conf_ctrl);
+        DUMP_VAR(p_Tgec->p_MemMap, mac_addr_0);
+        DUMP_VAR(p_Tgec->p_MemMap, mac_addr_1);
+        DUMP_VAR(p_Tgec->p_MemMap, maxfrm);
+        DUMP_VAR(p_Tgec->p_MemMap, pause_quant);
+        DUMP_VAR(p_Tgec->p_MemMap, rx_fifo_sections);
+        DUMP_VAR(p_Tgec->p_MemMap, tx_fifo_sections);
+        DUMP_VAR(p_Tgec->p_MemMap, rx_fifo_almost_f_e);
+        DUMP_VAR(p_Tgec->p_MemMap, tx_fifo_almost_f_e);
+        DUMP_VAR(p_Tgec->p_MemMap, hashtable_ctrl);
+        DUMP_VAR(p_Tgec->p_MemMap, mdio_cfg_status);
+        DUMP_VAR(p_Tgec->p_MemMap, mdio_command);
+        DUMP_VAR(p_Tgec->p_MemMap, mdio_data);
+        DUMP_VAR(p_Tgec->p_MemMap, mdio_regaddr);
+        DUMP_VAR(p_Tgec->p_MemMap, status);
+        DUMP_VAR(p_Tgec->p_MemMap, tx_ipg_len);
+        DUMP_VAR(p_Tgec->p_MemMap, mac_addr_2);
+        DUMP_VAR(p_Tgec->p_MemMap, mac_addr_3);
+        DUMP_VAR(p_Tgec->p_MemMap, rx_fifo_ptr_rd);
+        DUMP_VAR(p_Tgec->p_MemMap, rx_fifo_ptr_wr);
+        DUMP_VAR(p_Tgec->p_MemMap, tx_fifo_ptr_rd);
+        DUMP_VAR(p_Tgec->p_MemMap, tx_fifo_ptr_wr);
+        DUMP_VAR(p_Tgec->p_MemMap, imask);
+        DUMP_VAR(p_Tgec->p_MemMap, ievent);
+        DUMP_VAR(p_Tgec->p_MemMap, udp_port);
+        DUMP_VAR(p_Tgec->p_MemMap, type_1588v2);
     }
 
     return E_OK;
@@ -845,7 +990,9 @@ static void InitFmMacControllerDriver(t_FmMacControllerDriver *p_FmMacController
     p_FmMacControllerDriver->f_FM_MAC_Free                      = TgecFree;
 
     p_FmMacControllerDriver->f_FM_MAC_ConfigStatistics          = TgecConfigStatistics;
+#ifndef FM_10G_MAC_NO_CTRL_LOOPBACK
     p_FmMacControllerDriver->f_FM_MAC_ConfigLoopback            = TgecConfigLoopback;
+#endif /* !FM_10G_MAC_NO_CTRL_LOOPBACK */
     p_FmMacControllerDriver->f_FM_MAC_ConfigMaxFrameLength      = TgecConfigMaxFrameLength;
 
     p_FmMacControllerDriver->f_FM_MAC_ConfigWan                 = TgecConfigWan;
@@ -853,8 +1000,9 @@ static void InitFmMacControllerDriver(t_FmMacControllerDriver *p_FmMacController
     p_FmMacControllerDriver->f_FM_MAC_ConfigPadAndCrc           = TgecConfigPadAndCrc;
     p_FmMacControllerDriver->f_FM_MAC_ConfigHalfDuplex          = NULL; /* half-duplex is not supported in xgec */
     p_FmMacControllerDriver->f_FM_MAC_ConfigHugeFrames          = TgecConfigHugeFrames;
+    p_FmMacControllerDriver->f_FM_MAC_ConfigException           = TgecConfigException;
 
-    p_FmMacControllerDriver->f_FM_MAC_SetExceptions             = TgecSetExcpetions;
+    p_FmMacControllerDriver->f_FM_MAC_SetException              = TgecSetExcpetion;
 
     p_FmMacControllerDriver->f_FM_MAC_SetPromiscuous            = TgecSetPromiscuous;
     p_FmMacControllerDriver->f_FM_MAC_AdjustLink                = TgecAdjustLink;
@@ -925,6 +1073,10 @@ t_Handle  TGEC_Config(t_FmMacParams *p_FmMacParam)
     p_Tgec->p_MiiMemMap  = CAST_UINT64_TO_POINTER_TYPE(t_TgecMiiAccessMemMap, (baseAddr + TGEC_TO_MII_OFFSET));
     p_Tgec->enetMode = p_FmMacParam->enetMode;
     p_Tgec->macId    = p_FmMacParam->macId;
+    p_Tgec->exceptions = DEFAULT_exceptions;
+    p_Tgec->f_Exceptions = p_FmMacParam->f_Exceptions;
+    p_Tgec->mdioIrq = p_FmMacParam->mdioIrq;
+    p_Tgec->f_Events = p_FmMacParam->f_Events;
 
     return p_Tgec;
 }

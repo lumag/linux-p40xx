@@ -231,6 +231,9 @@ typedef struct ioc_fm_pcd_prs_sw_params_t {
                                                              umOfLabels entries */
 } ioc_fm_pcd_prs_sw_params_t;
 
+/**************************************************************************//**
+ @Description   A structure to set the a KeyGen default value
+ *//***************************************************************************/
 typedef struct ioc_fm_pcd_kg_dflt_value_params_t {
     uint8_t                         valueId;                /**< 0,1 - one of 2 global default values */
     uint32_t                        value;                  /**< The requested default value */
@@ -323,7 +326,7 @@ typedef struct ioc_fm_pcd_kg_dflt_value_params_t {
                 field/header.
                 By default default values are 0.
 
- @Param[in]     ioc_fm_pcd_kg_dflt_value_params_t   TBD
+ @Param[in]     ioc_fm_pcd_kg_dflt_value_params_t   A pointer to a structure with the relevant parameters
 
  @Return        E_OK on success; Error code otherwise.
 
@@ -1125,7 +1128,7 @@ typedef struct ioc_fm_pcd_plcr_profile_params_t {
 } ioc_fm_pcd_plcr_profile_params_t;
 
 /**************************************************************************//**
- @Description   TBD
+ @Description   A structure for modifying CC tree next engine
 *//***************************************************************************/
 typedef struct ioc_fm_pcd_cc_tree_modify_next_engine_params_t {
     void                                *id;                /**< CC tree Id to be used */
@@ -1136,7 +1139,7 @@ typedef struct ioc_fm_pcd_cc_tree_modify_next_engine_params_t {
 } ioc_fm_pcd_cc_tree_modify_next_engine_params_t;
 
 /**************************************************************************//**
- @Description   TBD
+ @Description   A structure for modifying CC node next engine
 *//***************************************************************************/
 typedef struct ioc_fm_pcd_cc_node_modify_next_engine_params_t {
     void                                *id;                /**< CC node Id to be used */
@@ -1148,7 +1151,7 @@ typedef struct ioc_fm_pcd_cc_node_modify_next_engine_params_t {
 } ioc_fm_pcd_cc_node_modify_next_engine_params_t;
 
 /**************************************************************************//**
- @Description   TBD
+ @Description   A structure for modifying CC node key and next engine
 *//***************************************************************************/
 typedef struct ioc_fm_pcd_cc_node_modify_key_and_next_engine_params_t {
     void                                *id;                /**< CC node Id to be used */
@@ -1160,7 +1163,7 @@ typedef struct ioc_fm_pcd_cc_node_modify_key_and_next_engine_params_t {
 } ioc_fm_pcd_cc_node_modify_key_and_next_engine_params_t;
 
 /**************************************************************************//**
- @Description   TBD
+ @Description   A structure for remove CC node key
 *//***************************************************************************/
 typedef struct ioc_fm_pcd_cc_node_remove_key_params_t {
     void                                *id;                /**< CC node Id to be used */
@@ -1169,7 +1172,7 @@ typedef struct ioc_fm_pcd_cc_node_remove_key_params_t {
 } ioc_fm_pcd_cc_node_remove_key_params_t;
 
 /**************************************************************************//**
- @Description   TBD
+ @Description   A structure for modifying CC node key
 *//***************************************************************************/
 typedef struct ioc_fm_pcd_cc_node_modify_key_params_t {
     void                                *id;                /**< CC node Id to be used */
@@ -1371,7 +1374,7 @@ typedef struct ioc_fm_pcd_cc_node_modify_key_params_t {
 
  @Description   Modify the Next Engine Parameters in the entry of the tree.
 
- @Param[in]     ioc_fm_pcd_cc_tree_modify_next_engine_params_t  TBD
+ @Param[in]     ioc_fm_pcd_cc_tree_modify_next_engine_params_t  A pointer to a structure with the relevant parameters
 
  @Return        E_OK on success; Error code otherwise.
 
@@ -1384,7 +1387,7 @@ typedef struct ioc_fm_pcd_cc_node_modify_key_params_t {
 
  @Description   Modify the Next Engine Parameters in the relevent key entry of the node.
 
- @Param[in]     ioc_fm_pcd_cc_node_modify_next_engine_params_t  TBD
+ @Param[in]     ioc_fm_pcd_cc_node_modify_next_engine_params_t  A pointer to a structure with the relevant parameters
 
  @Return        E_OK on success; Error code otherwise.
 
@@ -1397,7 +1400,7 @@ typedef struct ioc_fm_pcd_cc_node_modify_key_params_t {
 
  @Description   Modify the Next Engine Parameters of the Miss key case of the node.
 
- @Param[in]     ioc_fm_pcd_cc_node_modify_next_engine_params_t  TBD
+ @Param[in]     ioc_fm_pcd_cc_node_modify_next_engine_params_t  A pointer to a structure with the relevant parameters
 
  @Return        E_OK on success; Error code otherwise.
 
@@ -1410,7 +1413,7 @@ typedef struct ioc_fm_pcd_cc_node_modify_key_params_t {
 
  @Description   Remove the key (include Next Engine Parameters of this key) defined by the index of the relevant node .
 
- @Param[in]     ioc_fm_pcd_cc_node_remove_key_params_t  TBD
+ @Param[in]     ioc_fm_pcd_cc_node_remove_key_params_t  A pointer to a structure with the relevant parameters
 
  @Return        E_OK on success; Error code otherwise.
 
@@ -1424,7 +1427,7 @@ typedef struct ioc_fm_pcd_cc_node_modify_key_params_t {
 
  @Description   Add the key(include Next Engine Parameters of this key)in the index defined by the keyIndex .
 
- @Param[in]     ioc_fm_pcd_cc_node_modify_key_and_next_engine_params_t  TBD
+ @Param[in]     ioc_fm_pcd_cc_node_modify_key_and_next_engine_params_t  A pointer to a structure with the relevant parameters
 
  @Return        E_OK on success; Error code otherwise.
 
@@ -1438,7 +1441,7 @@ typedef struct ioc_fm_pcd_cc_node_modify_key_params_t {
 
  @Description   Modify the key and Next Engine Parameters of this key in the index defined by the keyIndex .
 
- @Param[in]     ioc_fm_pcd_cc_node_modify_key_and_next_engine_params_t  TBD
+ @Param[in]     ioc_fm_pcd_cc_node_modify_key_and_next_engine_params_t  A pointer to a structure with the relevant parameters
 
  @Return        E_OK on success; Error code otherwise.
 
@@ -1452,7 +1455,7 @@ typedef struct ioc_fm_pcd_cc_node_modify_key_params_t {
 
  @Description   Modify the key  in the index defined by the keyIndex .
 
- @Param[in]     ioc_fm_pcd_cc_node_modify_key_params_t  TBD
+ @Param[in]     ioc_fm_pcd_cc_node_modify_key_params_t  A pointer to a structure with the relevant parameters
 
  @Return        E_OK on success; Error code otherwise.
 

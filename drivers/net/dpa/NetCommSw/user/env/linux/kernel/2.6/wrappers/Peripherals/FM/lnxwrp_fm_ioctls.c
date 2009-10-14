@@ -81,7 +81,38 @@ static t_Error LnxwrpFmPcdIOCTL(t_LnxWrpFmDev *p_LnxWrpFmDev, unsigned int cmd, 
     switch (cmd)
     {
         case FM_PCD_IOC_PRS_LOAD_SW:
+        {
+            ioc_fm_pcd_prs_sw_params_t *param;
+            uint8_t                    *p_code;
+
+            param = (ioc_fm_pcd_prs_sw_params_t *)XX_Malloc(sizeof(ioc_fm_pcd_prs_sw_params_t));
+            if (!param)
+                RETURN_ERROR(MINOR, E_NO_MEMORY, ("IOCTL FM PCD"));
+
+            if (copy_from_user(param, (ioc_fm_pcd_prs_sw_params_t *)arg, sizeof(ioc_fm_pcd_prs_sw_params_t))) {
+                XX_Free(param);
+                RETURN_ERROR(MINOR, err, NO_MSG);
+            }
+
+            p_code = (uint8_t *)XX_Malloc(param->size);
+            if (!p_code) {
+                XX_Free(param);
+                RETURN_ERROR(MINOR, err, NO_MSG);
+            }
+
+            if (copy_from_user(p_code, param->p_code, param->size)) {
+                XX_Free(p_code);
+                XX_Free(param);
+                RETURN_ERROR(MINOR, err, NO_MSG);
+            }
+
+            param->p_code = p_code;
+
+            err = FM_PCD_PrsLoadSw(p_LnxWrpFmDev->h_PcdDev, (t_FmPcdPrsSwParams*)param);
+            XX_Free(p_code);
+            XX_Free(param);
             break;
+        }
 
         case FM_PCD_IOC_ENABLE:
             return FM_PCD_Enable(p_LnxWrpFmDev->h_PcdDev);

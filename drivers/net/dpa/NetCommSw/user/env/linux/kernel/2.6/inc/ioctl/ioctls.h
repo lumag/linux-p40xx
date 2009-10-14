@@ -49,11 +49,8 @@
  @{
 *//***************************************************************************/
 
-/**************************************************************************//**
- @Collection    TBD
-*//***************************************************************************/
-#define NCSW_IOC_TYPE_BASE          0xe0
-/* @} */
+#define NCSW_IOC_TYPE_BASE          0xe0    /**< defines the IOCTL type for all
+                                                 the NCSW Linux module commands */
 
 
 /**************************************************************************//**
@@ -77,6 +74,21 @@ typedef enum ioc_comm_mode {
     , e_IOC_COMM_MODE_TX           = 2  /**< Only transmit communication */
     , e_IOC_COMM_MODE_RX_AND_TX    = 3  /**< Both transmit and receive communication */
 } ioc_comm_mode;
+
+/**************************************************************************//**
+ @Description   General Diagnostic Mode
+*//***************************************************************************/
+typedef enum ioc_diag_mode
+{
+    e_IOC_DIAG_MODE_NONE = 0,
+    e_IOC_DIAG_MODE_CTRL_LOOPBACK,      /**< loopback in the controller; E.g. MAC, TDM, etc. */
+    e_IOC_DIAG_MODE_CHIP_LOOPBACK,      /**< loopback in the chip but not in controller;
+                                         E.g. IO-pins, SerDes, etc. */
+    e_IOC_DIAG_MODE_PHY_LOOPBACK,       /**< loopback in the external PHY */
+    e_IOC_DIAG_MODE_LINE_LOOPBACK,      /**< loopback in the external line */
+    e_IOC_DIAG_MODE_CTRL_ECHO,          /**< */
+    e_IOC_DIAG_MODE_PHY_ECHO            /**< */
+} ioc_diag_mode;
 
 /** @} */ /* end of lnx_ioctl_ncsw_grp */
 

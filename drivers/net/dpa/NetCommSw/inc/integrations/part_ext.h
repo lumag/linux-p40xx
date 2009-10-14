@@ -51,6 +51,7 @@
       defined(MPC8568) || \
       defined(MPC8569) || \
       defined(P4080)   || \
+      defined(P2020)   || \
       defined(MSC814x))
 #error "unable to proceed without chip-definition"
 #endif /* !(defined(MPC834x) || ... */
@@ -74,12 +75,11 @@ typedef struct t_Part
 {
     uint32_t    (* f_GetRevInfo)(t_Handle h_Part);
                 /**< Returns the revision number of the chip. */
-    uint32_t    (* f_GetModuleBase)(t_Handle h_Part, e_ModuleId moduleId);
+    uint64_t    (* f_GetModuleBase)(t_Handle h_Part, e_ModuleId moduleId);
                 /**< Returns the address of the module's memory map base. */
-    e_ModuleId  (* f_GetModuleIdByBase)(t_Handle h_Part, uint32_t baseAddress);
+    e_ModuleId  (* f_GetModuleIdByBase)(t_Handle h_Part, uint64_t baseAddress);
                 /**< Returns the module's ID according to its memory map base. */
 } t_Part;
-
 
 
 #endif /* __PART_EXT_H */

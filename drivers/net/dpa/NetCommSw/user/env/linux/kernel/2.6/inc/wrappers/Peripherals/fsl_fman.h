@@ -106,7 +106,7 @@ struct fm_port_rx_params {
     uint8_t                     num_pools;          /**< Number of pools use by this port */
     struct fm_port_pool_param   pool_param[FM_PORT_MAX_NUM_OF_EXT_POOLS];
                                                     /**< Parameters for each pool */
-    uint8_t                     priv_data_size;     /**< Area that user may save for his own need (E.g. save the SKB) */
+    uint16_t                    priv_data_size;     /**< Area that user may save for his own need (E.g. save the SKB) */
     bool                        parse_results;      /**< Whether to have the parser-results in the Received buffer */
 };
 
@@ -118,7 +118,7 @@ struct fm_port_non_rx_params {
     uint32_t                defq;               /**< For Tx and HC - Default Confirmation queue,
                                                      0 means no Tx confirmation for processed
                                                      frames. For OP - default Rx queue. */
-    uint8_t                 priv_data_size;     /**< Area that user may save for his own need (E.g. save the SKB) */
+    uint16_t                priv_data_size;     /**< Area that user may save for his own need (E.g. save the SKB) */
     bool                    parse_results;      /**< Whether to put the parser-results in the Transmitted buffer */
 };
 

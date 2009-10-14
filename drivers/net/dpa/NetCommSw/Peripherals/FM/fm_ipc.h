@@ -242,6 +242,8 @@ typedef _Packed struct t_FmIpcPhysAddr
 #define FM_IS_PORT_STALLED          9
 #define FM_DUMP_PORT_REGS           10
 #define FM_GET_REV                  11
+#define FM_REGISTER_INTR            12
+#define FM_GUEST_ISR                13
 /**************************************************************************//**
  @Description   Structure for IPC communication during FM_PORT_Init.
                 Fields commented 'IN' are passed by the port module to be used
@@ -300,6 +302,18 @@ typedef struct t_FmIpcGetCounter
     e_FmIpcCounters id;         /* IN */
     uint32_t        val;        /* OUT */
 } t_FmIpcGetCounter;
+
+typedef struct t_FmIpcRegisterIntr
+{
+    uint8_t         partitionId;    /* IN */
+    uint32_t        event;          /* IN */
+} t_FmIpcRegisterIntr;
+
+typedef struct t_FmIpcIsr
+{
+    bool            err;            /* IN */
+    uint32_t        pendingReg;     /* IN */
+} t_FmIpcIsr;
 
 /** @} */ /* end of FM_IPC_grp group */
 /** @} */ /* end of FM_grp group */

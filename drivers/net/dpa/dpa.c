@@ -734,16 +734,14 @@ ingress_rx_error_dqrr(struct qman_portal *portal, struct qman_fq *fq,
 
 #ifdef CONFIG_FSL_FMAN_TEST
 {
-    const struct bm_buffer *bmb;
-    const struct dpa_bp *dpa_bp;
-
-    bmb = (typeof(bmb))&dq->fd;
-
-    dpa_bp = dpa_bpid2pool(&priv->dpa_bp_list, bmb->bpid);
-    BUG_ON(IS_ERR(dpa_bp));
-
-	is_fman_test(priv->mac_dev, FMT_RX_ERR_Q, dpa_phys2virt(dpa_bp, bmb),
-		     dq->fd.length20 + dq->fd.offset);
+    void	*virt = bus_to_virt(dq->fd.addr_lo);
+    /* No support yet for more than 32 bit address */
+    BUG_ON(dq->fd.addr_hi);
+    if (is_fman_test((void *)priv->mac_dev,
+                     FMT_RX_ERR_Q,
+                     virt,
+                     dq->fd.length20 + dq->fd.offset))
+        return qman_cb_dqrr_consume;
 }
 #endif	/* CONFIG_FSL_FMAN_TEST */
 
@@ -834,8 +832,6 @@ ingress_rx_default_dqrr(struct qman_portal		*portal,
 
 #ifdef CONFIG_FSL_FMAN_TEST
 {
-    const struct bm_buffer	*bmb;
-    const struct dpa_bp		*dpa_bp;
     void   					*virt;
     int						 _errno, i;
 	struct dpa_fq			*dpa_fq;
@@ -866,12 +862,9 @@ ingress_rx_default_dqrr(struct qman_portal		*portal,
 			BUG();
 	}
 
-    bmb = (typeof(bmb))&dq->fd;
-
-    dpa_bp = dpa_bpid2pool(&priv->dpa_bp_list, bmb->bpid);
-    BUG_ON(IS_ERR(dpa_bp));
-
-    virt = dpa_phys2virt(dpa_bp, bmb);
+    virt = bus_to_virt(dq->fd.addr_lo);
+    /* No support yet for more than 32 bit address */
+    BUG_ON(dq->fd.addr_hi);
     if (is_fman_test((void *)priv->mac_dev,
                      fqid,
                      virt,
@@ -991,12 +984,13 @@ ingress_tx_error_dqrr(struct qman_portal *portal, struct qman_fq *fq,
 #ifdef CONFIG_FSL_FMAN_TEST
 {
     void   *virt = bus_to_virt(dq->fd.addr_lo);
+    /* No support yet for more than 32 bit address */
+    BUG_ON(dq->fd.addr_hi);
     if (is_fman_test((void *)priv->mac_dev,
                      FMT_TX_ERR_Q,
                      virt,
-                     dq->fd.length20 + dq->fd.offset)) {
+                     dq->fd.length20 + dq->fd.offset))
         return qman_cb_dqrr_consume;
-    }
 }
 #endif /* CONFIG_FSL_FMAN_TEST */
 
@@ -1083,12 +1077,13 @@ ingress_tx_default_dqrr(struct qman_portal		*portal,
 #ifdef CONFIG_FSL_FMAN_TEST
 {
     void   *virt = bus_to_virt(dq->fd.addr_lo);
+    /* No support yet for more than 32 bit address */
+    BUG_ON(dq->fd.addr_hi);
     if (is_fman_test((void *)priv->mac_dev,
                      FMT_TX_CONF_Q,
                      virt,
-                     dq->fd.length20 + dq->fd.offset)) {
+                     dq->fd.length20 + dq->fd.offset))
         return qman_cb_dqrr_consume;
-    }
 }
 #endif /* CONFIG_FSL_FMAN_TEST */
 
@@ -1471,73 +1466,10 @@ static void __hot dpa_rx(struct work_struct *fd_work)
 		}
 
 		skb->protocol = eth_type_trans(skb, net_dev);
-#if defined(CONFIG_FSL_FMAN_TEST) || defined(CONFIG_FSL_FMAN_TEST_LOOP)
-{
-    struct iphdr    *iph = (struct iphdr *)(skb->data);
-    uint32_t        net;
-    uint32_t        saddr = iph->saddr;
-    uint32_t        daddr = iph->daddr;
 
-    /* If it is ARP packet ... */
-    if (*(uint32_t*)skb->data == 0x00010800)
-    {
-        saddr = *((uint32_t*)(skb->data+14));
-        daddr = *((uint32_t*)(skb->data+24));
-    }
-
-    cpu_dev_dbg (net_dev->dev.parent,
-                 "Src  IP before header-manipulation: %d.%d.%d.%d\n",
-                 (int)((saddr & 0xff000000) >> 24),
-                 (int)((saddr & 0x00ff0000) >> 16),
-                 (int)((saddr & 0x0000ff00) >> 8),
-                 (int)((saddr & 0x000000ff) >> 0));
-    cpu_dev_dbg (net_dev->dev.parent,
-                 "Dest IP before header-manipulation: %d.%d.%d.%d\n",
-                 (int)((daddr & 0xff000000) >> 24),
-                 (int)((daddr & 0x00ff0000) >> 16),
-                 (int)((daddr & 0x0000ff00) >> 8),
-                 (int)((daddr & 0x000000ff) >> 0));
-
-    /* We allow only up to 10 eth ports */
-#if defined(CONFIG_FSL_FMAN_TEST)
-    net   = ((daddr & 0x000000ff) % 10);
-    saddr = (uint32_t)((saddr & ~0x0000ff00) | (net << 8));
-    daddr = (uint32_t)((daddr & ~0x0000ff00) | (net << 8));
-#else /* loopback */
-    net   = saddr;
-    saddr = daddr;
-    daddr = net;
-#endif /* defined(CONFIG_FSL_FMAN_TEST) */
-
-    /* If not ARP ... */
-    if (*(uint32_t*)skb->data != 0x00010800)
-    {
-        iph->check = 0;
-
-        iph->saddr = saddr;
-        iph->daddr = daddr;
-        iph->check = ip_fast_csum((unsigned char *)iph, iph->ihl);
-    }
-    else /* The packet is ARP */
-    {
-        *(uint32_t*)(skb->data+14) = saddr;
-        *(uint32_t*)(skb->data+24) = daddr;
-    }
-
-    cpu_dev_dbg (net_dev->dev.parent,
-                 "Src  IP after  header-manipulation: %d.%d.%d.%d\n",
-                 (int)((saddr & 0xff000000) >> 24),
-                 (int)((saddr & 0x00ff0000) >> 16),
-                 (int)((saddr & 0x0000ff00) >> 8),
-                 (int)((saddr & 0x000000ff) >> 0));
-    cpu_dev_dbg (net_dev->dev.parent,
-                 "Dest IP after  header-manipulation: %d.%d.%d.%d\n",
-                 (int)((daddr & 0xff000000) >> 24),
-                 (int)((daddr & 0x00ff0000) >> 16),
-                 (int)((daddr & 0x0000ff00) >> 8),
-                 (int)((daddr & 0x000000ff) >> 0));
-}
-#endif /* defined(CONFIG_FSL_FMAN_TEST) */
+#ifdef CONFIG_FSL_FMAN_TEST
+        fman_test_ip_manip((void *)priv->mac_dev, skb->data);
+#endif /* CONFIG_FSL_FMAN_TEST */
 
 		_errno = netif_rx_ni(skb);
 		if (unlikely(_errno != NET_RX_SUCCESS)) {
@@ -1763,7 +1695,8 @@ static int __cold dpa_stop(struct net_device *net_dev)
 		for (i = 0; i < ARRAY_SIZE(priv->mac_dev->port_dev); i++)
 			fm_port_disable(priv->mac_dev->port_dev[i]);
 
-		phy_disconnect(priv->mac_dev->phy_dev);
+		if (priv->mac_dev->phy_dev)
+			phy_disconnect(priv->mac_dev->phy_dev);
 		priv->mac_dev->phy_dev = NULL;
 	}
 
@@ -1949,6 +1882,71 @@ static const char fsl_qman_frame_queues[][25] __devinitconst = {
 	[TX] = "fsl,qman-frame-queues-tx"
 };
 
+#ifdef CONFIG_FSL_QMAN_FQRANGE
+static int __devinit __cold dpa_alloc_pcd_fqids(struct device	*dev,
+						uint32_t	 num,
+						uint8_t		 alignment,
+						uint32_t	*base_fqid)
+{
+	int			 _errno, i;
+	struct net_device	*net_dev;
+	struct dpa_priv_s	*priv;
+	struct dpa_fq		*dpa_fq;
+	struct qman_fq		*ingress_fq;
+	int					 num_allocated;
+	u32					 base_allocated;
+
+	net_dev = (typeof(net_dev))dev_get_drvdata(dev);
+	priv = (typeof(priv))netdev_priv(net_dev);
+
+	num_allocated = qman_alloc_fqid_range(&base_allocated, num, alignment, 0);
+	if ((num_allocated <= 0) ||
+		(num_allocated < num) ||
+		(base_allocated % alignment)) {
+		if (netif_msg_probe(priv))
+			cpu_dev_err(dev, "%s:%hu:%s(): Failed to allocate an FQs range (%d)\n",
+				    __file__, __LINE__, __func__, num);
+		_errno = -EINVAL;
+		goto _return;
+	}
+
+	cpu_dev_dbg(dev, "wanted %d align %d, got %d fqids@%d\n",num, alignment, num_allocated, base_allocated);
+
+	*base_fqid = base_allocated;
+
+	dpa_fq = (typeof(dpa_fq))devm_kzalloc(dev, num_allocated * sizeof(*dpa_fq), GFP_KERNEL);
+	if (unlikely(dpa_fq == NULL)) {
+		if (netif_msg_probe(priv))
+			cpu_dev_err(dev, "%s:%hu:%s(): devm_kzalloc() failed\n",
+				    __file__, __LINE__, __func__);
+		_errno = -ENOMEM;
+		goto _return;
+	}
+
+	for (i = 0, ingress_fq = NULL; i < num_allocated; i++, dpa_fq++) {
+		dpa_fq->fq_base	= ingress_fqs[RX][1];
+		dpa_fq->net_dev	= net_dev;
+		ingress_fq = _dpa_fq_alloc(priv->dpa_fq_list + RX, dpa_fq, base_allocated++,
+					   QMAN_FQ_FLAG_NO_ENQUEUE, priv->channel, 7);
+		if (IS_ERR(ingress_fq)) {
+			_errno = PTR_ERR(ingress_fq);
+			goto _return;
+		}
+	}
+
+	BUG_ON(priv->num >= (sizeof(priv->ranges)/sizeof(struct pcd_range)));
+	priv->ranges[priv->num].base    = *base_fqid;
+	priv->ranges[priv->num++].count = num;
+
+	_errno = 0;
+
+_return:
+	cpu_dev_dbg(dev, "%s:%s() ->\n", __file__, __func__);
+
+	return _errno;
+}
+
+#else
 static int __devinit __cold dpa_alloc_pcd_fqids(struct device	*dev,
 						uint32_t	 num,
 						uint8_t		 alignment,
@@ -2003,11 +2001,10 @@ static int __devinit __cold dpa_alloc_pcd_fqids(struct device	*dev,
 		padding = alignment - (*base_fqid % alignment);
 	*base_fqid += padding;
 	BUG_ON((total_num_fqs-padding)<num);
-#ifdef CONFIG_FSL_FMAN_TEST
+
 	BUG_ON(priv->num >= (sizeof(priv->ranges)/sizeof(struct pcd_range)));
 	priv->ranges[priv->num].base    = *base_fqid;
 	priv->ranges[priv->num++].count = num;
-#endif /* CONFIG_FSL_FMAN_TEST */
 
 	cpu_dev_dbg(dev, "%s:%s(): pcd_fqs base %u\n", __file__, __func__,
 			*base_fqid);
@@ -2019,6 +2016,7 @@ _return:
 
 	return _errno;
 }
+#endif /* CONFIG_FSL_QMAN_FQRANGE */
 
 static int __devinit __cold __attribute__((nonnull))
 dpa_init_probe(struct of_device *_of_dev)

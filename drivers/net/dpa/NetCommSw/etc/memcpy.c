@@ -40,28 +40,25 @@
 static void MY_MY_WRITE_UINT8(uint8_t *addr, uint8_t val)
 {
     uint32_t newAddr, newVal;
+    newAddr = (uint32_t)addr & ~0x3L;
     switch ((uint32_t)addr%4)
     {
     case (0):
-        newAddr = (uint32_t)addr;
         newVal = GET_UINT32(*(uint32_t*)newAddr);
         newVal = (newVal & 0x00ffffff) | (((uint32_t)val)<<24);
         WRITE_UINT32(*(uint32_t*)newAddr, newVal);
         break;
     case (1):
-        newAddr = (((uint32_t)addr>>1)<<1);
-        newVal = GET_UINT32(*(uint32_t*)newAddr);
+         newVal = GET_UINT32(*(uint32_t*)newAddr);
         newVal = (newVal & 0xff00ffff) | (((uint32_t)val)<<16);
         WRITE_UINT32(*(uint32_t*)newAddr, newVal);
         break;
     case (2):
-        newAddr = (((uint32_t)addr>>2)<<2);
         newVal = GET_UINT32(*(uint32_t*)newAddr);
         newVal = (newVal & 0xffff00ff) | (((uint32_t)val)<<8);
         WRITE_UINT32(*(uint32_t*)newAddr, newVal);
         break;
     case (3):
-        newAddr = (((uint32_t)addr>>3)<<3);
         newVal = GET_UINT32(*(uint32_t*)newAddr);
         newVal = (newVal & 0xffffff00) | val;
         WRITE_UINT32(*(uint32_t*)newAddr, newVal);
@@ -72,25 +69,22 @@ static void MY_MY_WRITE_UINT8(uint8_t *addr, uint8_t val)
 static uint8_t MY_MY_GET_UINT8(uint8_t *addr)
 {
     uint32_t newAddr, newVal=0;
+    newAddr = (uint32_t)addr & ~0x3L;
     switch ((uint32_t)addr%4)
     {
     case (0):
-        newAddr = (uint32_t)addr;
         newVal = GET_UINT32(*(uint32_t*)newAddr);
         newVal = (newVal & 0xff000000)>>24;
         break;
     case (1):
-        newAddr = (((uint32_t)addr>>1)<<1);
         newVal = GET_UINT32(*(uint32_t*)newAddr);
         newVal = (newVal & 0x00ff0000)>>16;
         break;
     case (2):
-        newAddr = (((uint32_t)addr>>2)<<2);
         newVal = GET_UINT32(*(uint32_t*)newAddr);
         newVal = (newVal & 0x0000ff00)>>8;
         break;
     case (3):
-        newAddr = (((uint32_t)addr>>3)<<3);
         newVal = GET_UINT32(*(uint32_t*)newAddr);
         newVal = (newVal & 0x000000ff);
         break;

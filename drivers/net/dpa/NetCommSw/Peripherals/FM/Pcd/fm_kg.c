@@ -694,7 +694,7 @@ t_Handle FmPcdKgBuildClsPlanGrp(t_Handle h_FmPcd, t_FmPcdKgClsPlanGrpParams *p_G
     uint32_t                        walking1Mask, oredVectors = 0, lcvVector;
     uint8_t                         tmpEntryId;
     t_FmPcdKgClsPlanGrp             *p_ClsPlanGrp;
-    t_Error                         err;
+    t_Error                         err = E_OK;
     struct {
         protocolOpt_t   opt;
         uint32_t        vector;
@@ -1153,13 +1153,19 @@ void KgSetClsPlan(t_Handle h_FmPcd, t_FmPcdKgInterModuleClsPlanSet *p_Set)
 static void PcdKgErrorException(t_Handle h_FmPcd)
 {
     t_FmPcd                 *p_FmPcd = (t_FmPcd *)h_FmPcd;
-    uint32_t                event, schemeIndexes = 0,index = 0;
+    uint32_t                event, schemeIndexes = 0,index = 0, mask = 0;
 
     event = GET_UINT32(p_FmPcd->p_FmPcdKg->p_FmPcdKgRegs->kgeer);
-    event &= GET_UINT32(p_FmPcd->p_FmPcdKg->p_FmPcdKgRegs->kgeeer);
+    mask = GET_UINT32(p_FmPcd->p_FmPcdKg->p_FmPcdKgRegs->kgeeer);
 
     schemeIndexes = GET_UINT32(p_FmPcd->p_FmPcdKg->p_FmPcdKgRegs->kgseer);
     schemeIndexes &= GET_UINT32(p_FmPcd->p_FmPcdKg->p_FmPcdKgRegs->kgseeer);
+
+    /* clear the forced events */
+    if(GET_UINT32(p_FmPcd->p_FmPcdKg->p_FmPcdKgRegs->kgfeer)& event)
+        WRITE_UINT32(p_FmPcd->p_FmPcdKg->p_FmPcdKgRegs->kgfeer, event & ~(event & mask));
+
+    event &= mask;
 
     WRITE_UINT32(p_FmPcd->p_FmPcdKg->p_FmPcdKgRegs->kgeer, event);
     WRITE_UINT32(p_FmPcd->p_FmPcdKg->p_FmPcdKgRegs->kgseer, schemeIndexes);
@@ -1194,7 +1200,7 @@ static t_Error KgWriteSp(t_FmPcd *p_FmPcd, uint8_t hardwarePortId, uint32_t spRe
     {
         t_FmPcdKgPortConfigRegs *p_FmPcdKgPortRegs;
         uint32_t                tmpKgarReg = 0, tmpKgpeSp;
-        t_Error                 err;
+        t_Error                 err = E_OK;
 
         p_FmPcdKgPortRegs = &p_FmPcd->p_FmPcdKg->p_FmPcdKgRegs->indirectAccessRegs.portRegs;
 
@@ -1252,7 +1258,7 @@ t_Error FmPcdKgBindPortToSchemes(t_Handle h_FmPcd , t_FmPcdKgInterModuleBindPort
 {
     t_FmPcd                 *p_FmPcd = (t_FmPcd*)h_FmPcd;
     uint32_t                spReg;
-    t_Error                 err;
+    t_Error                 err = E_OK;
 
     err = FmPcdKgBuildBindPortToSchemes(h_FmPcd, p_SchemeBind, &spReg, TRUE);
     if(err)
@@ -1271,7 +1277,7 @@ t_Error FmPcdKgUnbindPortToSchemes(t_Handle h_FmPcd ,  t_FmPcdKgInterModuleBindP
 {
     t_FmPcd                 *p_FmPcd = (t_FmPcd*)h_FmPcd;
     uint32_t                spReg;
-    t_Error                 err;
+    t_Error                 err = E_OK;
 
     err = FmPcdKgBuildBindPortToSchemes(h_FmPcd, p_SchemeBind, &spReg, FALSE);
     if(err)
@@ -1311,7 +1317,7 @@ bool KgSchemeIsValid(t_Handle h_FmPcd, uint8_t schemeId)
     t_FmPcd     *p_FmPcd = (t_FmPcd*)h_FmPcd;
     uint32_t    tmpReg;
     uint32_t    tmpKgarReg;
-    t_Error     err;
+    t_Error     err = E_OK;
 
     SANITY_CHECK_RETURN_VALUE(p_FmPcd, E_INVALID_HANDLE, FALSE);
     SANITY_CHECK_RETURN_VALUE(p_FmPcd->p_FmPcdKg, E_INVALID_HANDLE, FALSE);
@@ -1387,12 +1393,11 @@ t_Handle KgConfig( t_FmPcd *p_FmPcd, t_FmPcdParams *p_FmPcdParams)
 
 t_Error KgInit(t_FmPcd *p_FmPcd)
 {
-    t_Error                     err;
+    t_Error                     err = E_OK;
     t_FmPcdKgRegs               *p_Regs = p_FmPcd->p_FmPcdKg->p_FmPcdKgRegs;
 #ifndef CONFIG_GUEST_PARTITION
     int                         i;
     t_FmPcdKgPortConfigRegs     *p_FmPcdKgPortRegs;
-    uint32_t                    tmpKgarReg;
     uint8_t                     hardwarePortId;
     uint8_t                     portsTable[] = PCD_PORTS_TABLE;
     uint32_t                    tmpReg;
@@ -1434,7 +1439,7 @@ t_Error KgInit(t_FmPcd *p_FmPcd)
     /**********************KGGCR******************/
 
     /* register even if no interrupts enabled, to allow future enablement */
-    FmRegisterIntr(p_FmPcd->h_Fm, e_FM_EV_ERR_KG, PcdKgErrorException, p_FmPcd);
+    FmRegisterIntr(p_FmPcd->h_Fm, e_FM_MOD_KG, 0, e_FM_INTR_TYPE_ERR, PcdKgErrorException, p_FmPcd);
 
     for(i=0;i<FM_PCD_MAX_NUM_OF_CLS_PLANS/CLS_PLAN_NUM_PER_GRP;i++)
         p_FmPcd->p_FmPcdKg->clsPlanUsedBlocks[i] = FALSE;
@@ -1446,21 +1451,11 @@ t_Error KgInit(t_FmPcd *p_FmPcd)
 
         GET_GLOBAL_PORTID_FROM_PCD_PORTS_TABLE(hardwarePortId, portsTable,i);
 
-        WRITE_UINT32(p_FmPcdKgPortRegs->kgoe_sp, 0x00000000);
-
-        tmpKgarReg = FmPcdKgBuildWritePortSchemeBindActionReg(hardwarePortId);
-
-        err = WriteKgarWait(p_FmPcd, tmpKgarReg);
-//        err = KgWriteSp(p_FmPcd, hardwarePortId, 0xffffffff, FALSE);
+        err = KgWriteSp(p_FmPcd, hardwarePortId, 0xffffffff, FALSE);
         if(err)
             RETURN_ERROR(MINOR, err, NO_MSG);
 
-        WRITE_UINT32(p_FmPcdKgPortRegs->kgoe_cpp, 0x00000000);
-
-        tmpKgarReg = FmPcdKgBuildWritePortClsPlanBindActionReg(hardwarePortId);
-
-        err = WriteKgarWait(p_FmPcd, tmpKgarReg);
-//        err = KgWriteCpp(p_FmPcd, hardwarePortId, 0);
+        err = KgWriteCpp(p_FmPcd, hardwarePortId, 0);
         if(err)
             RETURN_ERROR(MINOR, err, NO_MSG);
     }
@@ -1593,7 +1588,7 @@ t_Error FmPcdKgBuildScheme(t_Handle h_FmPcd,  t_FmPcdKgSchemeParams *p_Scheme, t
     uint8_t                             grpBase;
     bool                                direct=TRUE, absolute=FALSE;
     uint16_t                            profileId, numOfProfiles=0, relativeProfileId;
-    t_Error                             err;
+    t_Error                             err = E_OK;
     int                                 i = 0;
     t_NetEnvParams                      netEnvParams;
     uint32_t                            tmpReg, fqbTmp = 0, ppcTmp = 0, selectTmp, maskTmp, knownTmp, genTmp;
@@ -2416,7 +2411,7 @@ t_Error FM_PCD_KgSetEmptyClsPlanGrp(t_Handle h_FmPcd)
 t_Error FM_PCD_KgDeleteEmptyClsPlanGrp(t_Handle h_FmPcd)
 {
    t_FmPcd  *p_FmPcd = (t_FmPcd*)h_FmPcd;
-   t_Error  err;
+   t_Error  err = E_OK;
 
     SANITY_CHECK_RETURN_ERROR(p_FmPcd, E_INVALID_HANDLE);
     SANITY_CHECK_RETURN_ERROR(!p_FmPcd->p_FmPcdDriverParam, E_INVALID_HANDLE);
@@ -2439,7 +2434,7 @@ t_Error FM_PCD_KgDumpRegs(t_Handle h_FmPcd)
     uint8_t             hardwarePortId;
     uint32_t            tmpKgarReg;
     uint8_t             portsTable[] = PCD_PORTS_TABLE;
-    t_Error             err;
+    t_Error             err = E_OK;
 
     DECLARE_DUMP;
 
@@ -2541,7 +2536,7 @@ t_Handle FM_PCD_KgSetScheme(t_Handle h_FmPcd,  t_FmPcdKgSchemeParams *p_Scheme)
     t_FmPcdKgInterModuleSchemeRegs      schemeRegs;
     t_FmPcdKgInterModuleSchemeRegs      *p_MemRegs;
     uint8_t                             i;
-    t_Error                             err;
+    t_Error                             err = E_OK;
     uint32_t                            tmpKgarReg;
     uint8_t                             physicalSchemeId, relativeSchemeId;
 #endif /* !CONFIG_MULTI_PARTITION_SUPPORT */
@@ -2654,7 +2649,7 @@ t_Error  FM_PCD_KgDeleteScheme(t_Handle h_FmPcd, t_Handle h_Scheme)
 #ifndef CONFIG_MULTI_PARTITION_SUPPORT
     uint8_t             physicalSchemeId;
     uint32_t            tmpKgarReg;
-    t_Error             err;
+    t_Error             err = E_OK;
     uint8_t             relativeSchemeId;
 #endif /* !CONFIG_MULTI_PARTITION_SUPPORT */
 

@@ -301,10 +301,15 @@ static void WritePar(t_FmPcd *p_FmPcd, uint32_t par)
 static void PcdPlcrException(t_Handle h_FmPcd)
 {
     t_FmPcd *p_FmPcd = (t_FmPcd *)h_FmPcd;
-    uint32_t event;
+    uint32_t event, mask;
 
     event = GET_UINT32(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs->fmpl_evr);
-    event &= GET_UINT32(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs->fmpl_ier);
+    mask = GET_UINT32(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs->fmpl_ier);
+
+    /* clear forced events */
+    if(GET_UINT32(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs->fmpl_ifr)& event)
+        WRITE_UINT32(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs->fmpl_ifr, event & ~(event & mask));
+    event &= mask;
 
     WRITE_UINT32(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs->fmpl_evr, event);
 
@@ -320,10 +325,16 @@ static void PcdPlcrException(t_Handle h_FmPcd)
 static void PcdPlcrErrorException(t_Handle h_FmPcd)
 {
     t_FmPcd             *p_FmPcd = (t_FmPcd *)h_FmPcd;
-    uint32_t            event, captureReg;
+    uint32_t            event, captureReg, mask;
 
     event = GET_UINT32(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs->fmpl_eevr);
-    event &= GET_UINT32(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs->fmpl_eier);
+    mask = GET_UINT32(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs->fmpl_eier);
+
+    /* clear forced events */
+    if(GET_UINT32(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs->fmpl_eifr)& event)
+        WRITE_UINT32(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs->fmpl_eifr, event & ~(event & mask));
+
+    mask &= mask;
 
     WRITE_UINT32(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs->fmpl_eevr, event);
 
@@ -337,7 +348,7 @@ static void PcdPlcrErrorException(t_Handle h_FmPcd)
         p_UnInitCapt->portId = (uint8_t)((captureReg & PLCR_ERR_UNINIT_PID_MASK) >>PLCR_ERR_UNINIT_PID_SHIFT) ;
         p_UnInitCapt->absolute = (bool)(captureReg & PLCR_ERR_UNINIT_ABSOLUTE_MASK);*/
         p_FmPcd->f_FmPcdIndexedException(p_FmPcd->h_App,e_FM_PCD_PLCR_ERR_EXCEPTION_INIT_ENTRY_ERROR,(uint16_t)(captureReg & PLCR_ERR_UNINIT_NUM_MASK));
-        //WRITE_UINT32(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs->fmpl_upcr, PLCR_ERR_UNINIT_CAP);
+        WRITE_UINT32(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs->fmpl_upcr, PLCR_ERR_UNINIT_CAP);
     }
 }
 
@@ -349,7 +360,7 @@ t_Error  FmPcdPlcrAllocProfiles(t_Handle h_FmPcd, uint8_t hardwarePortId, uint16
 #ifdef CONFIG_GUEST_PARTITION
     t_FmPcdIpcPlcrAllocParams   ipcPlcrParams;
 #endif /* CONFIG_GUEST_PARTITION */
-    t_Error                     err;
+    t_Error                     err = E_OK;
     uint16_t                    base;
     uint16_t                    pcdPortId;
     uint8_t                     portsTable[]        = PCD_PORTS_TABLE;
@@ -385,7 +396,7 @@ t_Error  FmPcdPlcrFreeProfiles(t_Handle h_FmPcd, uint8_t hardwarePortId)
 #ifdef CONFIG_GUEST_PARTITION
     t_FmPcdIpcPlcrAllocParams   ipcPlcrParams;
 #endif /* CONFIG_GUEST_PARTITION */
-    t_Error                     err;
+    t_Error                     err = E_OK;
     uint16_t                    pcdPortId;
     uint8_t                     portsTable[]        = PCD_PORTS_TABLE;
 
@@ -588,7 +599,7 @@ t_Error FmPcdPlcrBuildProfile(t_Handle h_FmPcd, t_FmPcdPlcrProfileParams *p_Prof
 {
 
     t_FmPcd         *p_FmPcd            = (t_FmPcd*)h_FmPcd;
-    t_Error err;
+    t_Error         err = E_OK;
     uint32_t        pemode, gnia, ynia, rnia;
 
 /* Set G, Y, R Nia */
@@ -825,7 +836,7 @@ t_Error PlcrInit(t_FmPcd *p_FmPcd)
     t_FmPcdDriverParam          *p_Param = p_FmPcd->p_FmPcdDriverParam;
     t_FmPcdPlcr                 *p_FmPcdPlcr = p_FmPcd->p_FmPcdPlcr;
     uint32_t                    tmpReg32 = 0;
-    t_Error                     err;
+    t_Error                     err = E_OK;
 #ifndef CONFIG_GUEST_PARTITION
     t_FmPcdPlcrRegs             *p_Regs = p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs;
 #else
@@ -886,8 +897,8 @@ t_Error PlcrInit(t_FmPcd *p_FmPcd)
     /**********************FMPL_IER******************/
 
     /* register even if no interrupts enabled, to allow future enablement */
-    FmRegisterIntr(p_FmPcd->h_Fm, e_FM_EV_ERR_PLCR, PcdPlcrErrorException, p_FmPcd);
-    FmRegisterIntr(p_FmPcd->h_Fm, e_FM_EV_PLCR, PcdPlcrException, p_FmPcd);
+    FmRegisterIntr(p_FmPcd->h_Fm, e_FM_MOD_PLCR, 0, e_FM_INTR_TYPE_ERR, PcdPlcrErrorException, p_FmPcd);
+    FmRegisterIntr(p_FmPcd->h_Fm, e_FM_MOD_PLCR, 0, e_FM_INTR_TYPE_NORMAL, PcdPlcrException, p_FmPcd);
 
     /* driver initializes one DFLT profile at the last entry*/
     p_FmPcd->p_FmPcdPlcr->profiles[FM_PCD_PLCR_NUM_ENTRIES-1].profilesMng.allocated = TRUE;
@@ -1045,7 +1056,7 @@ t_Handle FM_PCD_PlcrSetProfile(t_Handle     h_FmPcd,
     t_FmPcdPlcrRegs                     *p_FmPcdPlcrRegs    = p_FmPcdPlcr->p_FmPcdPlcrRegs;
     t_FmPcdPlcrInterModuleProfileRegs   plcrProfileReg;
     uint16_t                            absoluteProfileId;
-    t_Error                             err;
+    t_Error                             err = E_OK;
     uint32_t                            tmpReg32;
 #endif /* !CONFIG_MULTI_PARTITION_SUPPORT */
 

@@ -35,6 +35,11 @@
 
 #include "xx_ext.h"
 
+void * xx_Malloc(uint32_t n);
+void xx_Free(void *p);
+
+void *xx_MallocSmart(uint32_t size, int memPartitionId, uint32_t align);
+void xx_FreeSmart(void *p);
 
 char  * GetDeviceName(int irq);
 int     GetDeviceIrqNum(int irq);

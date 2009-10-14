@@ -39,11 +39,10 @@
 #include "error_ext.h"
 #include "string_ext.h"
 #include "debug_ext.h"
-
 #include "fm_pcd_ext.h"
 #include "fm_muram_ext.h"
-#include "fm_hc.h"
 
+#include "fm_hc.h"
 #include "fm_pcd.h"
 
 
@@ -542,7 +541,7 @@ static void ReleaseTree(t_FmPcdCc *p_FmPcdCc, uint8_t treeId)
 static t_Error ValidateNextEngineParams(t_Handle h_FmPcd, t_FmPcdCcNextEngineParams *p_FmPcdCcNextEngineParams, t_NextEngineParamsInfo *p_NextEngineParamsInfo)
 {
     uint16_t                    absoluteProfileId;
-    t_Error                     err;
+    t_Error                     err = E_OK;
     uint8_t                     relativeSchemeId;
 
     p_NextEngineParamsInfo->fmPcdEngine = e_FM_PCD_DONE;
@@ -1101,7 +1100,7 @@ static t_Error ModifyCcCommon1(t_Handle h_FmPcd, t_FmPcdCcNextEngineParams *p_Fm
 {
     t_FmPcdModifyCcAdditionalParams *p_CcOldModifyAdditionalParams;
     t_FmPcdModifyCcAdditionalParams *p_CcNewModifyAdditionalParams;
-    t_Error                         err;
+    t_Error                         err = E_OK;
     t_FmPcd                         *p_FmPcd = (t_FmPcd *)h_FmPcd;
     t_NextEngineParamsInfo          nextEngineParamsInfo;
 
@@ -1261,7 +1260,7 @@ static t_Error BuildNewNodeCommonPart(t_Handle *h_FmPcd, t_FmPcdCcNode *p_FmPcdC
 
 static t_Error BuildNewNodeAddKey(t_Handle h_FmPcd ,t_FmPcdCcNode *p_FmPcdCcNode, uint8_t keyIndex, t_FmPcdCcKeyParams  *p_KeyParams,t_FmPcdModifyCcKeyAdditionalParams *p_AdditionalInfo)
 {
-    t_Error                 err;
+    t_Error                 err = E_OK;
     t_NextEngineParamsInfo  nextEngineParamsInfo;
     t_Handle                p_AdTableNewTmp, p_KeysMatchTableNewTmp;
     t_Handle                p_KeysMatchTableOldTmp, p_AdTableOldTmp;
@@ -1337,7 +1336,7 @@ static t_Error BuildNewNodeRemoveKey(t_Handle h_FmPcd  ,t_FmPcdCcNode *p_FmPcdCc
     t_Handle    p_AdTableNewTmp,p_KeysMatchTableNewTmp;
     t_Handle    p_KeysMatchTableOldTmp, p_AdTableOldTmp;
     int         size;
-    t_Error     err;
+    t_Error     err = E_OK;
 
     p_AdditionalInfo->numOfKeys = (uint16_t)(p_FmPcdCcNode->numOfKeys - 1);
 
@@ -1378,7 +1377,7 @@ static t_Error BuildNewNodeRemoveKey(t_Handle h_FmPcd  ,t_FmPcdCcNode *p_FmPcdCc
 
 static t_Error BuildNewNodeModifyKey(t_Handle h_FmPcd ,t_FmPcdCcNode *p_FmPcdCcNode, uint8_t keyIndex, uint8_t  *p_Key, uint8_t *p_Mask,t_FmPcdModifyCcKeyAdditionalParams *p_AdditionalInfo)
 {
-    t_Error                 err;
+    t_Error                 err = E_OK;
     t_Handle                p_AdTableNewTmp, p_KeysMatchTableNewTmp;
     t_Handle                p_KeysMatchTableOldTmp, p_AdTableOldTmp;
     int                     size;
@@ -1439,7 +1438,7 @@ static t_Error BuildNewNodeModifyKey(t_Handle h_FmPcd ,t_FmPcdCcNode *p_FmPcdCcN
 
 static t_Error BuildNewNodeModifyKeyAndNextEngine(t_Handle h_FmPcd ,t_FmPcdCcNode *p_FmPcdCcNode, uint8_t keyIndex, t_FmPcdCcKeyParams  *p_KeyParams,t_FmPcdModifyCcKeyAdditionalParams *p_AdditionalInfo)
 {
-    t_Error                 err;
+    t_Error                 err = E_OK;
     t_NextEngineParamsInfo nextEngineParamsInfo;
     t_FmPcd                 *p_FmPcd = (t_FmPcd *)h_FmPcd;
     t_Handle                p_AdTableNewTmp,p_KeysMatchTableNewTmp;
@@ -1618,7 +1617,7 @@ static t_Error ModifyKeyCommonPart1(t_FmPcdCcNode *p_FmPcdCcNode,  uint8_t keyIn
 t_Error FmPcdCcModifyNextEngineParamTree(t_Handle h_FmPcd, t_Handle h_FmPcdCcTree, uint8_t grpId, uint8_t index, t_FmPcdCcNextEngineParams *p_FmPcdCcNextEngineParams, t_Handle *h_OldPointer, t_Handle *h_NewPointer)
 {
     t_FmPcdCcTree                   *p_FmPcdCcTree = (t_FmPcdCcTree *)h_FmPcdCcTree;
-    t_Error                         err;
+    t_Error                         err = E_OK;
     t_FmPcdModifyCcAdditionalParams *p_CcOldModifyAdditionalParams;
     t_FmPcdModifyCcAdditionalParams *p_CcNewModifyAdditionalParams;
 
@@ -1653,7 +1652,7 @@ t_Error FmPcdCcModifyNextEngineParamTree(t_Handle h_FmPcd, t_Handle h_FmPcdCcTre
 static t_Error ModifyKeyCommonPart2(t_FmPcd *p_FmPcd, t_FmPcdCcNode *p_FmPcdCcNode, t_FmPcdModifyCcKeyAdditionalParams *p_FmPcdModifyCcKeyAdditionalParams ,t_List *h_OldLst, t_Handle *h_NewPointer)
 {
 
-    t_Error         err;
+    t_Error         err = E_OK;
     t_FmPcdCcNode   fmPcdCcNode;
 
     if(!LIST_IsEmpty(&p_FmPcdCcNode->ccPrevNodesLst))
@@ -1693,7 +1692,7 @@ t_Error FmPcdCcAddKey(t_Handle h_FmPcd, t_Handle h_FmPcdCcNode, uint8_t keyIndex
 {
     t_FmPcdCcNode                   *p_FmPcdCcNode = (t_FmPcdCcNode *)h_FmPcdCcNode;
     t_FmPcd                         *p_FmPcd = (t_FmPcd*)h_FmPcd;
-    t_Error                         err;
+    t_Error                         err = E_OK;
     t_FmPcdModifyCcKeyAdditionalParams *p_FmPcdModifyCcKeyAdditionalParams;
 
     err =  ModifyKeyCommonPart1(p_FmPcdCcNode, keyIndex, &p_FmPcdModifyCcKeyAdditionalParams);
@@ -1729,7 +1728,7 @@ t_Error FmPcdCcRemoveKey(t_Handle h_FmPcd, t_Handle h_FmPcdCcNode, uint8_t keyIn
 
     t_FmPcdCcNode                   *p_FmPcdCcNode = (t_FmPcdCcNode *) h_FmPcdCcNode;
     t_FmPcd                         *p_FmPcd = (t_FmPcd*)h_FmPcd;
-    t_Error                         err;
+    t_Error                         err = E_OK;
     t_FmPcdModifyCcKeyAdditionalParams *p_FmPcdModifyCcKeyAdditionalParams;
 
 
@@ -1765,7 +1764,7 @@ t_Error FmPcdCcModifyKey(t_Handle h_FmPcd, t_Handle h_FmPcdCcNode, uint8_t keyIn
 {
     t_FmPcdCcNode                   *p_FmPcdCcNode = (t_FmPcdCcNode *)h_FmPcdCcNode;
     t_FmPcd                         *p_FmPcd = (t_FmPcd*)h_FmPcd;
-    t_Error                         err;
+    t_Error                         err = E_OK;
     t_FmPcdModifyCcKeyAdditionalParams *p_FmPcdModifyCcKeyAdditionalParams;
 
     err = ModifyKeyCommonPart1(p_FmPcdCcNode, keyIndex, &p_FmPcdModifyCcKeyAdditionalParams);
@@ -1797,7 +1796,7 @@ t_Error FmPcdCcModifyKeyAndNextEngine(t_Handle h_FmPcd, t_Handle h_FmPcdNode, ui
 {
     t_FmPcdCcNode                   *p_FmPcdCcNode = (t_FmPcdCcNode *)h_FmPcdNode;
     t_FmPcd                         *p_FmPcd = (t_FmPcd*)h_FmPcd;
-    t_Error                         err;
+    t_Error                         err = E_OK;
     t_FmPcdModifyCcKeyAdditionalParams *p_FmPcdModifyCcKeyAdditionalParams;
 
     err = ModifyKeyCommonPart1(p_FmPcdCcNode, keyIndex, &p_FmPcdModifyCcKeyAdditionalParams);
@@ -1833,7 +1832,7 @@ t_Error FmPcdCcModiyNextEngineParamNode(t_Handle h_FmPcd,t_Handle h_FmPcdCcNode,
     t_FmPcdModifyCcAdditionalParams *p_CcOldModifyAdditionalParams;
     t_FmPcdModifyCcAdditionalParams *p_CcNewModifyAdditionalParams;
     t_FmPcdCcNode                   *p_FmPcdCcNode = (t_FmPcdCcNode *)h_FmPcdCcNode;
-    t_Error                         err;
+    t_Error                         err = E_OK;
 
     SANITY_CHECK_RETURN_ERROR(h_FmPcd,E_INVALID_VALUE);
     SANITY_CHECK_RETURN_ERROR(p_FmPcdCcNode,E_INVALID_HANDLE);
@@ -1863,7 +1862,7 @@ t_Error FmPcdCcModifyMissNextEngineParamNode(t_Handle h_FmPcd, t_Handle h_FmPcdC
     t_FmPcdModifyCcAdditionalParams *p_CcOldModifyAdditionalParams;
     t_FmPcdModifyCcAdditionalParams *p_CcNewModifyAdditionalParams;
     t_FmPcdCcNode                   *p_FmPcdCcNode = (t_FmPcdCcNode *)h_FmPcdCcNode;
-    t_Error                         err;
+    t_Error                         err = E_OK;
 
     SANITY_CHECK_RETURN_ERROR(p_FmPcdCcNode,E_INVALID_VALUE);
 
@@ -1885,7 +1884,7 @@ t_Error FmPcdCcModifyMissNextEngineParamNode(t_Handle h_FmPcd, t_Handle h_FmPcdC
 static t_Error UpdateNodesWithTree(t_Handle h_FmPcd,t_List *ccNextNodesLst, uint16_t *p_CcArray, uint8_t treeId)
 {
     t_List          *p_Pos;
-    t_Error         err;
+    t_Error         err = E_OK;
     t_FmPcdCcNode   *p_FmPcdCcNode;
     uint32_t        nodeIdTmp;
     if(!LIST_IsEmpty(ccNextNodesLst))
@@ -1912,7 +1911,7 @@ static t_Error UpdateNodesWithTree(t_Handle h_FmPcd,t_List *ccNextNodesLst, uint
 static t_Error RemoveNodesFromTree(t_Handle h_FmPcd,t_List *ccNextNodesLst, uint8_t treeId)
 {
     t_List          *p_Pos;
-    t_Error         err;
+    t_Error         err = E_OK;
     t_FmPcdCcNode   *p_FmPcdCcNode;
     uint32_t        nodeIdTmp;
     t_CcNodeInfo    *p_CcNodeInfo;
@@ -1948,7 +1947,7 @@ t_Error FmPcdCcReleaseModifiedOnlyNextEngine(t_Handle h_FmPcd, t_Handle h_FmPcdO
     t_FmPcdCcNode                   *p_CurrentNode=NULL, *p_NodeForAdd, *p_NodeForRemove;
     t_CcNodeInfo                    *p_CcNodeInfo, *p_CcNodeInfo1;
     uint16_t                         numOfReplec;
-    t_Error                          err;
+    t_Error                          err = E_OK;
     t_List                          *p_Pos;
     uint16_t                        ccArray[MAX_NUM_OF_PCD_CC_NODES];
 
@@ -2089,7 +2088,7 @@ t_Error FmPcdCcReleaseModifiedKey(t_Handle h_FmPcd, t_List *h_FmPcdOldPointersLs
     t_FmPcdCcNode                  *p_CurrentNode = NULL, *p_NodeForAdd, *p_NodeForRemove;
     uint32_t                        numOfReplec;
     t_List                          *p_Pos;
-    t_Error                         err;
+    t_Error                         err = E_OK;
     uint16_t                        ccArray[MAX_NUM_OF_PCD_CC_NODES];
 
     UNUSED(numOfGoodChanges);
@@ -2231,6 +2230,7 @@ t_Error     CcGetGrpParams(t_Handle h_FmPcdCcTree, uint8_t grpId, uint32_t *p_Gr
 {
     t_FmPcdCcTree *p_FmPcdCcTree = (t_FmPcdCcTree *) h_FmPcdCcTree;
 
+    SANITY_CHECK_RETURN_ERROR(h_FmPcdCcTree, E_INVALID_HANDLE);
     SANITY_CHECK_RETURN_ERROR((grpId <= 7),E_INVALID_STATE);
 
     if(grpId >= p_FmPcdCcTree->numOfGrps)
@@ -2245,7 +2245,7 @@ t_Handle CcConfig(t_FmPcd *p_FmPcd, t_FmPcdParams *p_FmPcdParams)
     t_FmPcdCc           *p_FmPcdCc;
 #ifdef CONFIG_GUEST_PARTITION
     t_FmPcdIcPhysAddr   physicalMuramBase;
-    t_Error             err;
+    t_Error             err = E_OK;
 #else
     t_FmPhysAddr        physicalMuramBase;
 #endif /* CONFIG_GUEST_PARTITION */
@@ -2289,7 +2289,7 @@ t_Error  FmPcdCcBindTree(t_Handle h_FmPcd, t_Handle  h_FmPcdCcTree,  uint32_t  *
 {
     t_FmPcd *p_FmPcd = (t_FmPcd*)h_FmPcd;
     t_FmPcdCcTree       *p_FmPcdCcTree = (t_FmPcdCcTree *)h_FmPcdCcTree;
-    t_Error             err;
+    t_Error             err = E_OK;
 
     SANITY_CHECK_RETURN_ERROR(p_FmPcd,E_INVALID_HANDLE);
     SANITY_CHECK_RETURN_ERROR(p_FmPcd->p_FmPcdCc,E_INVALID_STATE);
@@ -2317,7 +2317,7 @@ t_Handle FM_PCD_CcBuildTree(t_Handle h_FmPcd, t_FmPcdCcTreeParams *p_PcdGroupsPa
 {
     t_FmPcd                     *p_FmPcd = (t_FmPcd *)h_FmPcd;
     t_FmPcdCc                   *p_FmPcdCc;
-    t_Error                     err;
+    t_Error                     err = E_OK;
     uint8_t                     treeId;
     int                         i = 0, j = 0, k = 0;
     t_FmPcdCcTree               *p_FmPcdCcTree;
@@ -2530,7 +2530,7 @@ t_Handle FM_PCD_CcSetNode(t_Handle h_FmPcd, t_FmPcdCcNodeParams *p_CcNodeParam)
     t_FmPcd             *p_FmPcd = (t_FmPcd *) h_FmPcd;
     t_FmPcdCcNode       *p_FmPcdCcNode, *p_FmPcdCcNextNode;
     t_FmPcdCc           *p_FmPcdCc;
-    t_Error             err;
+    t_Error             err = E_OK;
     int                 tmp, size;
     bool                glblMask = FALSE;
     t_FmPcdCcKeyParams  *p_KeyParams;
@@ -2549,6 +2549,13 @@ t_Handle FM_PCD_CcSetNode(t_Handle h_FmPcd, t_FmPcdCcNodeParams *p_CcNodeParam)
 
     SANITY_CHECK_RETURN_VALUE(h_FmPcd,E_INVALID_HANDLE,NULL);
     SANITY_CHECK_RETURN_VALUE(p_FmPcd->p_FmPcdCc,E_INVALID_STATE,NULL);
+
+    if (!p_CcNodeParam->keysParams.keySize ||
+        !p_CcNodeParam->keysParams.numOfKeys)
+    {
+        REPORT_ERROR(MAJOR, E_INVALID_STATE, ("At least one key of keySize > 0 must be defined."));
+        return NULL;
+    }
 
     memset(profileInfo, 0x00, FM_PCD_PLCR_NUM_ENTRIES*sizeof(uint16_t));
     memset(ccInfo, 0x00, MAX_NUM_OF_PCD_CC_NODES*sizeof(uint16_t));
@@ -2705,7 +2712,7 @@ t_Handle FM_PCD_CcSetNode(t_Handle h_FmPcd, t_FmPcdCcNodeParams *p_CcNodeParam)
             {
                 ReleaseNode(p_FmPcdCc,nodeId);
                 ReleaseNodeHandler(p_FmPcdCcNode,p_FmPcdCc);
-                REPORT_ERROR(MAJOR, E_NO_MEMORY, ("numOfKeys is not match defined parameters - p_Key is not initialized"));
+                REPORT_ERROR(MAJOR, E_NO_MEMORY, ("p_Key is not initialized"));
                 return NULL;
             }
 
@@ -2935,6 +2942,7 @@ void FmPcdCcNodeTreeReleaseLock(t_Handle h_FmPcd, t_List *p_List)
         h_FmPcdCcTree = FmPcdCcGetTreeHandler(h_FmPcd, (uint8_t)p_CcNodeInfo->nextCcNodeInfo);
         FmPcdCcTreeReleaseLock(h_FmPcdCcTree);
     }
+    ReleaseLst(p_List);
 }
 
 t_Error FmPcdCcNodeTreeTryLock(t_Handle h_FmPcd,t_Handle h_FmPcdCcNode, t_List *p_List)
@@ -2943,7 +2951,7 @@ t_Error FmPcdCcNodeTreeTryLock(t_Handle h_FmPcd,t_Handle h_FmPcdCcNode, t_List *
     t_List          *p_Pos;
     t_CcNodeInfo    *p_CcNodeInfo;
     t_Handle        h_FmPcdCcTree;
-    t_Error         err;
+    t_Error         err = E_OK;
 
     if(LIST_IsEmpty(&p_FmPcdCcNode->ccTreesLst))
         RETURN_ERROR(MAJOR, E_NOT_AVAILABLE, ("asked for more nodes in CC than MAX"))  ;
@@ -2955,11 +2963,7 @@ t_Error FmPcdCcNodeTreeTryLock(t_Handle h_FmPcd,t_Handle h_FmPcdCcNode, t_List *
         if(err == E_OK)
             CreateNodeInfo(p_List, (uint8_t)p_CcNodeInfo->nextCcNodeInfo);
         else
-        {
             FmPcdCcNodeTreeReleaseLock(h_FmPcd, p_List);
-            ReleaseLst(p_List);
-
-        }
     }
 
     return err;

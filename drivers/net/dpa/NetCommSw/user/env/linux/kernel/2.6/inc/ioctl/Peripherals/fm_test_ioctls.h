@@ -52,7 +52,7 @@
 #define IOC_FMT_MAX_NUM_OF_PORTS        24
 
 /**************************************************************************//**
- @Collection    TBD
+ @Collection    TEST Parameters
 *//***************************************************************************/
 /**************************************************************************//**
   @Description: Name of the FM-Test chardev
@@ -68,19 +68,19 @@
 /**************************************************************************//**
  @Group         lnx_ioctl_FMT_lib_grp FM-Test library
 
- @Description   TBD
+ @Description   TODO
 
  @{
 *//***************************************************************************/
 
 /**************************************************************************//**
- @Description   TBD
+ @Description   TODO
 *//***************************************************************************/
 typedef uint8_t ioc_fmt_xxx_t;
 
 
 /**************************************************************************//**
- @Description   TBD
+ @Description   FM Port buffer content description
 *//***************************************************************************/
 typedef struct ioc_fmt_buff_context_t {
     void            *p_user_priv;
@@ -90,7 +90,7 @@ typedef struct ioc_fmt_buff_context_t {
 
 
 /**************************************************************************//**
- @Description   TBD
+ @Description   Buffer descriptor
 *//***************************************************************************/
 typedef struct ioc_fmt_buff_desc_t {
     uint32_t               qid;
@@ -104,7 +104,7 @@ typedef struct ioc_fmt_buff_desc_t {
 /**************************************************************************//**
  @Group         lnx_ioctl_FMT_runtime_control_grp FM-Test Runtime Control Unit
 
- @Description   TBD
+ @Description   TODO
  @{
 *//***************************************************************************/
 
@@ -114,13 +114,13 @@ typedef struct ioc_fmt_buff_desc_t {
 /**************************************************************************//**
  @Group         lnx_ioctl_FMTP_lib_grp FM-Port-Test library
 
- @Description   TBD
+ @Description   TODO
 
  @{
 *//***************************************************************************/
 
 /**************************************************************************//**
- @Description   FM-Test TBD
+ @Description   FM-Test FM port type
 *//***************************************************************************/
 typedef enum ioc_fmt_port_type {
     e_IOC_FMT_PORT_T_RXTX,  /**< Standard port */
@@ -128,7 +128,7 @@ typedef enum ioc_fmt_port_type {
 } ioc_fmt_port_type;
 
 /**************************************************************************//**
- @Description   TBD
+ @Description   TODO
 *//***************************************************************************/
 typedef struct ioc_fmt_port_param_t {
     uint8_t             fm_id;
@@ -141,15 +141,35 @@ typedef struct ioc_fmt_port_param_t {
 /**************************************************************************//**
  @Function      FMT_PORT_IOC_INIT
 
- @Description   TBD
+ @Description   TODO
 
- @Param[in]    ioc_fmt_port_param_t  TBD
+ @Param[in]     ioc_fmt_port_param_t  TODO
 
- @Return        None.
-
- @Cautions      Allowed only following FM_Init().
+ @Cautions      Allowed only after the FM equivalent port is already initialized.
 *//***************************************************************************/
-#define FMT_PORT_IOC_INIT   _IOW(FMT_IOC_TYPE_BASE, FMT_PORT_IOC_NUM(0), ioc_fmt_port_param_t)
+#define FMT_PORT_IOC_INIT           _IOW(FMT_IOC_TYPE_BASE, FMT_PORT_IOC_NUM(0), ioc_fmt_port_param_t)
+
+/**************************************************************************//**
+ @Function      FMT_PORT_IOC_SET_DIAG_MODE
+
+ @Description   TODO
+
+ @Param[in]     ioc_diag_mode  TODO
+
+ @Cautions      Allowed only following FMT_PORT_IOC_INIT().
+*//***************************************************************************/
+#define FMT_PORT_IOC_SET_DIAG_MODE  _IOW(FMT_IOC_TYPE_BASE, FMT_PORT_IOC_NUM(1), ioc_diag_mode)
+
+/**************************************************************************//**
+ @Function      FMT_PORT_IOC_SET_IP_HEADER_MANIP
+
+ @Description   Set IP header manipulations for this port.
+
+ @Param[in]     int     1 to enable; 0 to disable
+
+ @Cautions      Allowed only following FMT_PORT_IOC_INIT().
+*//***************************************************************************/
+#define FMT_PORT_IOC_SET_IP_HEADER_MANIP  _IOW(FMT_IOC_TYPE_BASE, FMT_PORT_IOC_NUM(2), int)
 
 /** @} */ /* end of lnx_ioctl_FMTP_lib_grp group */
 /** @} */ /* end of lnx_ioctl_FMT_lib_grp group */

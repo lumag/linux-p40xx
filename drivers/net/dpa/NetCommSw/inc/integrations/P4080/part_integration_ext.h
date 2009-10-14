@@ -39,6 +39,7 @@
 #ifndef __PART_INTEGRATION_EXT_H
 #define __PART_INTEGRATION_EXT_H
 
+//#include "ddr_std_ext.h"
 
 /**************************************************************************//**
  @Group         P4080_chip_id P4080 Application Programming Interface
@@ -59,7 +60,42 @@ typedef enum e_ModuleId
     e_MODULE_ID_DUART_4,
     e_MODULE_ID_QM,                 /**< Queue manager module */
     e_MODULE_ID_BM,                 /**< Buffer manager module */
-
+    e_MODULE_ID_QM_CE_PORTAL_0,
+    e_MODULE_ID_QM_CE_PORTAL_1,
+    e_MODULE_ID_QM_CE_PORTAL_2,
+    e_MODULE_ID_QM_CE_PORTAL_3,
+    e_MODULE_ID_QM_CE_PORTAL_4,
+    e_MODULE_ID_QM_CE_PORTAL_5,
+    e_MODULE_ID_QM_CE_PORTAL_6,
+    e_MODULE_ID_QM_CE_PORTAL_7,
+    e_MODULE_ID_QM_CE_PORTAL_8,
+    e_MODULE_ID_QM_CI_PORTAL_0,
+    e_MODULE_ID_QM_CI_PORTAL_1,
+    e_MODULE_ID_QM_CI_PORTAL_2,
+    e_MODULE_ID_QM_CI_PORTAL_3,
+    e_MODULE_ID_QM_CI_PORTAL_4,
+    e_MODULE_ID_QM_CI_PORTAL_5,
+    e_MODULE_ID_QM_CI_PORTAL_6,
+    e_MODULE_ID_QM_CI_PORTAL_7,
+    e_MODULE_ID_QM_CI_PORTAL_8,
+    e_MODULE_ID_BM_CE_PORTAL_0,
+    e_MODULE_ID_BM_CE_PORTAL_1,
+    e_MODULE_ID_BM_CE_PORTAL_2,
+    e_MODULE_ID_BM_CE_PORTAL_3,
+    e_MODULE_ID_BM_CE_PORTAL_4,
+    e_MODULE_ID_BM_CE_PORTAL_5,
+    e_MODULE_ID_BM_CE_PORTAL_6,
+    e_MODULE_ID_BM_CE_PORTAL_7,
+    e_MODULE_ID_BM_CE_PORTAL_8,
+    e_MODULE_ID_BM_CI_PORTAL_0,
+    e_MODULE_ID_BM_CI_PORTAL_1,
+    e_MODULE_ID_BM_CI_PORTAL_2,
+    e_MODULE_ID_BM_CI_PORTAL_3,
+    e_MODULE_ID_BM_CI_PORTAL_4,
+    e_MODULE_ID_BM_CI_PORTAL_5,
+    e_MODULE_ID_BM_CI_PORTAL_6,
+    e_MODULE_ID_BM_CI_PORTAL_7,
+    e_MODULE_ID_BM_CI_PORTAL_8,
     e_MODULE_ID_FM1,                /**< Frame manager #1 module */
     e_MODULE_ID_FM1_MURAM,          /**< FM Multi-User-RAM */
     e_MODULE_ID_FM1_BMI,            /**< FM BMI block */
@@ -143,6 +179,8 @@ typedef enum e_ModuleId
     e_MODULE_ID_FM2_10GMAC0,        /**< FM 10G MAC #0 */
 
     e_MODULE_ID_MPIC,               /**< MPIC */
+    e_MODULE_ID_GPIO,               /**< GPIO */
+    e_MODULE_ID_SERDES,             /**< SERDES */
     e_MODULE_ID_DUMMY_LAST
 } e_ModuleId;
 
@@ -161,7 +199,6 @@ typedef enum e_TransSrc
     e_TRANS_SRC_DMA             = 0x15, /**< DMA                     */
 } e_TransSrc;
 
-
 /***************************************************************
     P4080 general routines
 ****************************************************************/
@@ -179,27 +216,76 @@ typedef enum e_TransSrc
 typedef enum e_P4080DeviceName
 {
     e_P4080_REV_INVALID   = 0x00000000,   /**< Invalid revision      */
-    e_P4080E_REV_1_0      = 0x80230010    /**< P4080E with security, revision 1.0 */
+    e_P4080E_REV_1_0      = 0x82080010    /**< P4080E with security, revision 1.0 */
 } e_P4080DeviceName;
 
+/**************************************************************************//**
+ @Description   structure representing P4080 initialization parameters
+*//***************************************************************************/
+typedef struct
+{
+    uint64_t        ccsrBaseAddress;        /**< CCSR base address (virtual) */
+    uint64_t        portalsBaseAddress;     /**< Portals base address (virtual) */
+    bool            (*f_BoardIsValidSerDesConfigurationCB) (uint8_t val);
+} t_P4080Params;
+
+/**************************************************************************//**
+ @Description   SERDES lanes activation
+*//***************************************************************************/
+typedef enum e_SerDesLaneActivation
+{
+    e_SERDES_LANE_F,                /**<  */
+    e_SERDES_LANE_H,                /**<  */
+    e_SERDES_LANE_A_B,              /**<  */
+    e_SERDES_LANE_C_D,              /**<  */
+    e_SERDES_LANE_E_F,              /**<  */
+    e_SERDES_LANE_G_H,              /**<  */
+    e_SERDES_LANE_I_J,              /**<  */
+    e_SERDES_LANE_A_B_C_D,          /**<  */
+    e_SERDES_LANE_E_F_G_H,          /**<  */
+    e_SERDES_LANE_A_B_C_D_E_F_G_H,  /**<  */
+} e_SerDesLaneActivation;
+
+/**************************************************************************//**
+ @Description   structure representing P4080 devices configuration
+*//***************************************************************************/
+typedef struct
+{
+    struct
+    {
+        struct
+        {
+            bool                    en;
+            uint8_t                 serdesBank;
+            e_SerDesLaneActivation  serdesLane;
+            bool                    sgmii;
+        } dtsecs[4];
+        struct
+        {
+            bool                    en;
+            uint8_t                 serdesBank;
+            e_SerDesLaneActivation  serdesLane;
+        } tgec;
+    } fms[2];
+} t_P4080DevParams;
 
 /**************************************************************************//**
  @Function      P4080_ConfigAndInit
 
  @Description   General initiation of the chip registers.
 
- @Param         baseAddress  - (In) memory map start
+ @Param[in]     p_P4080Params  - A pointer to data structure of parameters
 
  @Return        A handle to the P4080 data structure.
 *//***************************************************************************/
-t_Handle P4080_ConfigAndInit(uint32_t baseAddress);
+t_Handle P4080_ConfigAndInit(t_P4080Params *p_P4080Params);
 
 /**************************************************************************//**
  @Function      P4080_Free
 
  @Description   Free all resources.
 
- @Param         h_P4080 - (In) The handle of the initialized P4080 object.
+ @Param[in]     h_P4080 - The handle of the initialized P4080 object.
 
  @Return        E_OK on success; Other value otherwise.
 *//***************************************************************************/
@@ -211,20 +297,20 @@ t_Error P4080_Free(t_Handle h_P4080);
  @Description   returns the base address of a P4080 module's
                 memory mapped registers.
 
- @Param         h_P4080   - (In) The handle of the initialized P4080 object.
- @Param         module      - (In) The module ID.
+ @Param[in]     h_P4080   - The handle of the initialized P4080 object.
+ @Param[in]     module    - The module ID.
 
  @Return        Base address of module's memory mapped registers.
                 ILLEGAL_BASE in case of non-existent module
 *//***************************************************************************/
-uint32_t P4080_GetModuleBase(t_Handle h_P4080, e_ModuleId module);
+uint64_t P4080_GetModuleBase(t_Handle h_P4080, e_ModuleId module);
 
 /**************************************************************************//**
  @Function      P4080_GetRevInfo
 
  @Description   This routine enables access to chip and revision information.
 
- @Param         h_P4080 - (In) The handle of the initialized P4080 object.
+ @Param[in]     h_P4080 - The handle of the initialized P4080 object.
 
  @Return        Part ID and revision.
 *//***************************************************************************/
@@ -235,25 +321,70 @@ e_P4080DeviceName P4080_GetRevInfo(t_Handle h_P4080);
 
  @Description   returns system multiplication factor.
 
- @Param         h_P4080 - (In) a handle to the P4080 object.
- @Param         p_E500MulFactor   - (Out) returns E500 to CCB multification factor.
- @Param         p_E500DivFactor   - (Out) returns E500 to CCB division factor.
+ @Param[in]     h_P4080         - A handle to the P4080 object.
+ @Param[in]     coreIndex       - core index.
+ @Param[out]    p_E500MulFactor - returns E500 to CCB multification factor.
+ @Param[out]    p_E500DivFactor - returns E500 to CCB division factor.
 
  @Return        E_OK on success; Other value otherwise.
 *
 *//***************************************************************************/
-t_Error P4080_GetE500Factor(t_Handle h_P4080, uint32_t *p_E500MulFactor, uint32_t *p_E500DivFactor);
+t_Error P4080_GetE500Factor(t_Handle h_P4080, uint8_t coreIndex, uint32_t *p_E500MulFactor, uint32_t *p_E500DivFactor);
 
 /**************************************************************************//**
  @Function      P4080_GetCcbFactor
 
  @Description   returns system multiplication factor.
 
- @Param         h_P4080 - (In) The handle of the initialized P4080 object.
+ @Param[in]     h_P4080 - The handle of the initialized P4080 object.
 
  @Return        System multiplication factor.
 *//***************************************************************************/
 uint32_t P4080_GetCcbFactor(t_Handle h_P4080);
+
+/**************************************************************************//**
+ @Function      P4080_GetDdrFactor
+
+ @Description   returns the multiplication factor of the clock in for the DDR clock.
+
+ @Param[in]     h_P080 - a handle to the P4080 object.
+
+ @Return        System multiplication factor.
+*//***************************************************************************/
+uint32_t P4080_GetDdrFactor(t_Handle h_P4080);
+
+/**************************************************************************//**
+ @Function      P4080_GetDdrType
+
+ @Description   returns the multiplication factor of the clock in for the DDR clock .
+
+ @Param[in]     h_P080 - a handle to the P4080 object.
+ @Param[out]    p_DdrType - returns DDR type DDR2/DDR3.
+
+ @Return        E_OK on success; Other value otherwise.
+*//***************************************************************************/
+//t_Error P4080_GetDdrType(t_Handle h_P4080, e_DdrType *p_DdrType);
+
+/**************************************************************************//**
+ @Function      P4080_GetFmFactor
+
+ @Description   returns FM multiplication factors. (This value is returned using
+                two parameters to avoid using float parameter).
+
+ @Param[in]     h_P4080         - The handle of the initialized P4080 object.
+ @Param[in]     fmIndex         - fm index.
+ @Param[out]    p_FmMulFactor   - returns E500 to CCB multification factor.
+ @Param[out]    p_FmDivFactor   - returns E500 to CCB division factor.
+
+ @Return        E_OK on success; Other value otherwise.
+*//***************************************************************************/
+t_Error  P4080_GetFmFactor(t_Handle h_P4080, uint8_t fmIndex, uint32_t *p_FmMulFactor, uint32_t *p_FmDivFactor);
+
+t_Error P4080_CoreTimeBaseEnable(t_Handle h_P4080);
+t_Error P4080_CoreTimeBaseDisable(t_Handle h_P4080);
+
+t_P4080DevParams * P4080_GetDevicesConfiguration(t_Handle h_P4080);
+t_Error P4080_DeviceEnable(t_Handle h_P4080,e_ModuleId module, bool enable);
 
 /** @} */ /* end of P4080_init_grp group */
 /** @} */ /* end of P4080_grp group */
@@ -275,6 +406,43 @@ uint32_t P4080_GetCcbFactor(t_Handle h_P4080);
 #define MODULE_QM               0x000a0000
 #define MODULE_BM               0x000b0000
 #define MODULE_DUART            0x000c0000
+#define MODULE_SERDES           0x000d0000
+#define MODULE_PIO              0x000e0000
+
+/*****************************************************************************
+ GPIO INTEGRATION-SPECIFIC DEFINITIONS
+******************************************************************************/
+#define GPIO_NUM_OF_PORTS   1   /**< Number of ports in GPIO module;
+                                     Each port contains up to 32 i/O pins. */
+
+#define GPIO_VALID_PIN_MASKS  \
+    { /* Port A */ 0xFFFFFFFF }
+
+#define GPIO_VALID_INTR_MASKS \
+    { /* Port A */ 0xFFFFFFFF }
+
+
+#ifdef SIMULATOR
+#define CORE_8BIT_ACCESS_ERRATA
+#endif /* SIMULATOR */
+
+/*****************************************************************************
+ MPIC INTEGRATION-SPECIFIC DEFINITIONS
+******************************************************************************/
+#define EPIC_MULTICORE_SUPPORT
+
+/*****************************************************************************
+ QMan INTEGRATION-SPECIFIC DEFINITIONS
+******************************************************************************/
+#define QMAN_WQ_CS_CFG_ERRATA
+#define QMAN_SFDR_LEAK_ERRATA
+
+/*****************************************************************************
+ SerDes INTEGRATION-SPECIFIC DEFINITIONS
+******************************************************************************/
+#ifndef SIMULATOR
+#define SERDES_ERRATA
+#endif /* !SIMULATOR */
 
 /*****************************************************************************
  FM INTEGRATION-SPECIFIC DEFINITIONS
@@ -287,22 +455,96 @@ uint32_t P4080_GetCcbFactor(t_Handle h_P4080);
 #define FM_MAX_NUM_OF_1G_TX_PORTS   4
 #define FM_MAX_NUM_OF_10G_TX_PORTS  1
 #define FM_MAX_NUM_OF_TX_PORTS      (FM_MAX_NUM_OF_10G_TX_PORTS+FM_MAX_NUM_OF_1G_TX_PORTS)
-#define FM_MAX_NUM_OF_OP_PORTS      6
-#define FM_MAX_NUM_OF_HC_PORTS      1
+#define FM_MAX_NUM_OF_OH_PORTS      7
 #define FM_MAX_NUM_OF_1G_MACS       (FM_MAX_NUM_OF_1G_RX_PORTS)
 #define FM_MAX_NUM_OF_10G_MACS      (FM_MAX_NUM_OF_10G_RX_PORTS)
 #define FM_MAX_NUM_OF_MACS          (FM_MAX_NUM_OF_1G_MACS+FM_MAX_NUM_OF_10G_MACS)
-#define FM_MAX_NUM_OF_PCD_PORTS     FM_MAX_NUM_OF_RX_PORTS+FM_MAX_NUM_OF_OP_PORTS
+#define FM_MAX_NUM_OF_PCD_PORTS     (FM_MAX_NUM_OF_RX_PORTS+FM_MAX_NUM_OF_OH_PORTS)
 
 #define FM_MURAM_SIZE               (160*KILOBYTE)
 #define FM_PCD_PLCR_NUM_ENTRIES     256                 /**< Total number of policer profiles */
 #define FM_PCD_KG_NUM_OF_SCHEMES    32                  /**< Total number of KG schemes */
 #define FM_PCD_MAX_NUM_OF_CLS_PLANS 256                 /**< Number of classification plan entries. */
 
+/**************************************************************************//**
+ @Description   Enum for inter-module interrupts registration
+*//***************************************************************************/
+typedef enum e_FmEventModules{
+    e_FM_MOD_PRS,                   /**< Parser event */
+    e_FM_MOD_KG,                    /**< Keygen event */
+    e_FM_MOD_PLCR,                  /**< Policer event */
+    e_FM_MOD_10G_MAC,               /**< 10G MAC  error event */
+    e_FM_MOD_1G_MAC,                /**< 1G MAC  error event */
+    e_FM_MOD_TMR,                   /**< Timer event */
+    e_FM_MOD_1G_MAC_TMR,            /**< 1G MAC  Timer event */
+    e_FM_MOD_DUMMY_LAST
+} e_FmEventModules;
+
+/**************************************************************************//**
+ @Description   Enum for interrupts types
+*//***************************************************************************/
+typedef enum e_FmIntrType {
+    e_FM_INTR_TYPE_ERR,
+    e_FM_INTR_TYPE_NORMAL
+}e_FmIntrType;
+
+#define GET_MODULE_EVENT(mod, id, intrType, event)                                                  \
+    switch(mod){                                                                                    \
+        case e_FM_MOD_PRS:                                                                          \
+            if (id) event = e_FM_EV_DUMMY_LAST;                                                     \
+            else event = (intrType == e_FM_INTR_TYPE_ERR) ? e_FM_EV_ERR_PRS:e_FM_EV_PRS;            \
+            break;                                                                                  \
+        case e_FM_MOD_KG:                                                                           \
+            if (id) event = e_FM_EV_DUMMY_LAST;                                                     \
+            else event = (intrType == e_FM_INTR_TYPE_ERR) ? e_FM_EV_ERR_KG:e_FM_EV_DUMMY_LAST;      \
+            break;                                                                                  \
+        case e_FM_MOD_PLCR:                                                                         \
+            if (id) event = e_FM_EV_DUMMY_LAST;                                                     \
+            else event = (intrType == e_FM_INTR_TYPE_ERR) ? e_FM_EV_ERR_PLCR:e_FM_EV_PLCR;          \
+            break;                                                                                  \
+        case e_FM_MOD_10G_MAC:                                                                      \
+            if (id) event = e_FM_EV_DUMMY_LAST;                                                     \
+            else event = (intrType == e_FM_INTR_TYPE_ERR) ? e_FM_EV_ERR_10G_MAC0:e_FM_EV_DUMMY_LAST;\
+            break;                                                                                  \
+        case e_FM_MOD_1G_MAC:                                                                       \
+            switch(id){                                                                             \
+                 case(0): event = (intrType == e_FM_INTR_TYPE_ERR) ? e_FM_EV_ERR_1G_MAC0:e_FM_EV_DUMMY_LAST; break; \
+                 case(1): event = (intrType == e_FM_INTR_TYPE_ERR) ? e_FM_EV_ERR_1G_MAC1:e_FM_EV_1G_MAC1; break;    \
+                 case(2): event = (intrType == e_FM_INTR_TYPE_ERR) ? e_FM_EV_ERR_1G_MAC2:e_FM_EV_1G_MAC2; break;    \
+                 case(3): event = (intrType == e_FM_INTR_TYPE_ERR) ? e_FM_EV_ERR_1G_MAC3:e_FM_EV_1G_MAC3; break;    \
+                 }                                                                                  \
+            break;                                                                                  \
+        case e_FM_MOD_TMR:                                                                          \
+            if (id) event = e_FM_EV_DUMMY_LAST;                                                     \
+            else event = (intrType == e_FM_INTR_TYPE_ERR) ? e_FM_EV_DUMMY_LAST:e_FM_EV_TMR;         \
+            break;                                                                                  \
+        case e_FM_MOD_1G_MAC_TMR:                                                                   \
+            switch(id){                                                                             \
+                 case(0): event = (intrType == e_FM_INTR_TYPE_ERR) ? e_FM_EV_DUMMY_LAST:e_FM_EV_1G_MAC0_TMR; break; \
+                 case(1): event = (intrType == e_FM_INTR_TYPE_ERR) ? e_FM_EV_DUMMY_LAST:e_FM_EV_1G_MAC1_TMR; break; \
+                 case(2): event = (intrType == e_FM_INTR_TYPE_ERR) ? e_FM_EV_DUMMY_LAST:e_FM_EV_1G_MAC2_TMR; break; \
+                 case(3): event = (intrType == e_FM_INTR_TYPE_ERR) ? e_FM_EV_DUMMY_LAST:e_FM_EV_1G_MAC3_TMR; break; \
+                 }                                                                                  \
+            break;                                                                                  \
+        default:event = e_FM_EV_DUMMY_LAST;                                                         \
+        break;}
+
+#ifndef SIMULATOR
+#define FM_10G_MAC_NO_CTRL_LOOPBACK
+#endif /* !SIMULATOR */
+
 /* FM erratas */
 #define FM_OP_PARTITION_ERRATA
-#define CORE_8BIT_ACCESS_ERRATA
+#ifndef SIMULATOR
 #define FM_ENET_SGMII_1000_ERRATA
+#define FM_ENET_PAUSE_FRM_ERRATA
+#define FM_MURAM_ERR_IRQ_ERRATA
+#define FM_PORT_SYNC_ERRATA
+#define FM_PRS_MEM_ERRATA
+#define BUP_FM_PORT_DISABLE_ERRATA
+#define BUP_FM_HALT_SIG_ERRATA
+#define BUP_ERRATA_RAM_INTR
+#endif /* !SIMULATOR */
 
 
 #endif /* __PART_INTEGRATION_EXT_H */

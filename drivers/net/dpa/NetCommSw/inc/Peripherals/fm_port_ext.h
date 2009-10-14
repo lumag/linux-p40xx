@@ -119,37 +119,41 @@ typedef enum e_FmPortPcdSupport {
 
                 User provides this function. Driver invokes it.
 
- @Param[in]     h_App       Application's handle originally specified to
-                            the API Config function
- @Param[in]     p_Data      A pointer to data received
- @Param[in]     length      length of received data
- @Param[in]     status      receive status and errors
- @Param[in]     position    position of buffer in frame
- @Param[in]     h_UserPriv  A handle of the user acossiated with this buffer
- *//***************************************************************************/
-typedef void (t_FmPortImRxStoreFunction) (t_Handle h_App,
-                                          uint8_t  *p_Data,
-                                          uint16_t length,
-                                          uint16_t status,
-                                          uint8_t  position,
-                                          t_Handle h_UserPriv);
+ @Param[in]     h_App           Application's handle originally specified to
+                                the API Config function
+ @Param[in]     p_Data          A pointer to data received
+ @Param[in]     length          length of received data
+ @Param[in]     status          receive status and errors
+ @Param[in]     position        position of buffer in frame
+ @Param[in]     h_BufContext    A handle of the user acossiated with this buffer
+
+ @Retval        e_RX_STORE_RESPONSE_CONTINUE - order the driver to continue Rx
+                                               operation for all ready data.
+ @Retval        e_RX_STORE_RESPONSE_PAUSE    - order the driver to stop Rx operation.
+*//***************************************************************************/
+typedef e_RxStoreResponse (t_FmPortImRxStoreFunction) (t_Handle h_App,
+                                                       uint8_t  *p_Data,
+                                                       uint16_t length,
+                                                       uint16_t status,
+                                                       uint8_t  position,
+                                                       t_Handle h_BufContext);
 
 /**************************************************************************//**
  @Description   User callback function called by driver when transmit completed.
 
                 User provides this function. Driver invokes it.
 
- @Param[in]     h_App       Application's handle originally specified to
-                            the API Config function
- @Param[in]     p_Data      A pointer to data received
- @Param[in]     status      transmit status and errors
- @Param[in]     lastBuffer  is last buffer in frame
- @Param[in]     h_UserPriv  A handle of the user acossiated with this buffer
+ @Param[in]     h_App           Application's handle originally specified to
+                                the API Config function
+ @Param[in]     p_Data          A pointer to data received
+ @Param[in]     status          transmit status and errors
+ @Param[in]     lastBuffer      is last buffer in frame
+ @Param[in]     h_BufContext    A handle of the user acossiated with this buffer
  *//***************************************************************************/
 typedef void (t_FmPortImTxConfFunction) (t_Handle   h_App,
                                          uint8_t    *p_Data,
                                          uint16_t   status,
-                                         t_Handle   h_UserPriv);
+                                         t_Handle   h_BufContext);
 
 /**************************************************************************//**
  @Description   A structure of information about each of the external
@@ -606,7 +610,7 @@ t_Error FM_PORT_ConfigTxFifoLowComfLevel(t_Handle h_FmPort, uint32_t fifoLowComf
 t_Error FM_PORT_ConfigRxFifoThreshold(t_Handle h_FmPort, uint32_t fifoThreshold);
 
 /**************************************************************************//**
- @Function      FM_PORT_ConfigRxPriElevationLevel
+ @Function      FM_PORT_ConfigRxFifoPriElevationLevel
 
  @Description   Calling this routine changes the priority elevation level
                 parameter in the internal driver data base from its default
@@ -627,7 +631,7 @@ t_Error FM_PORT_ConfigRxFifoThreshold(t_Handle h_FmPort, uint32_t fifoThreshold)
 
  @Cautions      Allowed only following FM_PORT_Config() and before FM_PORT_Init().
 *//***************************************************************************/
-t_Error FM_PORT_ConfigRxPriElevationLevel(t_Handle h_FmPort, uint32_t priElevationLevel);
+t_Error FM_PORT_ConfigRxFifoPriElevationLevel(t_Handle h_FmPort, uint32_t priElevationLevel);
 
 /**************************************************************************//**
  @Function      FM_PORT_ConfigBufferPrefixContent
@@ -1834,7 +1838,7 @@ t_Error      FM_PORT_PcdPrsModifyStartOffset (t_Handle h_FmPort, t_FmPcdPrsStart
  @Param[in]     length      Size of data for transmission.
  @Param[in]     lastBuffer  Buffer poistion - TRUE for the last buffer
                             of a frame, including a single buffer frame
- @Param[in]     h_UserPriv  A handle of the user acossiated with this buffer
+ @Param[in]     h_BufContext  A handle of the user acossiated with this buffer
 
  @Return        E_OK on success; Error code otherwise.
 
@@ -1846,7 +1850,7 @@ t_Error  FM_PORT_ImTx( t_Handle               h_FmPort,
                        uint8_t                *p_Data,
                        uint16_t               length,
                        bool                   lastBuffer,
-                       t_Handle               h_UserPriv);
+                       t_Handle               h_BufContext);
 
 /**************************************************************************//**
  @Function      FM_PORT_ImTxConf

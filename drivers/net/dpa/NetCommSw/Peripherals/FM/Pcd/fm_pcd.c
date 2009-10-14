@@ -83,7 +83,7 @@ t_Error  FmPcdHandleIpcMsg(t_Handle h_FmPcd, uint32_t msgId, uint8_t msgBody[MSG
 {
     t_FmPcd                     *p_FmPcd = (t_FmPcd*)h_FmPcd;
     uint8_t                     schemeId;
-    t_Error                     err;
+    t_Error                     err = E_OK;
     t_FmPcdKgInterModuleClsPlanSet           clsPlanSet;
 
     SANITY_CHECK_RETURN_ERROR(p_FmPcd, E_INVALID_HANDLE);
@@ -273,14 +273,6 @@ uint32_t FmPcdGetLcv(t_Handle h_FmPcd, uint32_t netEnvId, uint8_t hdrNum)
     return p_FmPcd->netEnvs[netEnvId].lcvs[hdrNum];
 }
 
-#ifdef CONFIG_MULTI_PARTITION_SUPPORT
-uint8_t FmPcdGetPartitionId(t_Handle h_FmPcd)
-{
-    t_FmPcd     *p_FmPcd = (t_FmPcd*)h_FmPcd;
-
-    return p_FmPcd->partitionId;
-}
-#endif /* CONFIG_MULTI_PARTITION_SUPPORT */
 
 void FmPcdIncNetEnvOwners(t_Handle h_FmPcd, uint8_t netEnvId)
 {
@@ -398,7 +390,7 @@ t_Handle FM_PCD_Config(t_FmPcdParams *p_FmPcdParams)
     }
 
 #ifdef CONFIG_MULTI_PARTITION_SUPPORT
-    p_Pcd->partitionId                                      = p_FmPcdParams->partitionId;
+    p_Pcd->partitionId = FmGetPartitionId(p_Pcd->h_Fm);
 #endif /* CONFIG_MULTI_PARTITION_SUPPORT */
 
 #ifndef CONFIG_GUEST_PARTITION
@@ -413,7 +405,7 @@ t_Handle FM_PCD_Config(t_FmPcdParams *p_FmPcdParams)
 t_Error FM_PCD_Init(t_Handle h_FmPcd)
 {
     t_FmPcd     *p_FmPcd = (t_FmPcd*)h_FmPcd;
-    t_Error     err;
+    t_Error     err = E_OK;
 
     SANITY_CHECK_RETURN_ERROR(p_FmPcd, E_INVALID_HANDLE);
     SANITY_CHECK_RETURN_ERROR(p_FmPcd->p_FmPcdDriverParam, E_INVALID_HANDLE);
@@ -475,7 +467,7 @@ t_Error FM_PCD_Free(t_Handle h_FmPcd)
     t_FmPcdIpcKgAllocParams             kgAlloc;
 #endif /* CONFIG_GUEST_PARTITION */
 #ifdef CONFIG_MULTI_PARTITION_SUPPORT
-    t_Error                             err;
+    t_Error                             err = E_OK;
 #endif /* CONFIG_MULTI_PARTITION_SUPPORT */
 
 
@@ -563,7 +555,7 @@ t_Error FM_PCD_Free(t_Handle h_FmPcd)
 t_Error FM_PCD_Enable(t_Handle h_FmPcd)
 {
     t_FmPcd             *p_FmPcd = (t_FmPcd*)h_FmPcd;
-    t_Error             err;
+    t_Error             err = E_OK;
 
 #ifndef CONFIG_GUEST_PARTITION
     if(p_FmPcd->p_FmPcdKg)
@@ -598,7 +590,7 @@ t_Error FM_PCD_Enable(t_Handle h_FmPcd)
 t_Error FM_PCD_Disable(t_Handle h_FmPcd)
 {
 /*    t_FmPcd             *p_FmPcd = (t_FmPcd*)h_FmPcd;*/
-
+/* TODO - implement */
     RETURN_ERROR(MINOR, E_NOT_SUPPORTED, NO_MSG);
 
     return E_OK;
@@ -1246,13 +1238,11 @@ t_Error FM_PCD_ForceIntr (t_Handle h_FmPcd, e_FmPcdExceptions exception)
             if (!(p_FmPcd->exceptions & FM_PCD_EX_PRS_ILLEGAL_ACCESS))
                 RETURN_ERROR(MINOR, E_NOT_SUPPORTED, ("The selected exception is masked"));
             WRITE_UINT32(p_FmPcd->p_FmPcdPrs->p_FmPcdPrsRegs->perfr, FM_PCD_PRS_ILLEGAL_ACCESS);
-            break;
+           break;
         case e_FM_PCD_PRS_EXCEPTION_PORT_ILLEGAL_ACCESS:
             if (!(p_FmPcd->exceptions & FM_PCD_EX_PRS_PORT_ILLEGAL_ACCESS))
                 RETURN_ERROR(MINOR, E_NOT_SUPPORTED, ("The selected exception is masked"));
-            WRITE_UINT32(p_FmPcd->p_FmPcdPrs->p_FmPcdPrsRegs->perfr, /*FM_PCD_PRS_PORT_ILLEGAL_ACCESS*/0x80000000);
-            WRITE_UINT32(p_FmPcd->p_FmPcdPrs->p_FmPcdPrsRegs->perfr, /*FM_PCD_PRS_PORT_ILLEGAL_ACCESS*/0x00800000);
-            WRITE_UINT32(p_FmPcd->p_FmPcdPrs->p_FmPcdPrsRegs->perfr, FM_PCD_PRS_PORT_ILLEGAL_ACCESS);
+             WRITE_UINT32(p_FmPcd->p_FmPcdPrs->p_FmPcdPrsRegs->perfr, FM_PCD_PRS_PORT_ILLEGAL_ACCESS);
             break;
         case e_FM_PCD_PRS_EXCEPTION_SINGLE_ECC:
             if (!(p_FmPcd->exceptions & FM_PCD_EX_PRS_SINGLE_ECC))

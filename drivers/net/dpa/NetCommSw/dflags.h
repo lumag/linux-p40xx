@@ -55,5 +55,9 @@
 #define REPORT_EVENTS       1
 #define EVENT_GLOBAL_LEVEL  REPORT_LEVEL_MINOR
 
+#ifdef CONFIG_P4080_SIM
+#define SIMULATOR
+#endif /* CONFIG_P4080_SIM */
+
 
 #endif /* __dflags_h */
