@@ -69,6 +69,23 @@ static void db_cb(struct pme_ctx *ctx, const struct qm_fd *fd,
 	complete(&token->cb_done);
 }
 
+struct ctrl_op {
+	struct pme_ctx_ctrl_token ctx_ctr;
+	struct completion cb_done;
+	enum pme_status cmd_status;
+	u8 res_flag;
+};
+
+static void ctrl_cb(struct pme_ctx *ctx, const struct qm_fd *fd,
+		struct pme_ctx_ctrl_token *token)
+{
+	struct ctrl_op *ctrl = (struct ctrl_op *)token;
+	pr_info("pme2_test_high: ctrl_cb() invoked, fd;!\n");
+	ctrl->cmd_status = pme_fd_res_status(fd);
+	ctrl->res_flag = pme_fd_res_flags(fd);
+	complete(&ctrl->cb_done);
+}
+
 static int exclusive_inc(struct file *fp, struct db_session *db)
 {
 	int ret;
@@ -259,7 +276,14 @@ free_tx_data:
 static int execute_nop(struct file *fp, struct db_session *db)
 {
 	int ret = 0;
-	ret = pme_ctx_ctrl_nop(&db->ctx, PME_CTX_OP_WAIT|PME_CTX_OP_WAIT_INT);
+	struct ctrl_op ctx_ctrl =  {
+		.ctx_ctr.cb = ctrl_cb
+	};
+	init_completion(&ctx_ctrl.cb_done);
+
+	ret = pme_ctx_ctrl_nop(&db->ctx, PME_CTX_OP_WAIT|PME_CTX_OP_WAIT_INT,
+			&ctx_ctrl.ctx_ctr);
+	wait_for_completion(&ctx_ctrl.cb_done);
 	/* pme_ctx_ctrl_nop() can be interrupted waiting for the response
 	 * of the NOP. In this scenario, 0 is returned. The only way to
 	 * determine that is was interrupted is to check for signal_pending()

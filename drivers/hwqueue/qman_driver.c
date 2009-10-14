@@ -336,15 +336,9 @@ bad_cpu_ph:
 		return 0;
 	affine_portal = per_cpu(qman_affine_portal, cfg.cpu);
 	if (!affine_portal) {
-		u32 flags = QMAN_PORTAL_FLAG_IRQ | QMAN_PORTAL_FLAG_IRQ_FAST;
-#ifndef CONFIG_FSL_QMAN_PORTAL_DISABLEAUTO_DCA
-		flags |= QMAN_PORTAL_FLAG_DCA;
-#endif
-#ifdef CONFIG_FSL_QMAN_PORTAL_REQUIRE_ENABLE
-		flags |= QMAN_PORTAL_FLAG_DISABLE;
-#endif
+		u32 flags = 0;
 		if (cfg.has_hv_dma)
-			flags |= QMAN_PORTAL_FLAG_RSTASH |
+			flags = QMAN_PORTAL_FLAG_RSTASH |
 				QMAN_PORTAL_FLAG_DSTASH;
 		/* TODO: cgrs ?? */
 		affine_portal = qman_create_portal(portal, flags, NULL,

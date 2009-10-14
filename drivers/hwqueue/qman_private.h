@@ -52,8 +52,9 @@ struct qm_eqcr {
 /* DQRR state */
 struct qm_dqrr {
 	struct qm_dqrr_entry *ring, *cursor;
-	u8 pi, ci, fill, ithresh, vbit, flags;
+	u8 pi, ci, fill, ithresh, vbit;
 #ifdef CONFIG_FSL_QMAN_CHECKING
+	u8 flags;
 	enum qm_dqrr_dmode dmode;
 	enum qm_dqrr_pmode pmode;
 	enum qm_dqrr_cmode cmode;
@@ -128,16 +129,8 @@ static inline void put_affine_portal(void)
 {
 	put_cpu_var(qman_affine_portal);
 }
-#define QMAN_PORTAL_FLAG_IRQ         0x00000001 /* use interrupt handler */
-#define QMAN_PORTAL_FLAG_IRQ_FAST    0x00000002 /* ... for fast-path too! */
-#define QMAN_PORTAL_FLAG_DCA         0x00000004 /* use DCA */
-#define QMAN_PORTAL_FLAG_LOCKED      0x00000008 /* multi-core locking */
-#define QMAN_PORTAL_FLAG_NOTAFFINE   0x00000010 /* not cpu-default portal */
-#define QMAN_PORTAL_FLAG_RSTASH      0x00000020 /* enable DQRR entry stashing */
-#define QMAN_PORTAL_FLAG_DSTASH      0x00000040 /* enable data stashing */
-#define QMAN_PORTAL_FLAG_RECOVER     0x00000080 /* recovery mode */
-#define QMAN_PORTAL_FLAG_WAIT        0x00000100 /* for recovery; can wait */
-#define QMAN_PORTAL_FLAG_WAIT_INT    0x00000200 /* for wait; interruptible */
+#define QMAN_PORTAL_FLAG_RSTASH      0x00000001 /* enable DQRR entry stashing */
+#define QMAN_PORTAL_FLAG_DSTASH      0x00000002 /* enable data stashing */
 struct qman_portal *qman_create_portal(struct qm_portal *portal, u32 flags,
 			const struct qman_cgrs *cgrs,
 			const struct qman_fq_cb *null_cb);

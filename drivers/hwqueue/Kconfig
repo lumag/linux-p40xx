@@ -23,6 +23,11 @@ config FSL_QMAN_PORTAL
 	  Compiles support to detect and support Qman software corenet portals
 	  (as provided by the device-tree).
 
+# The current driver is interrupt-driven only (poll-driven isn't yet supported).
+config FSL_QMAN_HAVE_POLL
+	bool
+	default n
+
 config FSL_QMAN_PORTAL_DISABLEAUTO
 	bool "disable auto-initialisation of cpu-affine portals"
 	depends on FSL_QMAN_PORTAL
@@ -96,6 +101,14 @@ config FSL_QMAN_TEST_STASH_POTATO
 	  This performs a "hot potato" style test enqueuing/dequeuing a frame
 	  across a series of FQs scheduled to different portals (and cpus), with
 	  DQRR, data and context stashing always on.
+
+config FSL_QMAN_TEST_LOW
+	bool "Qman low-level self-test"
+	depends on FSL_QMAN_TEST && FSL_QMAN_PORTAL_DISABLEAUTO
+	default y
+	---help---
+	  This takes an unused portal and portal and performs low-level
+	  API testing with it.
 
 config FSL_QMAN_TEST_LOW_BUG_INTERRUPTS
 	bool "ignore interrupts and interrupt registers"

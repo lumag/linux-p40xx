@@ -410,7 +410,11 @@ struct bman_pool_params {
  * only slow-path processing, or (c) no processing. This function does whatever
  * processing is not triggered by interrupts.
  */
+#ifdef CONFIG_FSL_BMAN_HAVE_POLL
 void bman_poll(void);
+#else
+#define bman_poll()	do { ; } while (0)
+#endif
 
 
 	/* Pool management */

@@ -80,6 +80,23 @@ struct cmd_token {
 	u8 done;
 };
 
+struct ctrl_op {
+	struct pme_ctx_ctrl_token ctx_ctr;
+	struct completion cb_done;
+	enum pme_status cmd_status;
+	u8 res_flag;
+};
+
+static void ctrl_cb(struct pme_ctx *ctx, const struct qm_fd *fd,
+		struct pme_ctx_ctrl_token *token)
+{
+	struct ctrl_op *ctrl = (struct ctrl_op *)token;
+	pr_info("pme2_test_high: ctrl_cb() invoked, fd;!\n");
+	ctrl->cmd_status = pme_fd_res_status(fd);
+	ctrl->res_flag = pme_fd_res_flags(fd);
+	complete(&ctrl->cb_done);
+}
+
 static inline int scan_data_empty(struct scan_session *session)
 {
 	return list_empty(&session->completed_commands);
@@ -176,8 +193,14 @@ static int getscan_cmd(struct file *fp, struct scan_session *session,
 	struct pme_scan_params *user_scan_params)
 {
 	int ret = 0;
-	struct pme_flow *params = NULL;
+	struct pme_flow params;
 	struct pme_scan_params local_scan_params;
+	struct ctrl_op ctx_ctrl =  {
+		.ctx_ctr.cb = ctrl_cb,
+		.cmd_status = 0,
+		.res_flag = 0
+	};
+	init_completion(&ctx_ctrl.cb_done);
 
 	memset(&local_scan_params, 0, sizeof(local_scan_params));
 
@@ -187,25 +210,26 @@ static int getscan_cmd(struct file *fp, struct scan_session *session,
 		ret = -EINVAL;
 		goto done;
 	}
-	params = pme_sw_flow_new();
-	if (!params) {
-		pr_err("pme2_scan: unable to allocate flw_ctx\n");
-		ret = -ENOMEM;
-		goto done;
-	}
 	ret = pme_ctx_ctrl_read_flow(&session->ctx, WAIT_AND_INTERRUPTABLE,
-			params);
+			&params, &ctx_ctrl.ctx_ctr);
 	if (ret) {
 		pr_info("pme2_scan: read flow error %d\n", ret);
 		goto done;
 	}
-	local_scan_params.residue.enable = params->ren;
-	local_scan_params.residue.length = params->rlen;
-	local_scan_params.sre.sessionid = params->sessionid;
-	local_scan_params.sre.verbose = params->srvm;
-	local_scan_params.sre.esee = params->esee;
-	local_scan_params.dxe.clim = params->clim;
-	local_scan_params.dxe.mlim = params->mlim;
+	wait_for_completion(&ctx_ctrl.cb_done);
+
+	if (ctx_ctrl.cmd_status || ctx_ctrl.res_flag) {
+		pr_info("pme2_scan: read flow error %d\n", ctx_ctrl.cmd_status);
+		ret = -EFAULT;
+		goto done;
+	}
+	local_scan_params.residue.enable = params.ren;
+	local_scan_params.residue.length = params.rlen;
+	local_scan_params.sre.sessionid = params.sessionid;
+	local_scan_params.sre.verbose = params.srvm;
+	local_scan_params.sre.esee = params.esee;
+	local_scan_params.dxe.clim = params.clim;
+	local_scan_params.dxe.mlim = params.mlim;
 	spin_lock(&session->set_subset_lock);
 	local_scan_params.pattern.set = session->set;
 	local_scan_params.pattern.subset = session->subset;
@@ -217,8 +241,6 @@ static int getscan_cmd(struct file *fp, struct scan_session *session,
 		ret = -EFAULT;
 	}
 done:
-	if (params)
-		pme_sw_flow_free(params);
 	return ret;
 }
 
@@ -227,16 +249,21 @@ static int setscan_cmd(struct file *fp, struct scan_session *session,
 {
 	int ret = 0;
 	u32 flag = WAIT_AND_INTERRUPTABLE;
-
-	struct pme_flow *params = NULL;
+	struct ctrl_op ctx_ctrl =  {
+		.ctx_ctr.cb = ctrl_cb,
+		.cmd_status = 0,
+		.res_flag = 0
+	};
+	struct pme_flow params;
 	struct pme_scan_params local_params;
 
+	pme_sw_flow_init(&params);
+	init_completion(&ctx_ctrl.cb_done);
 	if (copy_from_user(&local_params, user_params, sizeof(local_params)))
 		return -EFAULT;
 
 	/* must be enabled */
 	if (pme_ctx_is_disabled(&session->ctx)) {
-		pr_err("pme2_scan: ctx is disabled\n");
 		ret = -EINVAL;
 		goto done;
 	}
@@ -244,28 +271,29 @@ static int setscan_cmd(struct file *fp, struct scan_session *session,
 	 * is being done */
 	if (local_params.flags == PME_SCAN_PARAMS_PATTERN)
 		goto set_subset;
-	params = pme_sw_flow_new();
-	if (!params) {
-		pr_err("pme2_scan: unable to allocate flw_ctx\n");
-		ret = -ENOMEM;
-		goto done;
-	}
 	if (local_params.flags & PME_SCAN_PARAMS_RESIDUE)
 		flag |= PME_CMD_FCW_RES;
 	if (local_params.flags & PME_SCAN_PARAMS_SRE)
 		flag |= PME_CMD_FCW_SRE;
 	if (local_params.flags & PME_SCAN_PARAMS_DXE)
 		flag |= PME_CMD_FCW_DXE;
-	params->ren = local_params.residue.enable;
-	params->sessionid = local_params.sre.sessionid;
-	params->srvm = local_params.sre.verbose;
-	params->esee = local_params.sre.esee;
-	params->clim = local_params.dxe.clim;
-	params->mlim = local_params.dxe.mlim;
+	params.ren = local_params.residue.enable;
+	params.sessionid = local_params.sre.sessionid;
+	params.srvm = local_params.sre.verbose;
+	params.esee = local_params.sre.esee;
+	params.clim = local_params.dxe.clim;
+	params.mlim = local_params.dxe.mlim;
 
-	ret = pme_ctx_ctrl_update_flow(&session->ctx, flag, params);
+	ret = pme_ctx_ctrl_update_flow(&session->ctx, flag, &params,
+			&ctx_ctrl.ctx_ctr);
 	if (ret) {
 		pr_info("pme2_scan: update flow error %d\n", ret);
+		goto done;
+	}
+	wait_for_completion(&ctx_ctrl.cb_done);
+	if (ctx_ctrl.cmd_status || ctx_ctrl.res_flag) {
+		pr_info("pme2_scan: update flow err %d\n", ctx_ctrl.cmd_status);
+		ret = -EFAULT;
 		goto done;
 	}
 
@@ -278,15 +306,20 @@ set_subset:
 		goto done;
 	}
 done:
-	if (params)
-		pme_sw_flow_free(params);
 	return ret;
 }
 
 static int resetseq_cmd(struct file *fp, struct scan_session *session)
 {
 	int ret = 0;
-	struct pme_flow *params = NULL;
+	struct pme_flow params;
+	struct ctrl_op ctx_ctrl =  {
+		.ctx_ctr.cb = ctrl_cb,
+		.cmd_status = 0,
+		.res_flag = 0
+	};
+	init_completion(&ctx_ctrl.cb_done);
+	pme_sw_flow_init(&params);
 
 	/* must be enabled */
 	if (pme_ctx_is_disabled(&session->ctx)) {
@@ -294,51 +327,53 @@ static int resetseq_cmd(struct file *fp, struct scan_session *session)
 		ret =  -EINVAL;
 		goto done;
 	}
-	params = pme_sw_flow_new();
-	if (!params) {
-		pr_err("pme2_scan: unable to allocate flw_ctx\n");
-		ret = -ENOMEM;
-		goto done;
-	}
-	params->seqnum_hi = 0;
-	params->seqnum_lo = 0;
-	params->sos = 1;
+	params.seqnum_hi = 0;
+	params.seqnum_lo = 0;
+	params.sos = 1;
 
-	ret = pme_ctx_ctrl_update_flow(&session->ctx, PME_CMD_FCW_SEQ, params);
+	ret = pme_ctx_ctrl_update_flow(&session->ctx, PME_CMD_FCW_SEQ, &params,
+			&ctx_ctrl.ctx_ctr);
 	if (!ret)
 		pr_info("pme2_scan: update flow error %d\n", ret);
+	wait_for_completion(&ctx_ctrl.cb_done);
+	if (ctx_ctrl.cmd_status || ctx_ctrl.res_flag) {
+		pr_info("pme2_scan: update flow err %d\n", ctx_ctrl.cmd_status);
+		ret = -EFAULT;
+	}
 done:
-	if (params)
-		pme_sw_flow_free(params);
 	return ret;
 }
 
 static int resetresidue_cmd(struct file *fp, struct scan_session *session)
 {
 	int ret = 0;
-	struct pme_flow *params = NULL;
+	struct pme_flow params;
+	struct ctrl_op ctx_ctrl =  {
+		.ctx_ctr.cb = ctrl_cb,
+		.cmd_status = 0,
+		.res_flag = 0
+	};
 
+	init_completion(&ctx_ctrl.cb_done);
+	pme_sw_flow_init(&params);
 	/* must be enabled */
 	if (pme_ctx_is_disabled(&session->ctx)) {
 		pr_err("pme2_scan: ctx is disabled\n");
 		ret =  -EINVAL;
 		goto done;
 	}
-	params = pme_sw_flow_new();
-	if (!params) {
-		pr_err("pme2_scan: unable to allocate flw_ctx\n");
-		ret = -ENOMEM;
-		goto done;
-	}
-	params->rlen = 0;
+	params.rlen = 0;
 	ret = pme_ctx_ctrl_update_flow(&session->ctx,
 			WAIT_AND_INTERRUPTABLE | PME_CTX_OP_RESETRESLEN,
-			params);
+			&params, &ctx_ctrl.ctx_ctr);
 	if (!ret)
 		pr_info("pme2_scan: update flow error %d\n", ret);
+	wait_for_completion(&ctx_ctrl.cb_done);
+	if (ctx_ctrl.cmd_status || ctx_ctrl.res_flag) {
+		pr_info("pme2_scan: update flow err %d\n", ctx_ctrl.cmd_status);
+		ret = -EFAULT;
+	}
 done:
-	if (params)
-		pme_sw_flow_free(params);
 	return ret;
 }
 
@@ -486,15 +521,20 @@ static int fsl_pme2_scan_open(struct inode *node, struct file *fp)
 {
 	int ret;
 	struct scan_session *session;
-	struct pme_flow *flow = pme_sw_flow_new();
+	struct pme_flow flow;
+	struct ctrl_op ctx_ctrl =  {
+		.ctx_ctr.cb = ctrl_cb,
+		.cmd_status = 0,
+		.res_flag = 0
+	};
+
+	pme_sw_flow_init(&flow);
+	init_completion(&ctx_ctrl.cb_done);
 #ifdef CONFIG_FSL_PME2_SCAN_DEBUG
 	pr_info("pme2_scan: open %d\n", smp_processor_id());
 #endif
-	if (!flow)
-		return -ENOMEM;
 	fp->private_data = kzalloc(sizeof(*session), GFP_KERNEL);
 	if (!fp->private_data) {
-		pme_sw_flow_free(flow);
 		return -ENOMEM;
 	}
 	session = (struct scan_session *)fp->private_data;
@@ -525,21 +565,27 @@ static int fsl_pme2_scan_open(struct inode *node, struct file *fp)
 	/* Update flow to set sane defaults in the flow context */
 	/* TODO: because we free 'flow' here, we need to be uninterruptible. */
 	ret = pme_ctx_ctrl_update_flow(&session->ctx,
-			PME_CTX_OP_WAIT | PME_CMD_FCW_ALL, flow);
+		PME_CTX_OP_WAIT | PME_CMD_FCW_ALL, &flow, &ctx_ctrl.ctx_ctr);
 	if (ret) {
 		pr_info("pme2_scan: error updating flow ctx %d\n", ret);
 		pme_ctx_disable(&session->ctx, PME_CTX_OP_WAIT);
 		pme_ctx_finish(&session->ctx);
 		goto exit;
 	}
-	pme_sw_flow_free(flow);
+	wait_for_completion(&ctx_ctrl.cb_done);
+	if (ctx_ctrl.cmd_status || ctx_ctrl.res_flag) {
+		pr_info("pme2_scan: error updating flow ctx %d\n", ret);
+		pme_ctx_disable(&session->ctx, PME_CTX_OP_WAIT);
+		pme_ctx_finish(&session->ctx);
+		ret = -EFAULT;
+		goto exit;
+	}
 #ifdef CONFIG_FSL_PME2_SCAN_DEBUG
 	/* Set up the structures used for asynchronous requests */
 	pr_info("pme2_scan: Finish pme_scan open %d \n", smp_processor_id());
 #endif
 	return 0;
 exit:
-	pme_sw_flow_free(flow);
 	kfree(fp->private_data);
 	fp->private_data = NULL;
 	return ret;
@@ -770,7 +816,8 @@ static int __init fsl_pme2_scan_init(void)
 		pr_err("fsl-pme2-scan: cannot register device\n");
 		return err;
 	}
-	pr_info("fsl-pme2-san: device %s registered\n", fsl_pme2_scan_dev.name);
+	pr_info("fsl-pme2-scan: device %s registered\n",
+		fsl_pme2_scan_dev.name);
 	return 0;
 }
 

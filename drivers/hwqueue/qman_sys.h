@@ -41,6 +41,25 @@
 #define QM_ASSERT(x) BM_ASSERT(x)
 #include "../hwalloc/bman_sys.h"
 
+/* do slow-path processing via IRQ */
+#define CONFIG_FSL_QMAN_PORTAL_FLAG_IRQ_SLOW
+
+/* do not do fast-path processing via IRQ */
+#define CONFIG_FSL_QMAN_PORTAL_FLAG_IRQ_FAST
+
+/* portals aren't SMP-locked, they're core-affine */
+#undef CONFIG_FSL_QMAN_PORTAL_FLAG_LOCKED
+
+/* portals do not initialise in recovery mode */
+#undef CONFIG_FSL_QMAN_PORTAL_FLAG_RECOVER
+
+#if defined(CONFIG_FSL_QMAN_PORTAL_FLAG_IRQ_SLOW) || \
+		defined(CONFIG_FSL_QMAN_PORTAL_FLAG_IRQ_FAST)
+#define CONFIG_FSL_QMAN_HAVE_IRQ
+#else
+#undef CONFIG_FSL_QMAN_HAVE_IRQ
+#endif
+
 /************/
 /* RB-trees */
 /************/

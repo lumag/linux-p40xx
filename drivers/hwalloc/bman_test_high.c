@@ -105,7 +105,6 @@ static void depletion_cb(struct bman_portal *__portal, struct bman_pool *__pool,
 	BUG_ON(__pool != pool);
 	BUG_ON(pool_ctx != POOL_OPAQUE);
 	depleted = __depleted;
-	pr_info("BMAN: depletion_cb: depleted=%d\n", depleted);
 }
 
 void bman_test_high(void)
@@ -127,9 +126,7 @@ void bman_test_high(void)
 
 	bufs_init();
 
-	pr_info("BMAN:  --------------------------------\n");
 	pr_info("BMAN:  --- starting high-level test ---\n");
-	pr_info("BMAN:  --------------------------------\n");
 
 	pool = bman_new_pool(&pparams);
 	BUG_ON(!pool);
@@ -149,7 +146,6 @@ do_loop:
 		if (bman_release(pool, bufs_in + i, num, flags))
 			panic("bman_release() failed\n");
 		i += num;
-		pr_info("BMAN: released %d buffers, total->%d\n", num, i);
 	}
 
 	/*******************/
@@ -162,7 +158,6 @@ do_loop:
 		tmp = bman_acquire(pool, bufs_out + i - num, num, 0);
 		BUG_ON(tmp != num);
 		i -= num;
-		pr_info("BMAN: acquired %d buffers, total->%d\n", num, i);
 	}
 	i = bman_acquire(pool, NULL, 1, 0);
 	BUG_ON(i);
@@ -176,8 +171,6 @@ do_loop:
 	/* Clean up */
 	/************/
 	bman_free_pool(pool);
-	pr_info("BMAN:  --------------------------------\n");
 	pr_info("BMAN:  --- finished high-level test ---\n");
-	pr_info("BMAN:  --------------------------------\n");
 }
 

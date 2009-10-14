@@ -320,10 +320,8 @@ void pme_hw_residue_free(struct pme_hw_residue *);
 struct pme_hw_flow *pme_hw_flow_new(void);
 void pme_hw_flow_free(struct pme_hw_flow *);
 
-/* Software 'flow' structures also have alignment requirements, so use these to
- * allocate them. */
-struct pme_flow *pme_sw_flow_new(void);
-void pme_sw_flow_free(struct pme_flow *);
+/* Initialise a flow context to known default values */
+void pme_sw_flow_init(struct pme_flow *);
 
 /* Fill in an "Initialise FQ" management command for a PME input FQ. NB, the
  * caller is responsible for setting the following fields, they will not be set
@@ -395,6 +393,14 @@ void pme_fd_cmd_scan(struct qm_fd *fd, u32 args);
 dma_addr_t pme_map(void *ptr);
 int pme_map_error(dma_addr_t dma_addr);
 
+enum pme_cmd_type {
+	pme_cmd_nop = 0x7,
+	pme_cmd_flow_read = 0x5,	/* aka FCR */
+	pme_cmd_flow_write = 0x4,	/* aka FCW */
+	pme_cmd_pmtcc = 0x1,
+	pme_cmd_scan = 0
+};
+
 /************************/
 /* high-level functions */
 /************************/
@@ -409,6 +415,16 @@ struct pme_ctx;
 struct pme_ctx_token {
 	u32 blob[4];
 	struct list_head node;
+	enum pme_cmd_type cmd_type;
+};
+
+struct pme_ctx_ctrl_token {
+	void (*cb)(struct pme_ctx *, const struct qm_fd *,
+			struct pme_ctx_ctrl_token *);
+	/* don't touch the rest */
+	struct pme_hw_flow *internal_flow_ptr;
+	struct pme_flow *usr_flow_ptr;
+	struct pme_ctx_token base_token;
 };
 
 /* Scan results invoke a user-provided callback of this type */
@@ -436,7 +452,6 @@ struct pme_ctx {
 	/* TODO: the following "slow-path" values should be bundled into a
 	 * secondary structure so that sizeof(struct pme_ctx) is minimised (for
 	 * stashing of caller-side fast-path state). */
-	u32 uid;
 	struct qman_fq *fqin;
 	struct pme_hw_flow *hw_flow;
 	struct pme_hw_residue *hw_residue;
@@ -551,15 +566,11 @@ int pme_ctx_reconfigure_rx(struct pme_ctx *ctx, u8 qosout,
  * assumed cleared, irrespective of what is specified in 'flags'.
  */
 int pme_ctx_ctrl_update_flow(struct pme_ctx *ctx, u32 flags,
-			struct pme_flow *params);
+		struct pme_flow *params, struct pme_ctx_ctrl_token *token);
 int pme_ctx_ctrl_read_flow(struct pme_ctx *ctx, u32 flags,
-			struct pme_flow *params);
-int pme_ctx_ctrl_nop(struct pme_ctx *ctx, u32 flags);
-/* This function returns non-zero if a pme_ctx_ctrl_***() operation is still in
- * progress. If PME_CTX_OP_WAIT isn't used, this may be required in order to
- * determine completion, eg. to know when one can safely deallocate the 'params'
- * passed to the above APIs. */
-int pme_ctx_in_ctrl(struct pme_ctx *ctx);
+		struct pme_flow *params, struct pme_ctx_ctrl_token *token);
+int pme_ctx_ctrl_nop(struct pme_ctx *ctx, u32 flags,
+		struct pme_ctx_ctrl_token *token);
 
 /* if PME_CTX_OP_WAIT is specified, it'll wait (if it has to) to start the scan
  * but never waits for it to complete. The scan callback serves that purpose.
@@ -651,15 +662,36 @@ enum pme_attr {
 	pme_attr_mia_byc,
 	pme_attr_mia_blc,
 	pme_attr_isr,
-	pme_attr_bsc_first,
-	pme_attr_bsc_last = pme_attr_bsc_first + 63,
 	pme_attr_tbt0ecc1th,
 	pme_attr_tbt1ecc1th,
 	pme_attr_vlt0ecc1th,
 	pme_attr_vlt1ecc1th,
 	pme_attr_cmecc1th,
 	pme_attr_dxcmecc1th,
-	pme_attr_dxemecc1th
+	pme_attr_dxemecc1th,
+	pme_attr_esr,
+	pme_attr_ecr0,
+	pme_attr_ecr1,
+	pme_attr_pmstat,
+	pme_attr_pmtr,
+	pme_attr_pehd,
+	pme_attr_ecc1bes,
+	pme_attr_ecc2bes,
+	pme_attr_eccaddr,
+	pme_attr_ecccode,
+	pme_attr_miace,
+	pme_attr_miacr,
+	pme_attr_cdcr,
+	pme_attr_faconf,
+	pme_attr_ier,
+	pme_attr_isdr,
+	pme_attr_iir,
+	pme_attr_pdsrbah,
+	pme_attr_pdsrbal,
+	pme_attr_scbarh,
+	pme_attr_scbarl,
+	pme_attr_bsc_first, /* create 64-wide space for bsc */
+	pme_attr_bsc_last = pme_attr_bsc_first + 63,
 };
 
 #define pme_attr_bsc(n) (pme_attr_bsc_first + (n))

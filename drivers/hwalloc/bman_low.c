@@ -118,6 +118,11 @@ static inline u8 cyc_diff(u8 ringsize, u8 first, u8 last)
 /* --------------- */
 /* --- RCR API --- */
 
+/* It's safer to code in terms of the 'rcr' object than the 'portal' object,
+ * because the latter runs the risk of copy-n-paste errors from other code where
+ * we could manipulate some other structure within 'portal'. */
+#define RCR_API_START()		register struct bm_rcr *rcr = &portal->rcr
+
 /* Bit-wise logic to wrap a ring pointer by clearing the "carry bit" */
 #define RCR_CARRYCLEAR(p) \
 	(void *)((unsigned long)(p) & (~(unsigned long)(BM_RCR_SIZE << 6)))
@@ -140,14 +145,10 @@ static inline void RCR_INC(struct bm_rcr *rcr)
 		rcr->vbit ^= BM_RCR_VERB_VBIT;
 }
 
-/* It's safer to code in terms of the 'rcr' object than the 'portal' object,
- * because the latter runs the risk of copy-n-paste errors from other code where
- * we could manipulate some other structure within 'portal'. */
-#define rcr	(&portal->rcr)
-
 int bm_rcr_init(struct bm_portal *portal, enum bm_rcr_pmode pmode,
 		enum bm_rcr_cmode cmode)
 {
+	RCR_API_START();
 	u32 cfg;
 	u8 pi;
 
@@ -173,6 +174,7 @@ EXPORT_SYMBOL(bm_rcr_init);
 
 void bm_rcr_finish(struct bm_portal *portal)
 {
+	RCR_API_START();
 	u8 pi = bm_in(RCR_PI_CINH) & (BM_RCR_SIZE - 1);
 	u8 ci = bm_in(RCR_CI_CINH) & (BM_RCR_SIZE - 1);
 	BM_ASSERT(!rcr->busy);
@@ -188,6 +190,7 @@ EXPORT_SYMBOL(bm_rcr_finish);
 
 struct bm_rcr_entry *bm_rcr_start(struct bm_portal *portal)
 {
+	RCR_API_START();
 	BM_ASSERT(!rcr->busy);
 	if (!rcr->available)
 		return NULL;
@@ -201,6 +204,7 @@ EXPORT_SYMBOL(bm_rcr_start);
 
 void bm_rcr_abort(struct bm_portal *portal)
 {
+	RCR_API_START();
 	BM_ASSERT(rcr->busy);
 #ifdef CONFIG_FSL_BMAN_CHECKING
 	rcr->busy = 0;
@@ -210,6 +214,7 @@ EXPORT_SYMBOL(bm_rcr_abort);
 
 struct bm_rcr_entry *bm_rcr_pend_and_next(struct bm_portal *portal, u8 myverb)
 {
+	RCR_API_START();
 	BM_ASSERT(rcr->busy);
 	BM_ASSERT(rcr->pmode != bm_rcr_pvb);
 	if (rcr->available == 1)
@@ -225,6 +230,7 @@ EXPORT_SYMBOL(bm_rcr_pend_and_next);
 
 void bm_rcr_pci_commit(struct bm_portal *portal, u8 myverb)
 {
+	RCR_API_START();
 	BM_ASSERT(rcr->busy);
 	BM_ASSERT(rcr->pmode == bm_rcr_pci);
 	rcr->cursor->__dont_write_directly__verb = myverb | rcr->vbit;
@@ -240,6 +246,7 @@ EXPORT_SYMBOL(bm_rcr_pci_commit);
 
 void bm_rcr_pce_prefetch(struct bm_portal *portal)
 {
+	RCR_API_START();
 	BM_ASSERT(rcr->pmode == bm_rcr_pce);
 	bm_cl_invalidate(RCR_PI);
 	bm_cl_touch_rw(RCR_PI);
@@ -248,6 +255,7 @@ EXPORT_SYMBOL(bm_rcr_pce_prefetch);
 
 void bm_rcr_pce_commit(struct bm_portal *portal, u8 myverb)
 {
+	RCR_API_START();
 	BM_ASSERT(rcr->busy);
 	BM_ASSERT(rcr->pmode == bm_rcr_pce);
 	rcr->cursor->__dont_write_directly__verb = myverb | rcr->vbit;
@@ -263,11 +271,14 @@ EXPORT_SYMBOL(bm_rcr_pce_commit);
 
 void bm_rcr_pvb_commit(struct bm_portal *portal, u8 myverb)
 {
+	RCR_API_START();
+	struct bm_rcr_entry *rcursor;
 	BM_ASSERT(rcr->busy);
 	BM_ASSERT(rcr->pmode == bm_rcr_pvb);
 	lwsync();
-	rcr->cursor->__dont_write_directly__verb = myverb | rcr->vbit;
-	dcbf(rcr->cursor);
+	rcursor = rcr->cursor;
+	rcursor->__dont_write_directly__verb = myverb | rcr->vbit;
+	dcbf(rcursor);
 	RCR_INC(rcr);
 	rcr->available--;
 #ifdef CONFIG_FSL_BMAN_CHECKING
@@ -278,6 +289,7 @@ EXPORT_SYMBOL(bm_rcr_pvb_commit);
 
 u8 bm_rcr_cci_update(struct bm_portal *portal)
 {
+	RCR_API_START();
 	u8 diff, old_ci = rcr->ci;
 	BM_ASSERT(rcr->cmode == bm_rcr_cci);
 	rcr->ci = bm_in(RCR_CI_CINH) & (BM_RCR_SIZE - 1);
@@ -289,14 +301,15 @@ EXPORT_SYMBOL(bm_rcr_cci_update);
 
 void bm_rcr_cce_prefetch(struct bm_portal *portal)
 {
+	RCR_API_START();
 	BM_ASSERT(rcr->cmode == bm_rcr_cce);
-	bm_cl_invalidate(RCR_CI);
 	bm_cl_touch_ro(RCR_CI);
 }
 EXPORT_SYMBOL(bm_rcr_cce_prefetch);
 
 u8 bm_rcr_cce_update(struct bm_portal *portal)
 {
+	RCR_API_START();
 	u8 diff, old_ci = rcr->ci;
 	BM_ASSERT(rcr->cmode == bm_rcr_cce);
 	rcr->ci = bm_cl_in(RCR_CI) & (BM_RCR_SIZE - 1);
@@ -309,12 +322,14 @@ EXPORT_SYMBOL(bm_rcr_cce_update);
 
 u8 bm_rcr_get_ithresh(struct bm_portal *portal)
 {
+	RCR_API_START();
 	return rcr->ithresh;
 }
 EXPORT_SYMBOL(bm_rcr_get_ithresh);
 
 void bm_rcr_set_ithresh(struct bm_portal *portal, u8 ithresh)
 {
+	RCR_API_START();
 	rcr->ithresh = ithresh;
 	bm_out(RCR_ITR, ithresh);
 }
@@ -322,12 +337,14 @@ EXPORT_SYMBOL(bm_rcr_set_ithresh);
 
 u8 bm_rcr_get_avail(struct bm_portal *portal)
 {
+	RCR_API_START();
 	return rcr->available;
 }
 EXPORT_SYMBOL(bm_rcr_get_avail);
 
 u8 bm_rcr_get_fill(struct bm_portal *portal)
 {
+	RCR_API_START();
 	return BM_RCR_SIZE - 1 - rcr->available;
 }
 EXPORT_SYMBOL(bm_rcr_get_fill);
@@ -339,10 +356,11 @@ EXPORT_SYMBOL(bm_rcr_get_fill);
 /* It's safer to code in terms of the 'mc' object than the 'portal' object,
  * because the latter runs the risk of copy-n-paste errors from other code where
  * we could manipulate some other structure within 'portal'. */
-#define mc	(&portal->mc)
+#define MC_API_START()		register struct bm_mc *mc = &portal->mc
 
 int bm_mc_init(struct bm_portal *portal)
 {
+	MC_API_START();
 	if (__bm_portal_bind(portal, BM_BIND_MC))
 		return -EBUSY;
 	mc->cr = ptr_OR(portal->addr.addr_ce, CL_CR);
@@ -359,6 +377,7 @@ EXPORT_SYMBOL(bm_mc_init);
 
 void bm_mc_finish(struct bm_portal *portal)
 {
+	MC_API_START();
 	BM_ASSERT(mc->state == mc_idle);
 #ifdef CONFIG_FSL_BMAN_CHECKING
 	if (mc->state != mc_idle)
@@ -370,6 +389,7 @@ EXPORT_SYMBOL(bm_mc_finish);
 
 struct bm_mc_command *bm_mc_start(struct bm_portal *portal)
 {
+	MC_API_START();
 	BM_ASSERT(mc->state == mc_idle);
 #ifdef CONFIG_FSL_BMAN_CHECKING
 	mc->state = mc_user;
@@ -381,6 +401,7 @@ EXPORT_SYMBOL(bm_mc_start);
 
 void bm_mc_abort(struct bm_portal *portal)
 {
+	MC_API_START();
 	BM_ASSERT(mc->state == mc_user);
 #ifdef CONFIG_FSL_BMAN_CHECKING
 	mc->state = mc_idle;
@@ -390,6 +411,7 @@ EXPORT_SYMBOL(bm_mc_abort);
 
 void bm_mc_commit(struct bm_portal *portal, u8 myverb)
 {
+	MC_API_START();
 	BM_ASSERT(mc->state == mc_user);
 	dcbi(mc->rr + mc->rridx);
 	lwsync();
@@ -404,6 +426,7 @@ EXPORT_SYMBOL(bm_mc_commit);
 
 struct bm_mc_result *bm_mc_result(struct bm_portal *portal)
 {
+	MC_API_START();
 	struct bm_mc_result *rr = mc->rr + mc->rridx;
 	BM_ASSERT(mc->state == mc_hw);
 	/* The inactive response register's verb byte always returns zero until

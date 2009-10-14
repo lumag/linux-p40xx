@@ -50,6 +50,27 @@
 #include <linux/miscdevice.h>
 #include <linux/uaccess.h>
 
+/* CONFIG_FSL_BMAN_HAVE_POLL is defined via Kconfig, because the API header is
+ * conditional upon it. CONFIG_FSL_BMAN_CHECKING is also defined via Kconfig,
+ * but because it's a knob for users. Everything else affects only
+ * implementation (not interface), so we define it here, internally. */
+
+/* do slow-path processing via IRQ */
+#define CONFIG_FSL_BMAN_PORTAL_FLAG_IRQ_SLOW
+
+/* do fast-path processing via IRQ */
+#define CONFIG_FSL_BMAN_PORTAL_FLAG_IRQ_FAST
+
+/* portals do not initialise in recovery mode */
+#undef CONFIG_FSL_BMAN_PORTAL_FLAG_RECOVER
+
+#if defined(CONFIG_FSL_BMAN_PORTAL_FLAG_IRQ_SLOW) || \
+		defined(CONFIG_FSL_BMAN_PORTAL_FLAG_IRQ_FAST)
+#define CONFIG_FSL_BMAN_HAVE_IRQ
+#else
+#undef CONFIG_FSL_BMAN_HAVE_IRQ
+#endif
+
 /* TODO: NB, we currently assume that hwsync() and lwsync() imply compiler
  * barriers and that dcb*() won't fall victim to compiler or execution
  * reordering with respect to other code/instructions that manipulate the same
@@ -93,5 +114,4 @@
 #else
 #define BM_ASSERT(x)
 #endif
-
 
