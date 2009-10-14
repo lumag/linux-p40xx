@@ -91,13 +91,6 @@ struct pme_context_b {
 	u32 rfqid:24;
 } __packed;
 
-enum pme_cmd_type {
-	pme_cmd_nop = 0x7,
-	pme_cmd_flow_read = 0x5,	/* aka FCR */
-	pme_cmd_flow_write = 0x4,	/* aka FCW */
-	pme_cmd_pmtcc = 0x1,
-	pme_cmd_scan = 0
-};
 
 /* This is the 32-bit frame "cmd/status" field, sent to PME */
 union pme_cmd {

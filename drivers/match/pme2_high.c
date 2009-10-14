@@ -54,33 +54,6 @@
  * is decremented and the context is re-disabled. ENABLING is unset once
  * pme_ctx_enable() completes.
  *
- * CTRL: set by pme_ctx_ctrl_***() at any point that is not dead, disabling,
- * disabled, or already in ctrl (the ctrl state is a one-shot usage that locks
- * in the caller against other attempts to issue ctrl). The function will then
- * atomic_dec_and_test() the ref, and wait (if necessary) for refs==0.  If
- * waiting fails, CTRL is unset and the ref is incremented. The eventual
- * completion event will clear CTRL and increment the reference count.
- *
- * CTRL_ISSUED: set by pme_ctx_ctrl_***() once CTRL is set and refs==0, just
- * before issuing the ctrl command. The eventual completion event uses
- * CTRL_ISSUED to know it is handling a ctrl command response, and will clear
- * CTRL and CTRL_ISSUED. If the enqueue fails, CTRL and CTRL_ISSUED are cleared.
- * NB, the completion handling can't use CTRL to determine the type of result,
- * because CTRL is set before the pipeline is cleared of outstanding non-ctrl
- * work - this is why the CTRL_ISSUED flag exists, it's only set once the
- * pipeline is empty so completion handling can use it as a code point.
- *
- * (Side-note, the pme_ctx_ctrl_***() APIs use a UID in pme_ctx that gets bumped
- * by every ctrl completion, and the caller can wait for this UID to change to
- * indicate that its command has completed. Although the completion also clears
- * CTRL, another caller may be waiting to set CTRL and may wake_up() before the
- * existing caller can detect it was cleared, so the UID mechanism bypasses this
- * issue.)
- *
- * FCW_DEALLOC: set by pme_ctx_ctrl_update_flow() before the ctrl command is
- * issued if the completion callback should deallocate residue. (This means the
- * API can return asynchronously if needed, it's not required to wait.)
- *
  * RECONFIG: set by pme_ctx_reconfigure_[rt]x() provided the context is
  * disabled, not dead, and not already in reconfig. RECONFIG is cleared prior to
  * the function returning.
@@ -89,16 +62,12 @@
  * the ctx 'flags', and callers can rely on the following implications to reduce
  * the number of flags in the masks being passed in;
  * 	DISABLED implies DISABLING (and enable will clear both)
- * 	CTRL_ISSUED implies CTRL (and completion will clear both)
  */
 
 #define PME_CTX_FLAG_DEAD        0x80000000
 #define PME_CTX_FLAG_DISABLING   0x40000000
 #define PME_CTX_FLAG_DISABLED    0x20000000
 #define PME_CTX_FLAG_ENABLING    0x10000000
-#define PME_CTX_FLAG_CTRL        0x08000000
-#define PME_CTX_FLAG_CTRL_ISSUED 0x04000000
-#define PME_CTX_FLAG_FCW_DEALLOC 0x02000000
 #define PME_CTX_FLAG_RECONFIG    0x01000000
 
 #define PME_CTX_FLAG_PRIVATE     0xff000000
@@ -147,6 +116,40 @@ static DECLARE_WAIT_QUEUE_HEAD(exclusive_queue);
 static spinlock_t exclusive_lock = SPIN_LOCK_UNLOCKED;
 static unsigned int exclusive_refs;
 static struct pme_ctx *exclusive_ctx;
+
+/* Index 0..255, bools do indicated which errors are serious
+ * 0x40, 0x41, 0x48, 0x49, 0x4c, 0x4e, 0x4f, 0x50, 0x51, 0x59, 0x5a, 0x5b,
+ * 0x5c, 0x5d, 0x5f, 0x60, 0x80, 0xc0, 0xc1, 0xc2, 0xc4, 0xd2,
+ * 0xd4, 0xd5, 0xd7, 0xd9, 0xda, 0xe0, 0xe7
+ */
+static u8 serious_error_vec[] = {
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x01,
+	0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+	0x01, 0x01, 0x01, 0x01, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x01, 0x01, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x01, 0x00, 0x01, 0x01, 0x00, 0x01, 0x00, 0x01, 0x01, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+};
 
 /* TODO: this is hitting the rx FQ with a large blunt instrument, ie. park()
  * does a retire, query, oos, and (re)init. It's possible to force-eligible the
@@ -249,7 +252,6 @@ int pme_ctx_init(struct pme_ctx *ctx, u32 flags, u32 bpid, u8 qosin,
 	init_waitqueue_head(&ctx->queue);
 	INIT_LIST_HEAD(&ctx->tokens);
 	ctx->seq_num = 0;
-	ctx->uid = 0xdeadbeef;
 	ctx->fqin = NULL;
 	ctx->hw_flow = NULL;
 	ctx->hw_residue = NULL;
@@ -359,8 +361,8 @@ int pme_ctx_disable(struct pme_ctx *ctx, u32 flags)
 	struct qm_mcc_initfq initfq;
 	int ret;
 
-	ret = do_flags(ctx, 0, PME_CTX_FLAG_DISABLING | PME_CTX_FLAG_CTRL,
-			PME_CTX_FLAG_DISABLING, 0);
+	ret = do_flags(ctx, 0, PME_CTX_FLAG_DISABLING, PME_CTX_FLAG_DISABLING,
+			0);
 	if (ret)
 		return ret;
 	/* Make sure the pipeline is empty */
@@ -495,202 +497,13 @@ static inline int get_exclusive(struct pme_ctx *ctx, u32 flags)
 		ret = __try_exclusive(ctx);
 	return ret;
 }
-/* Used for 'ctrl' and 'work' APIs, convert PME->QMAN wait flags. The PME and
+/* Used for 'work' APIs, convert PME->QMAN wait flags. The PME and
  * QMAN "wait" flags have been aligned so that the below conversion should
  * compile with good straight-line speed. */
 static inline u32 ctrl2eq(u32 flags)
 {
 	return flags & (QMAN_ENQUEUE_FLAG_WAIT | QMAN_ENQUEUE_FLAG_WAIT_INT);
 }
-
-static inline void release_ctrl(struct pme_ctx *ctx)
-{
-	atomic_inc(&ctx->refs);
-	do_flags(ctx, 0, 0, 0, PME_CTX_FLAG_CTRL | PME_CTX_FLAG_CTRL_ISSUED |
-					PME_CTX_FLAG_FCW_DEALLOC);
-	wake_up(&ctx->queue);
-}
-static int __try_ctrl(struct pme_ctx *ctx)
-{
-	return do_flags(ctx, 0,
-		PME_CTX_FLAG_DEAD | PME_CTX_FLAG_DISABLING | PME_CTX_FLAG_CTRL,
-		PME_CTX_FLAG_CTRL, 0);
-}
-/* Use this macro as the wait expression because we don't want to continue
- * looping if the DEAD/DISABLING flags are set, we only loop if CTRL is held
- * because we wait for it to be cleared.
- * IMPLEMENTATION NOTE: don't use a return code from wait_event_interruptible(),
- * the key is the return value of the last call to __try_ctrl(). */
-#define try_ctrl(ret, ctx) \
-	(!(ret = __try_ctrl(ctx)) || (ctx->flags & (PME_CTX_FLAG_DEAD | \
-					PME_CTX_FLAG_DISABLING)))
-static int get_ctrl(struct pme_ctx *ctx, u32 flags)
-{
-	int ret;
-	/* Lock the CTRL flag in the context */
-	if (flags & PME_CTX_OP_WAIT) {
-		if (flags & PME_CTX_OP_WAIT_INT) {
-			ret = -EINTR;
-			wait_event_interruptible(ctx->queue,
-					try_ctrl(ret, ctx));
-		} else
-			wait_event(ctx->queue, try_ctrl(ret, ctx));
-	} else
-		ret = __try_ctrl(ctx);
-	if (ret)
-		return ret;
-	/* Make sure the pipeline is empty */
-	atomic_dec(&ctx->refs);
-	ret = empty_pipeline(ctx, flags);
-	if (ret)
-		release_ctrl(ctx);
-	return ret;
-}
-/* unlike do_work() (which encapsulates get_work(), get_exclusive(), and
- * qman_enqueue()), the do_ctrl() wrapper only encapsulates get_exclusive() and
- * qman_enqueue(). This is because the ctrl functions need to manipulate 'ctx'
- * between get_ctrl() and qman_enqueue(), so they peel the outer layer of
- * the onion (get_ctrl) themselves. */
-static int do_ctrl(struct pme_ctx *ctx, u32 flags, const struct qm_fd *fd,
-			u32 *uid)
-{
-	int ret;
-	if (ctx->flags & PME_CTX_FLAG_EXCLUSIVE) {
-		ret = get_exclusive(ctx, flags);
-		if (ret)
-			return ret;
-	}
-	*uid = ctx->uid;
-	do_flags(ctx, 0, 0, PME_CTX_FLAG_CTRL_ISSUED, 0);
-	ret = qman_enqueue(ctx->fqin, fd, ctrl2eq(flags));
-	if (ret) {
-		if (ctx->flags & PME_CTX_FLAG_EXCLUSIVE)
-			release_exclusive(ctx);
-	}
-	return ret;
-}
-/* Swallow any wait failure, the ctrl command has already been sent and will go
- * to the PME, so returning a wait error would leave the caller thinking the
- * command didn't happen. If they care about whether they got interrupted
- * before completion, they should check signal_pending() on return. */
-static void wait_ctrl_completion(struct pme_ctx *ctx, u32 flags, u32 uid)
-{
-	if (flags & PME_CTX_OP_WAIT) {
-		if (flags & PME_CTX_OP_WAIT_INT)
-			wait_event_interruptible(ctx->queue,
-					ctx->uid != uid);
-		else
-			wait_event(ctx->queue, ctx->uid != uid);
-	}
-}
-
-int pme_ctx_ctrl_update_flow(struct pme_ctx *ctx, u32 flags,
-			struct pme_flow *params)
-{
-	struct qm_fd fd;
-	u32 uid;
-	int ret, allocres = 0;
-
-	BUG_ON(ctx->flags & (PME_CTX_FLAG_DIRECT | PME_CTX_FLAG_PMTCC));
-	ret = get_ctrl(ctx, flags);
-	if (ret)
-		return ret;
-	if (flags & PME_CTX_OP_RESETRESLEN) {
-		if (ctx->hw_residue) {
-			params->ren = 1;
-			flags |= PME_CMD_FCW_RES;
-		} else
-			flags &= ~PME_CMD_FCW_RES;
-	}
-	/* allocate residue memory if it is being added */
-	if ((flags & PME_CMD_FCW_RES) && params->ren && !ctx->hw_residue) {
-		ctx->hw_residue = pme_hw_residue_new();
-		if (!ctx->hw_residue) {
-			release_ctrl(ctx);
-			return -ENOMEM;
-		}
-		allocres = 1;
-	}
-	/* enqueue the FCW command to PME */
-	memset(&fd, 0, sizeof(fd));
-	if (unlikely((flags & PME_CMD_FCW_RES) && !params->ren &&
-						ctx->hw_residue)) {
-		/* cb_dqrr() needs to deallocate residue on completion */
-		do_flags(ctx, 0, 0, PME_CTX_FLAG_FCW_DEALLOC, 0);
-		pme_fd_cmd_fcw(&fd, flags & PME_CMD_FCW_ALL, params, NULL);
-	} else
-		pme_fd_cmd_fcw(&fd, flags & PME_CMD_FCW_ALL, params,
-					ctx->hw_residue);
-	ret = do_ctrl(ctx, flags, &fd, &uid);
-	if (ret) {
-		if (allocres) {
-			pme_hw_residue_free(ctx->hw_residue);
-			ctx->hw_residue = NULL;
-		}
-		release_ctrl(ctx);
-		return ret;
-	}
-	wait_ctrl_completion(ctx, flags, uid);
-	return 0;
-}
-EXPORT_SYMBOL(pme_ctx_ctrl_update_flow);
-
-int pme_ctx_ctrl_read_flow(struct pme_ctx *ctx, u32 flags,
-			struct pme_flow *params)
-{
-	struct qm_fd fd;
-	u32 uid;
-	int ret;
-
-	BUG_ON(ctx->flags & (PME_CTX_FLAG_DIRECT | PME_CTX_FLAG_PMTCC));
-	/* This has to block, we can't accept a read flow context command being
-	 * orphaned in-flight */
-	might_sleep();
-	flags |= PME_CTX_OP_WAIT;
-	flags &= ~PME_CTX_OP_WAIT_INT;
-	ret = get_ctrl(ctx, flags);
-	if (ret)
-		return ret;
-	/* enqueue the FCR command to PME */
-	memset(&fd, 0, sizeof(fd));
-	pme_fd_cmd_fcr(&fd, params);
-	ret = do_ctrl(ctx, flags, &fd, &uid);
-	if (ret) {
-		release_ctrl(ctx);
-		return ret;
-	}
-	wait_ctrl_completion(ctx, flags, uid);
-	return 0;
-}
-EXPORT_SYMBOL(pme_ctx_ctrl_read_flow);
-
-int pme_ctx_ctrl_nop(struct pme_ctx *ctx, u32 flags)
-{
-	struct qm_fd fd;
-	u32 uid;
-	int ret;
-
-	ret = get_ctrl(ctx, flags);
-	if (ret)
-		return ret;
-	/* enqueue the NOP command to PME */
-	memset(&fd, 0, sizeof(fd));
-	pme_fd_cmd_nop(&fd);
-	ret = do_ctrl(ctx, flags, &fd, &uid);
-	if (ret) {
-		release_ctrl(ctx);
-		return ret;
-	}
-	wait_ctrl_completion(ctx, flags, uid);
-	return 0;
-}
-EXPORT_SYMBOL(pme_ctx_ctrl_nop);
-
-int pme_ctx_in_ctrl(struct pme_ctx *ctx)
-{
-	return ctx->flags & PME_CTX_FLAG_CTRL;
-}
-EXPORT_SYMBOL(pme_ctx_in_ctrl);
 
 static inline void release_work(struct pme_ctx *ctx)
 {
@@ -701,8 +514,8 @@ static inline void release_work(struct pme_ctx *ctx)
 static int __try_work(struct pme_ctx *ctx)
 {
 	atomic_inc(&ctx->refs);
-	if (unlikely(ctx->flags & (PME_CTX_FLAG_DEAD | PME_CTX_FLAG_DISABLING |
-						PME_CTX_FLAG_CTRL))) {
+	if (unlikely(ctx->flags & (PME_CTX_FLAG_DEAD |
+			PME_CTX_FLAG_DISABLING))) {
 		release_work(ctx);
 		if (ctx->flags & (PME_CTX_FLAG_DEAD | PME_CTX_FLAG_DISABLING))
 			return -EIO;
@@ -763,10 +576,74 @@ static int do_work(struct pme_ctx *ctx, u32 flags, struct qm_fd *fd,
 	return ret;
 }
 
+int pme_ctx_ctrl_update_flow(struct pme_ctx *ctx, u32 flags,
+		struct pme_flow *params,  struct pme_ctx_ctrl_token *token)
+{
+	struct qm_fd fd;
+
+	BUG_ON(ctx->flags & PME_CTX_FLAG_DIRECT);
+	token->base_token.cmd_type = pme_cmd_flow_write;
+
+	if (flags & PME_CTX_OP_RESETRESLEN) {
+		if (ctx->hw_residue) {
+			params->ren = 1;
+			flags |= PME_CMD_FCW_RES;
+		} else
+			flags &= ~PME_CMD_FCW_RES;
+	}
+	/* allocate residue memory if it is being added */
+	if ((flags & PME_CMD_FCW_RES) && params->ren && !ctx->hw_residue) {
+		ctx->hw_residue = pme_hw_residue_new();
+		if (!ctx->hw_residue)
+			return -ENOMEM;
+	}
+	/* enqueue the FCW command to PME */
+	memset(&fd, 0, sizeof(fd));
+	token->internal_flow_ptr = pme_hw_flow_new();
+	memcpy(token->internal_flow_ptr, params, sizeof(struct pme_flow));
+	pme_fd_cmd_fcw(&fd, flags & PME_CMD_FCW_ALL,
+			(struct pme_flow *)token->internal_flow_ptr,
+			ctx->hw_residue);
+	return do_work(ctx, flags, &fd, &token->base_token);
+}
+EXPORT_SYMBOL(pme_ctx_ctrl_update_flow);
+
+int pme_ctx_ctrl_read_flow(struct pme_ctx *ctx, u32 flags,
+		struct pme_flow *params, struct pme_ctx_ctrl_token *token)
+{
+	struct qm_fd fd;
+
+	BUG_ON(ctx->flags & (PME_CTX_FLAG_DIRECT | PME_CTX_FLAG_PMTCC));
+	token->base_token.cmd_type = pme_cmd_flow_read;
+	/* enqueue the FCR command to PME */
+	token->usr_flow_ptr = params;
+	token->internal_flow_ptr = pme_hw_flow_new();
+	memset(&fd, 0, sizeof(fd));
+	pme_fd_cmd_fcr(&fd, (struct pme_flow *)token->internal_flow_ptr);
+	return do_work(ctx, flags, &fd, &token->base_token);
+}
+EXPORT_SYMBOL(pme_ctx_ctrl_read_flow);
+
+int pme_ctx_ctrl_nop(struct pme_ctx *ctx, u32 flags,
+		struct pme_ctx_ctrl_token *token)
+{
+	struct qm_fd fd;
+
+	token->base_token.cmd_type = pme_cmd_nop;
+	/* enqueue the NOP command to PME */
+	memset(&fd, 0, sizeof(fd));
+	fd.addr_hi = 0xfeed;
+	fd.addr_lo = (u32)token;
+	pme_fd_cmd_nop(&fd);
+	return do_work(ctx, flags, &fd, &token->base_token);
+}
+EXPORT_SYMBOL(pme_ctx_ctrl_nop);
+
 int pme_ctx_scan(struct pme_ctx *ctx, u32 flags, struct qm_fd *fd, u32 args,
 		struct pme_ctx_token *token)
 {
 	BUG_ON(ctx->flags & PME_CTX_FLAG_PMTCC);
+	token->cmd_type = pme_cmd_scan;
 	pme_fd_cmd_scan(fd, args);
 	return do_work(ctx, flags, fd, token);
 }
@@ -776,6 +653,7 @@ int pme_ctx_pmtcc(struct pme_ctx *ctx, u32 flags, struct qm_fd *fd,
 		struct pme_ctx_token *token)
 {
 	BUG_ON(!(ctx->flags & PME_CTX_FLAG_PMTCC));
+	token->cmd_type = pme_cmd_pmtcc;
 	pme_fd_cmd_pmtcc(fd);
 	return do_work(ctx, flags, fd, token);
 }
@@ -839,28 +717,33 @@ static inline void cb_helper(struct qman_portal *portal, struct pme_ctx *ctx,
 				const struct qm_fd *fd, int error)
 {
 	struct pme_ctx_token *token;
+	struct pme_ctx_ctrl_token *ctrl_token;
 	/* Resist the urge to use "unlikely" - 'error' is a constant param to an
 	 * inline fn, so the compiler can collapse this completely. */
 	if (error)
 		do_flags(ctx, 0, 0, PME_CTX_FLAG_DEAD, 0);
-	/* The 'ctrl' case should be our slow-path */
-	if (unlikely(ctx->flags & PME_CTX_FLAG_CTRL_ISSUED)) {
-		if (ctx->flags & PME_CTX_FLAG_FCW_DEALLOC) {
-			pme_hw_residue_free(ctx->hw_residue);
-			ctx->hw_residue = NULL;
-		}
-		/* The caller will be waiting on this... */
-		ctx->uid++;
-		/* Switch out of CTRL mode */
-		release_ctrl(ctx);
-		if (ctx->flags & PME_CTX_FLAG_EXCLUSIVE)
-			release_exclusive(ctx);
-		return;
-	}
-	/* This is a scan or PMTCC - the fast-path, normal, 99.99% case. We
-	 * detach the token for this command and pass it to the owner. */
 	token = pop_matching_token(ctx, fd);
-	ctx->cb(ctx, fd, token);
+	if (likely(token->cmd_type == pme_cmd_scan))
+		ctx->cb(ctx, fd, token);
+	else if (token->cmd_type == pme_cmd_pmtcc)
+		ctx->cb(ctx, fd, token);
+	else {
+		/* outcast ctx and call supplied callback */
+		ctrl_token = container_of(token, struct pme_ctx_ctrl_token,
+					base_token);
+		if (token->cmd_type == pme_cmd_flow_write) {
+			/* Release the allocated flow context */
+			pme_hw_flow_free(ctrl_token->internal_flow_ptr);
+		} else if (token->cmd_type == pme_cmd_flow_read) {
+			/* Copy read result */
+			memcpy(ctrl_token->usr_flow_ptr,
+				ctrl_token->internal_flow_ptr,
+				sizeof(struct pme_flow));
+			/* Release the allocated flow context */
+			pme_hw_flow_free(ctrl_token->internal_flow_ptr);
+		}
+		ctrl_token->cb(ctx, fd, ctrl_token);
+	}
 	/* Consume the frame */
 	if (ctx->flags & PME_CTX_FLAG_EXCLUSIVE)
 		release_exclusive(ctx);
@@ -875,15 +758,20 @@ static inline void cb_helper(struct qman_portal *portal, struct pme_ctx *ctx,
 static enum qman_cb_dqrr_result cb_dqrr(struct qman_portal *portal,
 			struct qman_fq *fq, const struct qm_dqrr_entry *dq)
 {
-	enum pme_status status = pme_fd_res_status(&dq->fd);
+	u8 status = (u8)pme_fd_res_status(&dq->fd);
 	u8 flags = pme_fd_res_flags(&dq->fd);
 	struct pme_ctx *ctx = (struct pme_ctx *)fq;
 
-	if (unlikely((status != pme_status_ok) ||
-			(flags & PME_STATUS_UNRELIABLE)))
+	/* Put context into dead state is an unreliable or serious error is
+	 * received
+	 */
+	if (unlikely(flags & PME_STATUS_UNRELIABLE))
+		cb_helper(portal, ctx, &dq->fd, 1);
+	else if (unlikely((serious_error_vec[status])))
 		cb_helper(portal, ctx, &dq->fd, 1);
 	else
 		cb_helper(portal, ctx, &dq->fd, 0);
+
 	return qman_cb_dqrr_consume;
 }
 

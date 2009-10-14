@@ -47,56 +47,93 @@ static u8 fl_ctx_exp[]={
 void scan_cb(struct pme_ctx *ctx, const struct qm_fd *fd,
 		struct pme_ctx_token *token)
 {
-	pr_info("pme2_test_high: scan_cb() invoked, fd;!\n");
 	hexdump(fd, sizeof(*fd));
 }
+
+struct ctrl_op {
+	struct pme_ctx_ctrl_token ctx_ctr;
+	struct completion cb_done;
+	enum pme_status cmd_status;
+	u8 res_flag;
+};
+
+static void ctrl_cb(struct pme_ctx *ctx, const struct qm_fd *fd,
+		struct pme_ctx_ctrl_token *token)
+{
+	struct ctrl_op *ctrl = (struct ctrl_op *)token;
+	pr_info("pme2_test_high: ctrl_cb() invoked, fd;!\n");
+	ctrl->cmd_status = pme_fd_res_status(fd);
+	ctrl->res_flag = pme_fd_res_flags(fd);
+	hexdump(fd, sizeof(*fd));
+	complete(&ctrl->cb_done);
+}
+
 
 #define POST_CTRL() \
 do { \
 	BUG_ON(ret); \
 	BUG_ON(pme_ctx_is_dead(&ctx)); \
+	BUG_ON(ctx_ctrl.cmd_status); \
+	BUG_ON(ctx_ctrl.res_flag); \
 } while (0)
 
 void pme2_test_high(void)
 {
-	struct pme_flow *flow;
+	struct pme_flow flow;
 	struct qm_fqd_stashing stashing;
 	struct pme_ctx ctx = {
 		.cb = scan_cb
 	};
 	int ret;
+	struct ctrl_op ctx_ctrl =  {
+		.ctx_ctr.cb = ctrl_cb,
+		.cmd_status = 0,
+		.res_flag = 0
+	};
 
-	flow = pme_sw_flow_new();
-	BUG_ON(!flow);
+	pme_sw_flow_init(&flow);
+	init_completion(&ctx_ctrl.cb_done);
+
 	pr_info("PME2: high-level test starting\n");
 
 	ret = pme_ctx_init(&ctx, PME_CTX_FLAG_LOCAL, 0, 4, 4, 0, NULL);
+	pr_info("PME2: pme_ctx_init done\n");
 	POST_CTRL();
 	/* enable the context */
 	pme_ctx_enable(&ctx);
+	pr_info("PME2: pme_ctx_enable done\n");
 	ret = pme_ctx_ctrl_update_flow(&ctx, PME_CTX_OP_WAIT | PME_CMD_FCW_ALL,
-					flow);
+					&flow, &ctx_ctrl.ctx_ctr);
+	pr_info("PME2: pme_ctx_ctrl_update_flow done\n");
+	wait_for_completion(&ctx_ctrl.cb_done);
 	POST_CTRL();
 	/* read back flow settings */
-	ret = pme_ctx_ctrl_read_flow(&ctx, PME_CTX_OP_WAIT, flow);
+	ret = pme_ctx_ctrl_read_flow(&ctx, PME_CTX_OP_WAIT, &flow,
+			&ctx_ctrl.ctx_ctr);
+	pr_info("PME2: pme_ctx_ctrl_read_flow done\n");
+	wait_for_completion(&ctx_ctrl.cb_done);
 	POST_CTRL();
-	if (memcmp(flow, fl_ctx_exp, sizeof(*flow))) {
+	if (memcmp(&flow, fl_ctx_exp, sizeof(flow))) {
 		pr_info("Default Flow Context Read FAIL\n");
 		pr_info("Expected:\n");
 		hexdump(fl_ctx_exp, sizeof(fl_ctx_exp));
 		pr_info("Received:\n");
-		hexdump(flow, sizeof(*flow));
+		hexdump(&flow, sizeof(flow));
 		BUG_ON(1);
 	} else
 		pr_info("Default Flow Context Read OK\n");
 	/* start a non-blocking NOP */
-	ret = pme_ctx_ctrl_nop(&ctx, 0);
+	ret = pme_ctx_ctrl_nop(&ctx, 0, &ctx_ctrl.ctx_ctr);
+	pr_info("PME2: pme_ctx_ctrl_nop done\n");
+	wait_for_completion(&ctx_ctrl.cb_done);
 	POST_CTRL();
 	/* start a blocking update (implicitly blocks on NOP-completion) to add
 	 * residue to the context */
-	flow->ren = 1;
+	flow.ren = 1;
 	ret = pme_ctx_ctrl_update_flow(&ctx, PME_CTX_OP_WAIT | PME_CMD_FCW_RES,
-					flow);
+					&flow, &ctx_ctrl.ctx_ctr);
+	pr_info("PME2: pme_ctx_ctrl_update_flow done\n");
+	wait_for_completion(&ctx_ctrl.cb_done);
 	POST_CTRL();
 	/* start a blocking disable */
 	ret = pme_ctx_disable(&ctx, PME_CTX_OP_WAIT);
@@ -115,18 +152,21 @@ void pme2_test_high(void)
 	BUG_ON(ret);
 	/* read back flow settings */
 	ret = pme_ctx_ctrl_read_flow(&ctx,
-		PME_CTX_OP_WAIT | PME_CTX_OP_WAIT_INT | PME_CMD_FCW_RES, flow);
+		PME_CTX_OP_WAIT | PME_CTX_OP_WAIT_INT | PME_CMD_FCW_RES, &flow,
+		&ctx_ctrl.ctx_ctr);
+	pr_info("PME2: pme_ctx_ctrl_read_flow done\n");
+	wait_for_completion(&ctx_ctrl.cb_done);
 	POST_CTRL();
-	pr_info("read Flow Context;\n");
-	hexdump(flow, sizeof(*flow));
 	/* blocking NOP */
-	ret = pme_ctx_ctrl_nop(&ctx, PME_CTX_OP_WAIT | PME_CTX_OP_WAIT_INT);
+	ret = pme_ctx_ctrl_nop(&ctx, PME_CTX_OP_WAIT | PME_CTX_OP_WAIT_INT,
+			&ctx_ctrl.ctx_ctr);
+	pr_info("PME2: pme_ctx_ctrl_nop done\n");
+	wait_for_completion(&ctx_ctrl.cb_done);
 	POST_CTRL();
 	/* Disable, and done */
 	ret = pme_ctx_disable(&ctx, PME_CTX_OP_WAIT | PME_CTX_OP_WAIT_INT);
 	BUG_ON(ret);
 	pme_ctx_finish(&ctx);
-	pme_sw_flow_free(flow);
 	pr_info("PME2: high-level test done\n");
 }
 

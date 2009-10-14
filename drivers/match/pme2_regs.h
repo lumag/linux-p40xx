@@ -42,8 +42,8 @@
 #define PME_REG_TRUNCI		0x024
 #define PME_REG_RBC		0x028
 #define PME_REG_ESR		0x02C
-#define PME_REG_ECR1		0x030
-#define PME_REG_ECR0		0x034
+#define PME_REG_ECR0		0x030
+#define PME_REG_ECR1		0x034
 #define PME_REG_EFQC		0x050
 #define PME_REG_FACONF		0x060
 #define PME_REG_PMSTAT		0x064

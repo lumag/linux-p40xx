@@ -23,6 +23,11 @@ config FSL_BMAN_PORTAL
 	  Compiles support to detect and support Bman software corenet portals
 	  (as provided by the device-tree).
 
+# The current driver is interrupt-driven only (poll-driven isn't yet supported).
+config FSL_BMAN_HAVE_POLL
+	bool
+	default n
+
 config FSL_BMAN_PORTAL_DISABLEAUTO
 	bool "disable auto-initialisation of cpu-affine portals"
 	depends on FSL_BMAN_PORTAL
@@ -51,7 +56,7 @@ config FSL_BMAN_TEST
 
 config FSL_BMAN_TEST_LOW
 	bool "Bman low-level self-test"
-	depends on FSL_BMAN_TEST
+	depends on FSL_BMAN_TEST && FSL_BMAN_PORTAL_DISABLEAUTO
 	default y
 	---help---
 	  This takes an unused portal and portal and performs low-level

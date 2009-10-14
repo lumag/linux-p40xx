@@ -1323,7 +1323,11 @@ void qman_set_null_cb(const struct qman_fq_cb *null_cb);
  * (c) no processing. This function does whatever processing is not triggered by
  * interrupts.
  */
+#ifdef CONFIG_FSL_QMAN_HAVE_POLL
 void qman_poll(void);
+#else
+#define qman_poll()	do { ; } while (0)
+#endif
 
 /**
  * qman_disable_portal - Cease processing DQRR and MR for a s/w portal

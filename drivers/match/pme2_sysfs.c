@@ -202,6 +202,14 @@ PME_SYSFS_ATTR(end_of_sui_reaction_ptr, PRIV_RW, FMT_DEC);
 PME_SYSFS_ATTR(sre_pscl, PRIV_RW, FMT_DEC);
 PME_SYSFS_ATTR(sre_max_block_num, PRIV_RW, FMT_DEC);
 PME_SYSFS_ATTR(sre_max_instruction_limit, PRIV_RW, FMT_DEC);
+PME_SYSFS_ATTR(esr, PRIV_RW, FMT_0HEX);
+PME_SYSFS_ATTR(pehd, PRIV_RW, FMT_0HEX);
+PME_SYSFS_ATTR(ecc1bes, PRIV_RW, FMT_0HEX);
+PME_SYSFS_ATTR(ecc2bes, PRIV_RW, FMT_0HEX);
+PME_SYSFS_ATTR(miace, PRIV_RW, FMT_0HEX);
+PME_SYSFS_ATTR(miacr, PRIV_RW, FMT_0HEX);
+PME_SYSFS_ATTR(cdcr, PRIV_RW, FMT_0HEX);
+PME_SYSFS_ATTR(pmtr, PRIV_RW, FMT_DEC);
 
 /* read-only; */
 PME_SYSFS_ATTR(max_pdsr_index, PRIV_RO, FMT_DEC);
@@ -215,6 +223,17 @@ PME_SYSFS_ATTR(liodnr, PRIV_RO, FMT_DEC);
 PME_SYSFS_ATTR(rev1, PRIV_RO, FMT_0HEX);
 PME_SYSFS_ATTR(rev2, PRIV_RO, FMT_0HEX);
 PME_SYSFS_ATTR(isr, PRIV_RO, FMT_0HEX);
+PME_SYSFS_ATTR(ecr0, PRIV_RO, FMT_0HEX);
+PME_SYSFS_ATTR(ecr1, PRIV_RO, FMT_0HEX);
+PME_SYSFS_ATTR(pmstat, PRIV_RO, FMT_0HEX);
+PME_SYSFS_ATTR(eccaddr, PRIV_RO, FMT_0HEX);
+PME_SYSFS_ATTR(ecccode, PRIV_RO, FMT_0HEX);
+PME_SYSFS_ATTR(faconf, PRIV_RO, FMT_0HEX);
+PME_SYSFS_ATTR(pdsrbah, PRIV_RO, FMT_0HEX);
+PME_SYSFS_ATTR(pdsrbal, PRIV_RO, FMT_0HEX);
+PME_SYSFS_ATTR(scbarh, PRIV_RO, FMT_0HEX);
+PME_SYSFS_ATTR(scbarl, PRIV_RO, FMT_0HEX);
+
 
 /* Buffer Pool Size Configuration */
 PME_SYSFS_BSC_ATTR(0, PRIV_RW, FMT_DEC);
@@ -420,6 +439,24 @@ static struct attribute *pme_dev_attributes[] = {
 	&dev_attr_rev1.attr,
 	&dev_attr_rev2.attr,
 	&dev_attr_isr.attr,
+	&dev_attr_ecr0.attr,
+	&dev_attr_ecr1.attr,
+	&dev_attr_esr.attr,
+	&dev_attr_pmstat.attr,
+	&dev_attr_pehd.attr,
+	&dev_attr_ecc1bes.attr,
+	&dev_attr_ecc2bes.attr,
+	&dev_attr_eccaddr.attr,
+	&dev_attr_ecccode.attr,
+	&dev_attr_miace.attr,
+	&dev_attr_miacr.attr,
+	&dev_attr_cdcr.attr,
+	&dev_attr_pmtr.attr,
+	&dev_attr_faconf.attr,
+	&dev_attr_pdsrbah.attr,
+	&dev_attr_pdsrbal.attr,
+	&dev_attr_scbarh.attr,
+	&dev_attr_scbarl.attr,
 	NULL
 };
 

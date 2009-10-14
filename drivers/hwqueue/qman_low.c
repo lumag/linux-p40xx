@@ -134,6 +134,11 @@ static inline u8 cyc_diff(u8 ringsize, u8 first, u8 last)
 /* ---------------- */
 /* --- EQCR API --- */
 
+/* It's safer to code in terms of the 'eqcr' object than the 'portal' object,
+ * because the latter runs the risk of copy-n-paste errors from other code where
+ * we could manipulate some other structure within 'portal'. */
+#define EQCR_API_START()	register struct qm_eqcr *eqcr = &portal->eqcr
+
 /* Bit-wise logic to wrap a ring pointer by clearing the "carry bit" */
 #define EQCR_CARRYCLEAR(p) \
 	(void *)((unsigned long)(p) & (~(unsigned long)(QM_EQCR_SIZE << 6)))
@@ -156,14 +161,10 @@ static inline void EQCR_INC(struct qm_eqcr *eqcr)
 		eqcr->vbit ^= QM_EQCR_VERB_VBIT;
 }
 
-/* It's safer to code in terms of the 'eqcr' object than the 'portal' object,
- * because the latter runs the risk of copy-n-paste errors from other code where
- * we could manipulate some other structure within 'portal'. */
-#define eqcr	(&portal->eqcr)
-
 int qm_eqcr_init(struct qm_portal *portal, enum qm_eqcr_pmode pmode,
 		enum qm_eqcr_cmode cmode)
 {
+	EQCR_API_START();
 	u32 cfg;
 	u8 pi;
 
@@ -171,6 +172,7 @@ int qm_eqcr_init(struct qm_portal *portal, enum qm_eqcr_pmode pmode,
 		return -EBUSY;
 	eqcr->ring = ptr_OR(portal->addr.addr_ce, CL_EQCR);
 	eqcr->ci = qm_in(EQCR_CI_CINH) & (QM_EQCR_SIZE - 1);
+	qm_cl_invalidate(EQCR_CI);
 	pi = qm_in(EQCR_PI_CINH) & (QM_EQCR_SIZE - 1);
 	eqcr->cursor = eqcr->ring + pi;
 	eqcr->vbit = (qm_in(EQCR_PI_CINH) & QM_EQCR_SIZE) ?
@@ -192,6 +194,7 @@ EXPORT_SYMBOL(qm_eqcr_init);
 
 void qm_eqcr_finish(struct qm_portal *portal)
 {
+	EQCR_API_START();
 	u8 pi = qm_in(EQCR_PI_CINH) & (QM_EQCR_SIZE - 1);
 	u8 ci = qm_in(EQCR_CI_CINH) & (QM_EQCR_SIZE - 1);
 
@@ -208,6 +211,7 @@ EXPORT_SYMBOL(qm_eqcr_finish);
 
 struct qm_eqcr_entry *qm_eqcr_start(struct qm_portal *portal)
 {
+	EQCR_API_START();
 	QM_ASSERT(!eqcr->busy);
 	if (!eqcr->available)
 		return NULL;
@@ -221,6 +225,7 @@ EXPORT_SYMBOL(qm_eqcr_start);
 
 void qm_eqcr_abort(struct qm_portal *portal)
 {
+	EQCR_API_START();
 	QM_ASSERT(eqcr->busy);
 #ifdef CONFIG_FSL_QMAN_CHECKING
 	eqcr->busy = 0;
@@ -230,6 +235,7 @@ EXPORT_SYMBOL(qm_eqcr_abort);
 
 struct qm_eqcr_entry *qm_eqcr_pend_and_next(struct qm_portal *portal, u8 myverb)
 {
+	EQCR_API_START();
 	QM_ASSERT(eqcr->busy);
 	QM_ASSERT(eqcr->pmode != qm_eqcr_pvb);
 	if (eqcr->available == 1)
@@ -252,6 +258,7 @@ do { \
 
 void qm_eqcr_pci_commit(struct qm_portal *portal, u8 myverb)
 {
+	EQCR_API_START();
 	EQCR_COMMIT_CHECKS(eqcr);
 	QM_ASSERT(eqcr->pmode == qm_eqcr_pci);
 	eqcr->cursor->__dont_write_directly__verb = myverb | eqcr->vbit;
@@ -268,6 +275,7 @@ EXPORT_SYMBOL(qm_eqcr_pci_commit);
 
 void qm_eqcr_pce_prefetch(struct qm_portal *portal)
 {
+	EQCR_API_START();
 	QM_ASSERT(eqcr->pmode == qm_eqcr_pce);
 	qm_cl_invalidate(EQCR_PI);
 	qm_cl_touch_rw(EQCR_PI);
@@ -276,6 +284,7 @@ EXPORT_SYMBOL(qm_eqcr_pce_prefetch);
 
 void qm_eqcr_pce_commit(struct qm_portal *portal, u8 myverb)
 {
+	EQCR_API_START();
 	EQCR_COMMIT_CHECKS(eqcr);
 	QM_ASSERT(eqcr->pmode == qm_eqcr_pce);
 	eqcr->cursor->__dont_write_directly__verb = myverb | eqcr->vbit;
@@ -292,11 +301,14 @@ EXPORT_SYMBOL(qm_eqcr_pce_commit);
 
 void qm_eqcr_pvb_commit(struct qm_portal *portal, u8 myverb)
 {
+	EQCR_API_START();
+	struct qm_eqcr_entry *eqcursor;
 	EQCR_COMMIT_CHECKS(eqcr);
 	QM_ASSERT(eqcr->pmode == qm_eqcr_pvb);
 	lwsync();
-	eqcr->cursor->__dont_write_directly__verb = myverb | eqcr->vbit;
-	dcbf(eqcr->cursor);
+	eqcursor = eqcr->cursor;
+	eqcursor->__dont_write_directly__verb = myverb | eqcr->vbit;
+	dcbf(eqcursor);
 	EQCR_INC(eqcr);
 	eqcr->available--;
 #ifdef CONFIG_FSL_QMAN_CHECKING
@@ -307,6 +319,7 @@ EXPORT_SYMBOL(qm_eqcr_pvb_commit);
 
 u8 qm_eqcr_cci_update(struct qm_portal *portal)
 {
+	EQCR_API_START();
 	u8 diff, old_ci = eqcr->ci;
 	QM_ASSERT(eqcr->cmode == qm_eqcr_cci);
 	eqcr->ci = qm_in(EQCR_CI_CINH) & (QM_EQCR_SIZE - 1);
@@ -318,14 +331,15 @@ EXPORT_SYMBOL(qm_eqcr_cci_update);
 
 void qm_eqcr_cce_prefetch(struct qm_portal *portal)
 {
+	EQCR_API_START();
 	QM_ASSERT(eqcr->cmode == qm_eqcr_cce);
-	qm_cl_invalidate(EQCR_CI);
 	qm_cl_touch_ro(EQCR_CI);
 }
 EXPORT_SYMBOL(qm_eqcr_cce_prefetch);
 
 u8 qm_eqcr_cce_update(struct qm_portal *portal)
 {
+	EQCR_API_START();
 	u8 diff, old_ci = eqcr->ci;
 	QM_ASSERT(eqcr->cmode == qm_eqcr_cce);
 	eqcr->ci = qm_cl_in(EQCR_CI) & (QM_EQCR_SIZE - 1);
@@ -338,12 +352,14 @@ EXPORT_SYMBOL(qm_eqcr_cce_update);
 
 u8 qm_eqcr_get_ithresh(struct qm_portal *portal)
 {
+	EQCR_API_START();
 	return eqcr->ithresh;
 }
 EXPORT_SYMBOL(qm_eqcr_get_ithresh);
 
 void qm_eqcr_set_ithresh(struct qm_portal *portal, u8 ithresh)
 {
+	EQCR_API_START();
 	eqcr->ithresh = ithresh;
 	qm_out(EQCR_ITR, ithresh);
 }
@@ -351,12 +367,14 @@ EXPORT_SYMBOL(qm_eqcr_set_ithresh);
 
 u8 qm_eqcr_get_avail(struct qm_portal *portal)
 {
+	EQCR_API_START();
 	return eqcr->available;
 }
 EXPORT_SYMBOL(qm_eqcr_get_avail);
 
 u8 qm_eqcr_get_fill(struct qm_portal *portal)
 {
+	EQCR_API_START();
 	return QM_EQCR_SIZE - 1 - eqcr->available;
 }
 EXPORT_SYMBOL(qm_eqcr_get_fill);
@@ -371,6 +389,11 @@ EXPORT_SYMBOL(qm_eqcr_get_fill);
  * - consider moving other parameters to pointer if it could help (ci)
  */
 
+/* It's safer to code in terms of the 'dqrr' object than the 'portal' object,
+ * because the latter runs the risk of copy-n-paste errors from other code where
+ * we could manipulate some other structure within 'portal'. */
+#define DQRR_API_START()	register struct qm_dqrr *dqrr = &portal->dqrr
+
 #define DQRR_CARRYCLEAR(p) \
 	(void *)((unsigned long)(p) & (~(unsigned long)(QM_DQRR_SIZE << 6)))
 
@@ -384,15 +407,11 @@ static inline struct qm_dqrr_entry *DQRR_INC(struct qm_dqrr_entry *e)
 	return DQRR_CARRYCLEAR(e + 1);
 }
 
-/* It's safer to code in terms of the 'dqrr' object than the 'portal' object,
- * because the latter runs the risk of copy-n-paste errors from other code where
- * we could manipulate some other structure within 'portal'. */
-#define dqrr	(&portal->dqrr)
-
 int qm_dqrr_init(struct qm_portal *portal, enum qm_dqrr_dmode dmode,
 		enum qm_dqrr_pmode pmode, enum qm_dqrr_cmode cmode,
 		u8 max_fill, int stash_ring, int stash_data)
 {
+	DQRR_API_START();
 	const struct qm_portal_config *config = qm_portal_config(portal);
 	u32 cfg;
 
@@ -417,12 +436,12 @@ int qm_dqrr_init(struct qm_portal *portal, enum qm_dqrr_dmode dmode,
 	dqrr->dmode = dmode;
 	dqrr->pmode = pmode;
 	dqrr->cmode = cmode;
-#endif
 	dqrr->flags = 0;
 	if (stash_ring)
 		dqrr->flags |= QM_DQRR_FLAG_RE;
 	if (stash_data)
 		dqrr->flags |= QM_DQRR_FLAG_SE;
+#endif
 	cfg = (qm_in(CFG) & 0xff000f00) |
 		((max_fill & (QM_DQRR_SIZE - 1)) << 20) | /* DQRR_MF */
 		((dmode & 1) << 18) |			/* DP */
@@ -439,6 +458,7 @@ EXPORT_SYMBOL(qm_dqrr_init);
 
 void qm_dqrr_finish(struct qm_portal *portal)
 {
+	DQRR_API_START();
 	if (dqrr->ci != DQRR_PTR2IDX(dqrr->cursor))
 		pr_crit("Ignoring completed DQRR entries\n");
 	__qm_portal_unbind(portal, QM_BIND_DQRR);
@@ -447,16 +467,17 @@ EXPORT_SYMBOL(qm_dqrr_finish);
 
 void qm_dqrr_current_prefetch(struct qm_portal *portal)
 {
+	DQRR_API_START();
 	/* If ring entries get stashed, don't invalidate/prefetch */
-	if (!(dqrr->flags & QM_DQRR_FLAG_RE)) {
-		dcbi(dqrr->cursor);
-		dcbt_ro(dqrr->cursor);
-	}
+	QM_ASSERT(!(dqrr->flags & QM_DQRR_FLAG_RE));
+	dcbi(dqrr->cursor);
+	dcbt_ro(dqrr->cursor);
 }
 EXPORT_SYMBOL(qm_dqrr_current_prefetch);
 
 struct qm_dqrr_entry *qm_dqrr_current(struct qm_portal *portal)
 {
+	DQRR_API_START();
 	if (!dqrr->fill)
 		return NULL;
 	return dqrr->cursor;
@@ -465,12 +486,14 @@ EXPORT_SYMBOL(qm_dqrr_current);
 
 u8 qm_dqrr_cursor(struct qm_portal *portal)
 {
+	DQRR_API_START();
 	return DQRR_PTR2IDX(dqrr->cursor);
 }
 EXPORT_SYMBOL(qm_dqrr_cursor);
 
 u8 qm_dqrr_next(struct qm_portal *portal)
 {
+	DQRR_API_START();
 	QM_ASSERT(dqrr->fill);
 	dqrr->cursor = DQRR_INC(dqrr->cursor);
 	return --dqrr->fill;
@@ -479,6 +502,7 @@ EXPORT_SYMBOL(qm_dqrr_next);
 
 u8 qm_dqrr_pci_update(struct qm_portal *portal)
 {
+	DQRR_API_START();
 	u8 diff, old_pi = dqrr->pi;
 	QM_ASSERT(dqrr->pmode == qm_dqrr_pci);
 	dqrr->pi = qm_in(DQRR_PI_CINH) & (QM_DQRR_SIZE - 1);
@@ -490,6 +514,7 @@ EXPORT_SYMBOL(qm_dqrr_pci_update);
 
 void qm_dqrr_pce_prefetch(struct qm_portal *portal)
 {
+	DQRR_API_START();
 	QM_ASSERT(dqrr->pmode == qm_dqrr_pce);
 	qm_cl_invalidate(DQRR_PI);
 	qm_cl_touch_ro(DQRR_PI);
@@ -498,6 +523,7 @@ EXPORT_SYMBOL(qm_dqrr_pce_prefetch);
 
 u8 qm_dqrr_pce_update(struct qm_portal *portal)
 {
+	DQRR_API_START();
 	u8 diff, old_pi = dqrr->pi;
 	QM_ASSERT(dqrr->pmode == qm_dqrr_pce);
 	dqrr->pi = qm_cl_in(DQRR_PI) & (QM_DQRR_SIZE - 1);
@@ -509,17 +535,17 @@ EXPORT_SYMBOL(qm_dqrr_pce_update);
 
 void qm_dqrr_pvb_prefetch(struct qm_portal *portal)
 {
+	DQRR_API_START();
 	QM_ASSERT(dqrr->pmode == qm_dqrr_pvb);
-	/* If ring entries get stashed, don't invalidate/prefetch */
-	if (!(dqrr->flags & QM_DQRR_FLAG_RE)) {
-		dcbi(ptr_OR(dqrr->ring, qm_cl(dqrr->pi)));
-		dcbt_ro(ptr_OR(dqrr->ring, qm_cl(dqrr->pi)));
-	}
+	QM_ASSERT(!(dqrr->flags & QM_DQRR_FLAG_RE));
+	dcbi(ptr_OR(dqrr->ring, qm_cl(dqrr->pi)));
+	dcbt_ro(ptr_OR(dqrr->ring, qm_cl(dqrr->pi)));
 }
 EXPORT_SYMBOL(qm_dqrr_pvb_prefetch);
 
 u8 qm_dqrr_pvb_update(struct qm_portal *portal)
 {
+	DQRR_API_START();
 	struct qm_dqrr_entry *res = ptr_OR(dqrr->ring, qm_cl(dqrr->pi));
 	QM_ASSERT(dqrr->pmode == qm_dqrr_pvb);
 	if ((res->verb & QM_DQRR_VERB_VBIT) == dqrr->vbit) {
@@ -535,6 +561,7 @@ EXPORT_SYMBOL(qm_dqrr_pvb_update);
 
 void qm_dqrr_cci_consume(struct qm_portal *portal, u8 num)
 {
+	DQRR_API_START();
 	QM_ASSERT(dqrr->cmode == qm_dqrr_cci);
 	dqrr->ci = (dqrr->ci + num) & (QM_DQRR_SIZE - 1);
 	qm_out(DQRR_CI_CINH, dqrr->ci);
@@ -543,6 +570,7 @@ EXPORT_SYMBOL(qm_dqrr_cci_consume);
 
 void qm_dqrr_cci_consume_to_current(struct qm_portal *portal)
 {
+	DQRR_API_START();
 	QM_ASSERT(dqrr->cmode == qm_dqrr_cci);
 	dqrr->ci = DQRR_PTR2IDX(dqrr->cursor);
 	qm_out(DQRR_CI_CINH, dqrr->ci);
@@ -551,6 +579,7 @@ EXPORT_SYMBOL(qm_dqrr_cci_consume_to_current);
 
 void qm_dqrr_cce_prefetch(struct qm_portal *portal)
 {
+	DQRR_API_START();
 	QM_ASSERT(dqrr->cmode == qm_dqrr_cce);
 	qm_cl_invalidate(DQRR_CI);
 	qm_cl_touch_rw(DQRR_CI);
@@ -559,6 +588,7 @@ EXPORT_SYMBOL(qm_dqrr_cce_prefetch);
 
 void qm_dqrr_cce_consume(struct qm_portal *portal, u8 num)
 {
+	DQRR_API_START();
 	QM_ASSERT(dqrr->cmode == qm_dqrr_cce);
 	dqrr->ci = (dqrr->ci + num) & (QM_DQRR_SIZE - 1);
 	qm_cl_out(DQRR_CI, dqrr->ci);
@@ -567,6 +597,7 @@ EXPORT_SYMBOL(qm_dqrr_cce_consume);
 
 void qm_dqrr_cce_consume_to_current(struct qm_portal *portal)
 {
+	DQRR_API_START();
 	QM_ASSERT(dqrr->cmode == qm_dqrr_cce);
 	dqrr->ci = DQRR_PTR2IDX(dqrr->cursor);
 	qm_cl_out(DQRR_CI, dqrr->ci);
@@ -575,6 +606,7 @@ EXPORT_SYMBOL(qm_dqrr_cce_consume_to_current);
 
 void qm_dqrr_cdc_consume_1(struct qm_portal *portal, u8 idx, int park)
 {
+	DQRR_API_START();
 	QM_ASSERT(dqrr->cmode == qm_dqrr_cdc);
 	QM_ASSERT(idx < QM_DQRR_SIZE);
 	qm_out(DQRR_DCAP, (0 << 8) |	/* S */
@@ -586,6 +618,7 @@ EXPORT_SYMBOL(qm_dqrr_cdc_consume_1);
 void qm_dqrr_cdc_consume_1ptr(struct qm_portal *portal, struct qm_dqrr_entry *dq,
 				int park)
 {
+	DQRR_API_START();
 	u8 idx = DQRR_PTR2IDX(dq);
 	QM_ASSERT(dqrr->cmode == qm_dqrr_cdc);
 	QM_ASSERT((dqrr->ring + idx) == dq);
@@ -598,6 +631,7 @@ EXPORT_SYMBOL(qm_dqrr_cdc_consume_1ptr);
 
 void qm_dqrr_cdc_consume_n(struct qm_portal *portal, u16 bitmask)
 {
+	DQRR_API_START();
 	QM_ASSERT(dqrr->cmode == qm_dqrr_cdc);
 	qm_out(DQRR_DCAP, (1 << 8) |		/* DQRR_DCAP::S */
 		((u32)bitmask << 16));		/* DQRR_DCAP::DCAP_CI */
@@ -606,6 +640,7 @@ EXPORT_SYMBOL(qm_dqrr_cdc_consume_n);
 
 u8 qm_dqrr_cdc_cci(struct qm_portal *portal)
 {
+	DQRR_API_START();
 	QM_ASSERT(dqrr->cmode == qm_dqrr_cdc);
 	return qm_in(DQRR_CI_CINH) & (QM_DQRR_SIZE - 1);
 }
@@ -613,6 +648,7 @@ EXPORT_SYMBOL(qm_dqrr_cdc_cci);
 
 void qm_dqrr_cdc_cce_prefetch(struct qm_portal *portal)
 {
+	DQRR_API_START();
 	QM_ASSERT(dqrr->cmode == qm_dqrr_cdc);
 	qm_cl_invalidate(DQRR_CI);
 	qm_cl_touch_ro(DQRR_CI);
@@ -621,6 +657,7 @@ EXPORT_SYMBOL(qm_dqrr_cdc_cce_prefetch);
 
 u8 qm_dqrr_cdc_cce(struct qm_portal *portal)
 {
+	DQRR_API_START();
 	QM_ASSERT(dqrr->cmode == qm_dqrr_cdc);
 	return qm_cl_in(DQRR_CI) & (QM_DQRR_SIZE - 1);
 }
@@ -628,6 +665,7 @@ EXPORT_SYMBOL(qm_dqrr_cdc_cce);
 
 u8 qm_dqrr_get_ci(struct qm_portal *portal)
 {
+	DQRR_API_START();
 	QM_ASSERT(dqrr->cmode != qm_dqrr_cdc);
 	return dqrr->ci;
 }
@@ -635,6 +673,7 @@ EXPORT_SYMBOL(qm_dqrr_get_ci);
 
 void qm_dqrr_park(struct qm_portal *portal, u8 idx)
 {
+	DQRR_API_START();
 	QM_ASSERT(dqrr->cmode != qm_dqrr_cdc);
 	qm_out(DQRR_DCAP, (0 << 8) |		/* S */
 		(1 << 6) |			/* PK */
@@ -644,6 +683,7 @@ EXPORT_SYMBOL(qm_dqrr_park);
 
 void qm_dqrr_park_ci(struct qm_portal *portal)
 {
+	DQRR_API_START();
 	QM_ASSERT(dqrr->cmode != qm_dqrr_cdc);
 	qm_out(DQRR_DCAP, (0 << 8) |		/* S */
 		(1 << 6) |			/* PK */
@@ -689,6 +729,7 @@ EXPORT_SYMBOL(qm_dqrr_pdqcr_get);
 
 u8 qm_dqrr_get_ithresh(struct qm_portal *portal)
 {
+	DQRR_API_START();
 	return dqrr->ithresh;
 }
 EXPORT_SYMBOL(qm_dqrr_get_ithresh);
@@ -716,6 +757,11 @@ EXPORT_SYMBOL(qm_dqrr_set_maxfill);
 /* -------------- */
 /* --- MR API --- */
 
+/* It's safer to code in terms of the 'mr' object than the 'portal' object,
+ * because the latter runs the risk of copy-n-paste errors from other code where
+ * we could manipulate some other structure within 'portal'. */
+#define MR_API_START()		register struct qm_mr *mr = &portal->mr
+
 #define MR_CARRYCLEAR(p) \
 	(void *)((unsigned long)(p) & (~(unsigned long)(QM_MR_SIZE << 6)))
 
@@ -729,14 +775,10 @@ static inline struct qm_mr_entry *MR_INC(struct qm_mr_entry *e)
 	return MR_CARRYCLEAR(e + 1);
 }
 
-/* It's safer to code in terms of the 'mr' object than the 'portal' object,
- * because the latter runs the risk of copy-n-paste errors from other code where
- * we could manipulate some other structure within 'portal'. */
-#define mr	(&portal->mr)
-
 int qm_mr_init(struct qm_portal *portal, enum qm_mr_pmode pmode,
 		enum qm_mr_cmode cmode)
 {
+	MR_API_START();
 	u32 cfg;
 
 	if (__qm_portal_bind(portal, QM_BIND_MR))
@@ -761,6 +803,7 @@ EXPORT_SYMBOL(qm_mr_init);
 
 void qm_mr_finish(struct qm_portal *portal)
 {
+	MR_API_START();
 	if (mr->ci != MR_PTR2IDX(mr->cursor))
 		pr_crit("Ignoring completed MR entries\n");
 	__qm_portal_unbind(portal, QM_BIND_MR);
@@ -769,6 +812,7 @@ EXPORT_SYMBOL(qm_mr_finish);
 
 void qm_mr_current_prefetch(struct qm_portal *portal)
 {
+	MR_API_START();
 	dcbi(mr->cursor);
 	dcbt_ro(mr->cursor);
 }
@@ -776,6 +820,7 @@ EXPORT_SYMBOL(qm_mr_current_prefetch);
 
 struct qm_mr_entry *qm_mr_current(struct qm_portal *portal)
 {
+	MR_API_START();
 	if (!mr->fill)
 		return NULL;
 	return mr->cursor;
@@ -784,12 +829,14 @@ EXPORT_SYMBOL(qm_mr_current);
 
 u8 qm_mr_cursor(struct qm_portal *portal)
 {
+	MR_API_START();
 	return MR_PTR2IDX(mr->cursor);
 }
 EXPORT_SYMBOL(qm_mr_cursor);
 
 u8 qm_mr_next(struct qm_portal *portal)
 {
+	MR_API_START();
 	QM_ASSERT(mr->fill);
 	mr->cursor = MR_INC(mr->cursor);
 	return --mr->fill;
@@ -798,6 +845,7 @@ EXPORT_SYMBOL(qm_mr_next);
 
 u8 qm_mr_pci_update(struct qm_portal *portal)
 {
+	MR_API_START();
 	u8 diff, old_pi = mr->pi;
 	QM_ASSERT(mr->pmode == qm_mr_pci);
 	mr->pi = qm_in(MR_PI_CINH);
@@ -809,6 +857,7 @@ EXPORT_SYMBOL(qm_mr_pci_update);
 
 void qm_mr_pce_prefetch(struct qm_portal *portal)
 {
+	MR_API_START();
 	QM_ASSERT(mr->pmode == qm_mr_pce);
 	qm_cl_invalidate(MR_PI);
 	qm_cl_touch_ro(MR_PI);
@@ -817,6 +866,7 @@ EXPORT_SYMBOL(qm_mr_pce_prefetch);
 
 u8 qm_mr_pce_update(struct qm_portal *portal)
 {
+	MR_API_START();
 	u8 diff, old_pi = mr->pi;
 	QM_ASSERT(mr->pmode == qm_mr_pce);
 	mr->pi = qm_cl_in(MR_PI) & (QM_MR_SIZE - 1);
@@ -828,6 +878,7 @@ EXPORT_SYMBOL(qm_mr_pce_update);
 
 void qm_mr_pvb_prefetch(struct qm_portal *portal)
 {
+	MR_API_START();
 	QM_ASSERT(mr->pmode == qm_mr_pvb);
 	dcbi(ptr_OR(mr->ring, qm_cl(mr->pi)));
 	dcbt_ro(ptr_OR(mr->ring, qm_cl(mr->pi)));
@@ -836,6 +887,7 @@ EXPORT_SYMBOL(qm_mr_pvb_prefetch);
 
 u8 qm_mr_pvb_update(struct qm_portal *portal)
 {
+	MR_API_START();
 	struct qm_mr_entry *res = ptr_OR(mr->ring, qm_cl(mr->pi));
 	QM_ASSERT(mr->pmode == qm_mr_pvb);
 	if ((res->verb & QM_MR_VERB_VBIT) == mr->vbit) {
@@ -851,6 +903,7 @@ EXPORT_SYMBOL(qm_mr_pvb_update);
 
 void qm_mr_cci_consume(struct qm_portal *portal, u8 num)
 {
+	MR_API_START();
 	QM_ASSERT(mr->cmode == qm_mr_cci);
 	mr->ci = (mr->ci + num) & (QM_MR_SIZE - 1);
 	qm_out(MR_CI_CINH, mr->ci);
@@ -859,6 +912,7 @@ EXPORT_SYMBOL(qm_mr_cci_consume);
 
 void qm_mr_cci_consume_to_current(struct qm_portal *portal)
 {
+	MR_API_START();
 	QM_ASSERT(mr->cmode == qm_mr_cci);
 	mr->ci = MR_PTR2IDX(mr->cursor);
 	qm_out(MR_CI_CINH, mr->ci);
@@ -867,6 +921,7 @@ EXPORT_SYMBOL(qm_mr_cci_consume_to_current);
 
 void qm_mr_cce_prefetch(struct qm_portal *portal)
 {
+	MR_API_START();
 	QM_ASSERT(mr->cmode == qm_mr_cce);
 	qm_cl_invalidate(MR_CI);
 	qm_cl_touch_rw(MR_CI);
@@ -875,6 +930,7 @@ EXPORT_SYMBOL(qm_mr_cce_prefetch);
 
 void qm_mr_cce_consume(struct qm_portal *portal, u8 num)
 {
+	MR_API_START();
 	QM_ASSERT(mr->cmode == qm_mr_cce);
 	mr->ci = (mr->ci + num) & (QM_MR_SIZE - 1);
 	qm_cl_out(MR_CI, mr->ci);
@@ -883,6 +939,7 @@ EXPORT_SYMBOL(qm_mr_cce_consume);
 
 void qm_mr_cce_consume_to_current(struct qm_portal *portal)
 {
+	MR_API_START();
 	QM_ASSERT(mr->cmode == qm_mr_cce);
 	mr->ci = MR_PTR2IDX(mr->cursor);
 	qm_cl_out(MR_CI, mr->ci);
@@ -891,12 +948,14 @@ EXPORT_SYMBOL(qm_mr_cce_consume_to_current);
 
 u8 qm_mr_get_ci(struct qm_portal *portal)
 {
+	MR_API_START();
 	return mr->ci;
 }
 EXPORT_SYMBOL(qm_mr_get_ci);
 
 u8 qm_mr_get_ithresh(struct qm_portal *portal)
 {
+	MR_API_START();
 	return mr->ithresh;
 }
 EXPORT_SYMBOL(qm_mr_get_ithresh);
@@ -914,10 +973,11 @@ EXPORT_SYMBOL(qm_mr_set_ithresh);
 /* It's safer to code in terms of the 'mc' object than the 'portal' object,
  * because the latter runs the risk of copy-n-paste errors from other code where
  * we could manipulate some other structure within 'portal'. */
-#define mc	(&portal->mc)
+#define MC_API_START()		register struct qm_mc *mc = &portal->mc
 
 int qm_mc_init(struct qm_portal *portal)
 {
+	MC_API_START();
 	if (__qm_portal_bind(portal, QM_BIND_MC))
 		return -EBUSY;
 	mc->cr = ptr_OR(portal->addr.addr_ce, CL_CR);
@@ -934,6 +994,7 @@ EXPORT_SYMBOL(qm_mc_init);
 
 void qm_mc_finish(struct qm_portal *portal)
 {
+	MC_API_START();
 	QM_ASSERT(mc->state == mc_idle);
 #ifdef CONFIG_FSL_QMAN_CHECKING
 	if (mc->state != mc_idle)
@@ -945,6 +1006,7 @@ EXPORT_SYMBOL(qm_mc_finish);
 
 struct qm_mc_command *qm_mc_start(struct qm_portal *portal)
 {
+	MC_API_START();
 	QM_ASSERT(mc->state == mc_idle);
 #ifdef CONFIG_FSL_QMAN_CHECKING
 	mc->state = mc_user;
@@ -956,6 +1018,7 @@ EXPORT_SYMBOL(qm_mc_start);
 
 void qm_mc_abort(struct qm_portal *portal)
 {
+	MC_API_START();
 	QM_ASSERT(mc->state == mc_user);
 #ifdef CONFIG_FSL_QMAN_CHECKING
 	mc->state = mc_idle;
@@ -965,6 +1028,7 @@ EXPORT_SYMBOL(qm_mc_abort);
 
 void qm_mc_commit(struct qm_portal *portal, u8 myverb)
 {
+	MC_API_START();
 	QM_ASSERT(mc->state == mc_user);
 	dcbi(mc->rr + mc->rridx);
 	lwsync();
@@ -979,6 +1043,7 @@ EXPORT_SYMBOL(qm_mc_commit);
 
 struct qm_mc_result *qm_mc_result(struct qm_portal *portal)
 {
+	MC_API_START();
 	struct qm_mc_result *rr = mc->rr + mc->rridx;
 	QM_ASSERT(mc->state == mc_hw);
 	/* The inactive response register's verb byte always returns zero until

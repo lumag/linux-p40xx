@@ -92,13 +92,7 @@ static inline void put_affine_portal(void)
 {
 	put_cpu_var(bman_affine_portal);
 }
-#define BMAN_PORTAL_FLAG_IRQ         0x00000001 /* use interrupt handler */
-#define BMAN_PORTAL_FLAG_IRQ_FAST    0x00000002 /* ... for fast-path too! */
-#define BMAN_PORTAL_FLAG_COMPACT     0x00000004 /* use compaction algorithm */
-#define BMAN_PORTAL_FLAG_RECOVER     0x00000008 /* recovery mode */
-#define BMAN_PORTAL_FLAG_WAIT        0x00000010 /* wait if RCR is full */
-#define BMAN_PORTAL_FLAG_WAIT_INT    0x00000020 /* if wait, interruptible? */
-struct bman_portal *bman_create_portal(struct bm_portal *portal, u32 flags,
+struct bman_portal *bman_create_portal(struct bm_portal *portal,
 					const struct bman_depletion *pools);
 void bman_destroy_portal(struct bman_portal *p);
 

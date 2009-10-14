@@ -262,9 +262,7 @@ bad_cpu_ph:
 		return 0;
 	affine_portal = per_cpu(bman_affine_portal, cfg.cpu);
 	if (!affine_portal) {
-		affine_portal = bman_create_portal(portal,
-			BMAN_PORTAL_FLAG_IRQ | BMAN_PORTAL_FLAG_IRQ_FAST,
-			&cfg.mask);
+		affine_portal = bman_create_portal(portal, &cfg.mask);
 		if (!affine_portal)
 			pr_err("Bman portal auto-initialisation failed\n");
 		else {

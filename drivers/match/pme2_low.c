@@ -168,20 +168,11 @@ static const struct pme_flow default_sw_flow = {
 	.mlim = 0xffff
 };
 
-struct pme_flow *pme_sw_flow_new(void)
+void pme_sw_flow_init(struct pme_flow *flow)
 {
-	struct pme_flow *flow = kmem_cache_zalloc(slab_flow, GFP_KERNEL);
-	if (likely(flow))
-		memcpy(flow, &default_sw_flow, sizeof(*flow));
-	return flow;
+	memcpy(flow, &default_sw_flow, sizeof(*flow));
 }
-EXPORT_SYMBOL(pme_sw_flow_new);
-
-void pme_sw_flow_free(struct pme_flow *p)
-{
-	kmem_cache_free(slab_flow, p);
-}
-EXPORT_SYMBOL(pme_sw_flow_free);
+EXPORT_SYMBOL(pme_sw_flow_init);
 
 void pme_initfq(struct qm_mcc_initfq *initfq, struct pme_hw_flow *flow, u8 qos,
 		u8 rbpid, u32 rfqid)
@@ -232,7 +223,7 @@ void pme_fd_cmd_fcw(struct qm_fd *fd, u8 flags, struct pme_flow *flow,
 	fcw->cmd = pme_cmd_flow_write;
 	fcw->flags = flags;
 	if (flags & PME_CMD_FCW_RES) {
-		if (flow->ren) {
+		if (residue) {
 			dma_addr_t rptr;
 			rptr = residue_map(residue);
 			BUG_ON(!residue);
@@ -243,7 +234,6 @@ void pme_fd_cmd_fcw(struct qm_fd *fd, u8 flags, struct pme_flow *flow,
 			flow->rptr_hi = 0;
 			flow->rptr_lo = rptr;
 		} else {
-			BUG_ON(residue);
 			flow->rptr_hi = 0;
 			flow->rptr_lo = 0;
 		}

@@ -123,7 +123,6 @@ static void do_enqueues(struct qman_fq *fq)
 {
 	unsigned int loop;
 	for (loop = 0; loop < NUM_ENQUEUES; loop++) {
-		pr_info("Enqueue: %08x\n", fd.addr_lo);
 		if (qman_enqueue(fq, &fd, QMAN_ENQUEUE_FLAG_WAIT |
 				(((loop + 1) == NUM_ENQUEUES) ?
 				QMAN_ENQUEUE_FLAG_WAIT_SYNC : 0)))
@@ -143,8 +142,6 @@ void qman_test_high(void)
 	fd_init(&fd_dq);
 	qman_cgrs_init(&cgrs);
 	qman_cgrs_set(&cgrs, CGR_ID);
-
-	pr_info("high-level test, start ccmode\n");
 
 	/* Initialise (parked) FQ */
 	if (qman_create_fq(0, FQ_FLAGS, fq))
@@ -194,8 +191,6 @@ static enum qman_cb_dqrr_result cb_dqrr(struct qman_portal *p,
 					struct qman_fq *fq,
 					const struct qm_dqrr_entry *dq)
 {
-	pr_info("Dequeue: %08x (%s)\n", dq->fd.addr_lo,
-		(dq->stat & QM_DQRR_STAT_UNSCHEDULED) ? "VDQCR" : "SDQCR");
 	if (fd_cmp(&fd_dq, &dq->fd)) {
 		pr_err("BADNESS: dequeued frame doesn't match;\n");
 		BUG();

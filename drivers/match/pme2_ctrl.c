@@ -696,6 +696,30 @@ int pme_attr_set(enum pme_attr attr, u32 val)
 	case pme_attr_dxemecc1th:
 		pme_out(global_pme, DXEMECC1TH, val);
 		break;
+	case pme_attr_esr:
+		pme_out(global_pme, ESR, val);
+		break;
+	case pme_attr_pehd:
+		pme_out(global_pme, PEHD, val);
+		break;
+	case pme_attr_ecc1bes:
+		pme_out(global_pme, ECC1BES, val);
+		break;
+	case pme_attr_ecc2bes:
+		pme_out(global_pme, ECC2BES, val);
+		break;
+	case pme_attr_miace:
+		pme_out(global_pme, MIA_CE, val);
+		break;
+	case pme_attr_miacr:
+		pme_out(global_pme, MIA_CR, val);
+		break;
+	case pme_attr_cdcr:
+		pme_out(global_pme, CDCR, val);
+		break;
+	case pme_attr_pmtr:
+		pme_out(global_pme, PMTR, val);
+		break;
 
 	default:
 		pr_err("pme: Unknown attr %u\n", attr);
@@ -837,7 +861,9 @@ int pme_attr_get(enum pme_attr attr, u32 *val)
 		/* bits 24..31 */
 		attr_val = pme_in(global_pme, SREC);
 		/* clear unwanted bits in val*/
-		attr_val &= 0x000003FF;
+		attr_val &= 0x000000FF;
+		/* Multiply by 256 */
+		attr_val <<= 8;
 		break;
 
 	case pme_attr_sre_session_ctx_num: {
@@ -1056,6 +1082,78 @@ int pme_attr_get(enum pme_attr attr, u32 *val)
 
 	case pme_attr_isr:
 		attr_val = pme_in(global_pme, ISR);
+		break;
+
+	case pme_attr_ecr0:
+		attr_val = pme_in(global_pme, ECR0);
+		break;
+
+	case pme_attr_ecr1:
+		attr_val = pme_in(global_pme, ECR1);
+		break;
+
+	case pme_attr_esr:
+		attr_val = pme_in(global_pme, ESR);
+		break;
+
+	case pme_attr_pmstat:
+		attr_val = pme_in(global_pme, PMSTAT);
+		break;
+
+	case pme_attr_pehd:
+		attr_val = pme_in(global_pme, PEHD);
+		break;
+
+	case pme_attr_ecc1bes:
+		attr_val = pme_in(global_pme, ECC1BES);
+		break;
+
+	case pme_attr_ecc2bes:
+		attr_val = pme_in(global_pme, ECC2BES);
+		break;
+
+	case pme_attr_eccaddr:
+		attr_val = pme_in(global_pme, ECCADDR);
+		break;
+
+	case pme_attr_ecccode:
+		attr_val = pme_in(global_pme, ECCCODE);
+		break;
+
+	case pme_attr_miace:
+		attr_val = pme_in(global_pme, MIA_CE);
+		break;
+
+	case pme_attr_miacr:
+		attr_val = pme_in(global_pme, MIA_CR);
+		break;
+
+	case pme_attr_cdcr:
+		attr_val = pme_in(global_pme, CDCR);
+		break;
+
+	case pme_attr_pmtr:
+		attr_val = pme_in(global_pme, PMTR);
+		break;
+
+	case pme_attr_faconf:
+		attr_val = pme_in(global_pme, FACONF);
+		break;
+
+	case pme_attr_pdsrbah:
+		attr_val = pme_in(global_pme, PDSRBAH);
+		break;
+
+	case pme_attr_pdsrbal:
+		attr_val = pme_in(global_pme, PDSRBAL);
+		break;
+
+	case pme_attr_scbarh:
+		attr_val = pme_in(global_pme, SCBARH);
+		break;
+
+	case pme_attr_scbarl:
+		attr_val = pme_in(global_pme, SCBARL);
 		break;
 
 	default:

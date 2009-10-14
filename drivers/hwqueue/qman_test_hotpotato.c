@@ -42,7 +42,7 @@
  * organisation of FQIDs is such that the HP_PER_CPU*NUM_CPUS handlers will
  * shuttle a "hot potato" frame around them such that every forwarding action
  * moves it from one cpu to another. (The use of more than one handler per cpu
- * is to allow enough handlers/FQs to truly test the significance of cachine -
+ * is to allow enough handlers/FQs to truly test the significance of caching -
  * ie. when cache-expiries are occuring.)
  *
  * The "hot potato" frame content will be HP_NUM_WORDS*4 bytes in size, and the
@@ -65,18 +65,18 @@
  *    into 'hp_cpu_list'. Specifically, set processor_id, allocate HP_PER_CPU
  *    handlers and link-list them (but do no other handler setup).
  *
- * 2. scan over 'hp_list' HP_PER_CPU times, the first time sets each hp_cpu's
- *    'iterator' to point to its first handler. With each loop, allocate rx/tx
- *    FQIDs and mixer values to the hp_cpu's iterator handler and advance the
- *    iterator for the next loop. This includes a final fixup, which connects
- *    the last handler to the first (and which is why phase 2 and 3 are
- *    separate).
+ * 2. scan over 'hp_cpu_list' HP_PER_CPU times, the first time sets each
+ *    hp_cpu's 'iterator' to point to its first handler. With each loop,
+ *    allocate rx/tx FQIDs and mixer values to the hp_cpu's iterator handler
+ *    and advance the iterator for the next loop. This includes a final fixup,
+ *    which connects the last handler to the first (and which is why phase 2
+ *    and 3 are separate).
  *
- * 3. scan over 'hp_list' HP_PER_CPU times, the first time sets each hp_cpu's
- *    'iterator' to point to its first handler. With each loop, initialise FQ
- *    objects and advance the iterator for the next loop. Moreover, do this
- *    initialisation on the cpu it applies to so that Rx FQ initialisation
- *    targets the correct cpu.
+ * 3. scan over 'hp_cpu_list' HP_PER_CPU times, the first time sets each
+ *    hp_cpu's 'iterator' to point to its first handler. With each loop,
+ *    initialise FQ objects and advance the iterator for the next loop.
+ *    Moreover, do this initialisation on the cpu it applies to so that Rx FQ
+ *    initialisation targets the correct cpu.
  */
 
 struct hp_handler {
@@ -408,6 +408,11 @@ static void send_first_frame(void *ignore)
 
 void qman_test_hotpotato(void)
 {
+	if (num_online_cpus() < 2) {
+		pr_info("qman_test_hotpotato, skipping - only 1 cpu\n");
+		return;
+	}
+
 	pr_info("qman_test_hotpotato starting\n");
 
 	hp_cpu_list_length = 0;

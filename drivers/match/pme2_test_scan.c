@@ -57,14 +57,30 @@ struct scan_ctx {
 	struct qm_fd result_fd;
 };
 
+struct ctrl_op {
+	struct pme_ctx_ctrl_token ctx_ctr;
+	struct completion cb_done;
+	enum pme_status cmd_status;
+	u8 res_flag;
+};
+
+static void ctrl_cb(struct pme_ctx *ctx, const struct qm_fd *fd,
+		struct pme_ctx_ctrl_token *token)
+{
+	struct ctrl_op *ctrl = (struct ctrl_op *)token;
+	pr_info("pme2_test_high: ctrl_cb() invoked, fd;!\n");
+	ctrl->cmd_status = pme_fd_res_status(fd);
+	ctrl->res_flag = pme_fd_res_flags(fd);
+	hexdump(fd, sizeof(*fd));
+	complete(&ctrl->cb_done);
+}
+
 static DECLARE_COMPLETION(scan_comp);
 
 static void scan_cb(struct pme_ctx *ctx, const struct qm_fd *fd,
 		struct pme_ctx_token *ctx_token)
 {
 	struct scan_ctx *my_ctx = (struct scan_ctx *)ctx;
-	pr_info("st: scan_cb() invoked, fd;!\n");
-	hexdump(fd, sizeof(*fd));
 	memcpy(&my_ctx->result_fd, fd, sizeof(*fd));
 	complete(&scan_comp);
 }
@@ -93,19 +109,23 @@ static void empty_buffer(void)
 
 	do {
 		ret = bman_acquire(pool, &bufs_in, 1, 0);
-		if (!ret)
-			pr_info("st: Acquired buffer\n");
 	} while (!ret);
 }
 #endif /*CONFIG_FSL_PME2_TEST_SCAN_WITH_BPID*/
 
 void pme2_test_scan(void)
 {
-	struct pme_flow *flow;
+	struct pme_flow flow;
+	struct pme_flow rb_flow;
 	struct scan_ctx a_scan_ctx = {
 		.base_ctx = {
 			.cb = scan_cb
 		}
+	};
+	struct ctrl_op ctx_ctrl =  {
+		.ctx_ctr.cb = ctrl_cb,
+		.cmd_status = 0,
+		.res_flag = 0
 	};
 	struct qm_fd fd;
 	struct qm_sg_entry sg_table[2];
@@ -122,6 +142,8 @@ void pme2_test_scan(void)
 		0x00,0x00, 0x00,0x00,0x00
 	};
 
+	pme_sw_flow_init(&flow);
+	init_completion(&ctx_ctrl.cb_done);
 	scan_result = scan_result_direct_mode_inc_mode;
 	scan_result_size = sizeof(scan_result_direct_mode_inc_mode);
 
@@ -152,15 +174,10 @@ void pme2_test_scan(void)
 	fd._format2 = qm_fd_compound;
 	fd.addr_lo = pme_map(sg_table);
 
-	pr_info("st: Send scan request\n");
 	ret = pme_ctx_scan(&a_scan_ctx.base_ctx, 0, &fd,
 		PME_SCAN_ARGS(PME_CMD_SCAN_SR | PME_CMD_SCAN_E, 0, 0xff00),
 		&token);
-	pr_info("st: Response scan %d\n", ret);
 	wait_for_completion(&scan_comp);
-
-	pr_info("st: Status is fd.status %x\n",
-			a_scan_ctx.result_fd.status);
 
 	status = pme_fd_res_status(&a_scan_ctx.result_fd);
 	if (status) {
@@ -181,27 +198,17 @@ void pme2_test_scan(void)
 	fd.length20 = sizeof(scan_data);
 	fd.addr_lo = pme_map(scan_data);
 
-	pr_info("st: Send scan request\n");
-
 	ret = pme_ctx_scan(&a_scan_ctx.base_ctx, 0, &fd,
 		PME_SCAN_ARGS(PME_CMD_SCAN_SR | PME_CMD_SCAN_E, 0, 0xff00),
 		&token);
-
-	pr_info("st: Response scan %d\n", ret);
 	wait_for_completion(&scan_comp);
 
-	pr_info("st: Status is fd.status %x\n",
-			a_scan_ctx.result_fd.status);
-
 	status = pme_fd_res_status(&a_scan_ctx.result_fd);
-	pr_info("st: Scan status %x\n", status);
-
 	/* Check the response...expect truncation bit to be set */
 	if (!(pme_fd_res_flags(&a_scan_ctx.result_fd) & PME_STATUS_TRUNCATED)) {
 		pr_info("st: Scan result failed...expected trunc\n");
 		BUG_ON(1);
 	}
-	pr_info("st: Simple scan test Passed\n");
 
 	/* Disable */
 	ret = pme_ctx_disable(&a_scan_ctx.base_ctx, PME_CTX_OP_WAIT);
@@ -228,15 +235,10 @@ void pme2_test_scan(void)
 	fd._format2 = qm_fd_compound;
 	fd.addr_lo = pme_map(sg_table);
 
-	pr_info("st: Send scan with bpid response request\n");
 	ret = pme_ctx_scan(&a_scan_ctx.base_ctx, 0, &fd,
 		PME_SCAN_ARGS(PME_CMD_SCAN_SR | PME_CMD_SCAN_E, 0, 0xff00),
 		&token);
-	pr_info("st: Response scan %d\n", ret);
 	wait_for_completion(&scan_comp);
-
-	pr_info("st: Status is fd.status %x\n",
-			a_scan_ctx.result_fd.status);
 
 	status = pme_fd_res_status(&a_scan_ctx.result_fd);
 	if (status) {
@@ -245,8 +247,6 @@ void pme2_test_scan(void)
 	}
 
 	/* sg result should point to bman buffer */
-	pr_info("st: sg result should point to bman buffer 0x%x\n",
-			sg_table[0].addr_lo);
 	if (!sg_table[0].addr_lo)
 		BUG_ON(1);
 
@@ -260,7 +260,6 @@ void pme2_test_scan(void)
 	}
 
 	release_buffer(sg_table[0].addr_lo);
-	pr_info("st: Released to bman\n");
 
 	/* Disable */
 	ret = pme_ctx_disable(&a_scan_ctx.base_ctx, PME_CTX_OP_WAIT);
@@ -273,40 +272,31 @@ void pme2_test_scan(void)
 	/*********************** Flow Mode ************************************/
 	/**********************************************************************/
 	/**********************************************************************/
-	pr_info("st: Start Flow Mode Test\n");
 
-	flow = pme_sw_flow_new();
-	BUG_ON(!flow);
 	ret = pme_ctx_init(&a_scan_ctx.base_ctx,
 		PME_CTX_FLAG_LOCAL, 0, 4, 4, 0, NULL);
 	BUG_ON(ret);
 
 	/* enable the context */
 	pme_ctx_enable(&a_scan_ctx.base_ctx);
-	pr_info("st: Context Enabled\n");
 
 	ret = pme_ctx_ctrl_update_flow(&a_scan_ctx.base_ctx,
-		PME_CTX_OP_WAIT | PME_CMD_FCW_ALL, flow);
+		PME_CTX_OP_WAIT | PME_CMD_FCW_ALL, &flow, &ctx_ctrl.ctx_ctr);
+	wait_for_completion(&ctx_ctrl.cb_done);
 	BUG_ON(ret);
 
 	/* read back flow settings */
-	{
-		struct pme_flow *rb_flow = pme_sw_flow_new();
-
-		ret = pme_ctx_ctrl_read_flow(&a_scan_ctx.base_ctx,
-					PME_CTX_OP_WAIT, rb_flow);
-		BUG_ON(ret);
-		if (memcmp(rb_flow,fl_ctx_exp, sizeof(*rb_flow)) != 0) {
-			pr_info("st: Flow Context Read FAIL\n");
-			pr_info("st: Expected\n");
-			hexdump(fl_ctx_exp, sizeof(fl_ctx_exp));
-			pr_info("st: Received...\n");
-			hexdump(rb_flow, sizeof(*rb_flow));
-			BUG_ON(1);
-		} else {
-			pr_info("st: Flow Context Read OK\n");
-		}
-		pme_sw_flow_free(rb_flow);
+	ret = pme_ctx_ctrl_read_flow(&a_scan_ctx.base_ctx,
+			PME_CTX_OP_WAIT, &rb_flow, &ctx_ctrl.ctx_ctr);
+	wait_for_completion(&ctx_ctrl.cb_done);
+	BUG_ON(ret);
+	if (memcmp(&rb_flow, fl_ctx_exp, sizeof(rb_flow)) != 0) {
+		pr_info("st: Flow Context Read FAIL\n");
+		pr_info("st: Expected\n");
+		hexdump(fl_ctx_exp, sizeof(fl_ctx_exp));
+		pr_info("st: Received...\n");
+		hexdump(&rb_flow, sizeof(rb_flow));
+		BUG_ON(1);
 	}
 
 	/* Do a pre-built output, scan with match test */
@@ -324,16 +314,10 @@ void pme2_test_scan(void)
 	fd._format2 = qm_fd_compound;
 	fd.addr_lo = pme_map(sg_table);
 
-	pr_info("st: Send scan request\n");
 	ret = pme_ctx_scan(&a_scan_ctx.base_ctx, 0, &fd,
 		PME_SCAN_ARGS(PME_CMD_SCAN_SR | PME_CMD_SCAN_E, 0, 0xff00),
 		&token);
-
-	pr_info("st: Response scan %d\n", ret);
 	wait_for_completion(&scan_comp);
-
-	pr_info("st: Status is fd.status %x\n",
-			a_scan_ctx.result_fd.status);
 
 	status = pme_fd_res_status(&a_scan_ctx.result_fd);
 	if (status) {
@@ -350,26 +334,19 @@ void pme2_test_scan(void)
 	}
 
 	/* read back flow settings */
-	{
-		struct pme_flow *rb_flow = pme_sw_flow_new();
-
-		ret = pme_ctx_ctrl_read_flow(&a_scan_ctx.base_ctx,
-					PME_CTX_OP_WAIT, rb_flow);
-		BUG_ON(ret);
-		if (memcmp(rb_flow, fl_ctx_exp_post_scan,
-					sizeof(*rb_flow)) != 0) {
-			pr_info("st: Flow Context Read FAIL\n");
-			pr_info("st: Expected\n");
-			hexdump(fl_ctx_exp_post_scan,
-				sizeof(fl_ctx_exp_post_scan));
-			pr_info("st: Received\n");
-			hexdump(rb_flow, sizeof(*rb_flow));
-			BUG_ON(1);
-		} else {
-			pr_info("st: Flow Context Read OK\n");
-		}
-		pme_sw_flow_free(rb_flow);
+	ret = pme_ctx_ctrl_read_flow(&a_scan_ctx.base_ctx,
+			PME_CTX_OP_WAIT, &rb_flow, &ctx_ctrl.ctx_ctr);
+	wait_for_completion(&ctx_ctrl.cb_done);
+	BUG_ON(ret);
+	if (memcmp(&rb_flow, fl_ctx_exp_post_scan, sizeof(rb_flow)) != 0) {
+		pr_info("st: Flow Context Read FAIL\n");
+		pr_info("st: Expected\n");
+		hexdump(fl_ctx_exp_post_scan, sizeof(fl_ctx_exp_post_scan));
+		pr_info("st: Received\n");
+		hexdump(&rb_flow, sizeof(rb_flow));
+		BUG_ON(1);
 	}
+
 	/* Test truncation test */
 	/* Build a frame descriptor */
 	memset(&fd, 0, sizeof(struct qm_fd));
@@ -377,53 +354,36 @@ void pme2_test_scan(void)
 	fd.length20 = sizeof(scan_data);
 	fd.addr_lo = pme_map(scan_data);
 
-	pr_info("st: Send scan request\n");
 	ret = pme_ctx_scan(&a_scan_ctx.base_ctx, 0, &fd,
 		PME_SCAN_ARGS(PME_CMD_SCAN_SR | PME_CMD_SCAN_E, 0, 0xff00),
 		&token);
-
-	pr_info("st: Response scan %d\n", ret);
 	wait_for_completion(&scan_comp);
 
-	pr_info("st: Status is fd.status %x\n",
-			a_scan_ctx.result_fd.status);
-
 	status = pme_fd_res_status(&a_scan_ctx.result_fd);
-	 pr_info("Scan status %x\n",status);
-
 	/* Check the response...expect truncation bit to be set */
 	if (!(pme_fd_res_flags(&a_scan_ctx.result_fd) & PME_STATUS_TRUNCATED)) {
 		pr_info("st: Scan result failed...expected trunc\n");
 		BUG_ON(1);
 	}
-	pr_info("st: Simple scan test Passed\n");
 
 	/* read back flow settings */
-	{
-		struct pme_flow *rb_flow = pme_sw_flow_new();
-		ret = pme_ctx_ctrl_read_flow(&a_scan_ctx.base_ctx,
-					PME_CTX_OP_WAIT, rb_flow);
-		BUG_ON(ret);
-		if (memcmp(rb_flow, fl_ctx_exp_post_scan,
-					sizeof(*rb_flow)) != 0) {
-			pr_info("st: Flow Context Read FAIL\n");
-			pr_info("st: Expected\n");
-			hexdump(fl_ctx_exp_post_scan,
-				sizeof(fl_ctx_exp_post_scan));
-			pr_info("st: Received\n");
-			hexdump(rb_flow, sizeof(*rb_flow));
-			BUG_ON(1);
-		} else {
-			pr_info("st: Flow Context Read OK\n");
-		}
-		pme_sw_flow_free(rb_flow);
+	ret = pme_ctx_ctrl_read_flow(&a_scan_ctx.base_ctx,
+			PME_CTX_OP_WAIT, &rb_flow, &ctx_ctrl.ctx_ctr);
+	wait_for_completion(&ctx_ctrl.cb_done);
+	BUG_ON(ret);
+	if (memcmp(&rb_flow, fl_ctx_exp_post_scan, sizeof(rb_flow)) != 0) {
+		pr_info("st: Flow Context Read FAIL\n");
+		pr_info("st: Expected\n");
+		hexdump(fl_ctx_exp_post_scan, sizeof(fl_ctx_exp_post_scan));
+		pr_info("st: Received\n");
+		hexdump(&rb_flow, sizeof(rb_flow));
+		BUG_ON(1);
 	}
 
 	/* Disable */
 	ret = pme_ctx_disable(&a_scan_ctx.base_ctx, PME_CTX_OP_WAIT);
 	BUG_ON(ret);
 	pme_ctx_finish(&a_scan_ctx.base_ctx);
-	pme_sw_flow_free(flow);
 
 	pr_info("st: Scan Test Passed\n");
 }

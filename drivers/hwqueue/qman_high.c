@@ -116,6 +116,7 @@ struct qman_portal {
 	struct qman_fq_cb null_cb;
 	/* This is needed for providing a non-NULL device to dma_map_***() */
 	struct platform_device *pdev;
+	struct qman_rbtree retire_table;
 };
 
 /* This gives a FQID->FQ lookup to cover the fact that we can't directly demux
@@ -127,43 +128,27 @@ struct qman_portal {
  * all FQs - FQs are added when retirement commands are issued, and removed when
  * they complete, which also massively reduces the size of this table. */
 IMPLEMENT_QMAN_RBTREE(fqtree, struct qman_fq, node, fqid);
-static struct qman_rbtree table = QMAN_RBTREE;
-/* This is only locked with local_irq_disable() held or from interrupt context,
- * so spin_lock_irq() shouldn't be used (nesting trouble). */
-static spinlock_t table_lock = SPIN_LOCK_UNLOCKED;
-static unsigned int table_num;
 
 /* This is what everything can wait on, even if it migrates to a different cpu
  * to the one whose affine portal it is waiting on. */
 static DECLARE_WAIT_QUEUE_HEAD(affine_queue);
 
-static inline int table_push_fq(struct qman_fq *fq)
+static inline int table_push_fq(struct qman_portal *p, struct qman_fq *fq)
 {
-	int ret;
-	spin_lock(&table_lock);
-	ret = fqtree_push(&table, fq);
+	int ret = fqtree_push(&p->retire_table, fq);
 	if (ret)
 		pr_err("ERROR: double FQ-retirement %d\n", fq->fqid);
-	else
-		table_num++;
-	spin_unlock(&table_lock);
 	return ret;
 }
 
-static inline void table_del_fq(struct qman_fq *fq)
+static inline void table_del_fq(struct qman_portal *p, struct qman_fq *fq)
 {
-	spin_lock(&table_lock);
-	fqtree_del(&table, fq);
-	spin_unlock(&table_lock);
+	fqtree_del(&p->retire_table, fq);
 }
 
-static inline struct qman_fq *table_find_fq(u32 fqid)
+static inline struct qman_fq *table_find_fq(struct qman_portal *p, u32 fqid)
 {
-	struct qman_fq *fq;
-	spin_lock(&table_lock);
-	fq = fqtree_find(&table, fqid);
-	spin_unlock(&table_lock);
-	return fq;
+	return fqtree_find(&p->retire_table, fqid);
 }
 
 /* In the case that slow- and fast-path handling are both done by qman_poll()
@@ -175,26 +160,30 @@ static inline struct qman_fq *table_find_fq(u32 fqid)
  * work to do. */
 #define SLOW_POLL_IDLE   1000
 #define SLOW_POLL_BUSY   10
-static u32 __poll_portal_slow(struct qman_portal *p, u32 is);
-static void __poll_portal_fast(struct qman_portal *p);
+static u32 __poll_portal_slow(struct qman_portal *p, struct qm_portal *lowp,
+				u32 is);
+static inline void __poll_portal_fast(struct qman_portal *p,
+					struct qm_portal *lowp);
 
+#ifdef CONFIG_FSL_QMAN_HAVE_IRQ
 /* Portal interrupt handler */
 static irqreturn_t portal_isr(int irq, void *ptr)
 {
 	struct qman_portal *p = ptr;
-	u32 clear = QM_PIRQ_DQRI, is = qm_isr_status_read(p->p);
-	if (unlikely(!(p->options & QMAN_PORTAL_FLAG_IRQ))) {
-		pr_crit("Portal interrupt is supposed to be disabled!\n");
-		qm_isr_inhibit(p->p);
-		return IRQ_HANDLED;
-	}
+	struct qm_portal *lowp = p->p;
+	u32 clear = 0, is = qm_isr_status_read(lowp);
 	/* Only do fast-path handling if it's required */
-	if (p->options & QMAN_PORTAL_FLAG_IRQ_FAST)
-		__poll_portal_fast(p);
-	clear |= __poll_portal_slow(p, is);
-	qm_isr_status_clear(p->p, clear);
+#ifdef CONFIG_FSL_QMAN_PORTAL_FLAG_IRQ_FAST
+	clear |= QM_PIRQ_DQRI;
+	__poll_portal_fast(p, lowp);
+#endif
+#ifdef CONFIG_FSL_QMAN_PORTAL_FLAG_IRQ_SLOW
+	clear |= __poll_portal_slow(p, lowp, is);
+#endif
+	qm_isr_status_clear(lowp, clear);
 	return IRQ_HANDLED;
 }
+#endif
 
 /* This inner version is used privately by qman_create_portal(), as well as by
  * the exported qman_disable_portal(). */
@@ -231,19 +220,20 @@ struct qman_portal *qman_create_portal(struct qm_portal *__p, u32 flags,
 	int ret;
 	u32 isdr;
 
-	if (!(flags & QMAN_PORTAL_FLAG_NOTAFFINE))
-		/* core-affine portals don't need multi-core locking */
-		flags &= ~QMAN_PORTAL_FLAG_LOCKED;
 	portal = kmalloc(sizeof(*portal), GFP_KERNEL);
 	if (!portal)
 		return NULL;
-	if (qm_eqcr_init(__p, qm_eqcr_pvb, qm_eqcr_cci)) {
+	if (qm_eqcr_init(__p, qm_eqcr_pvb, qm_eqcr_cce)) {
 		pr_err("Qman EQCR initialisation failed\n");
 		goto fail_eqcr;
 	}
 	if (qm_dqrr_init(__p, qm_dqrr_dpush, qm_dqrr_pvb,
-			(flags & QMAN_PORTAL_FLAG_DCA) ? qm_dqrr_cdc :
-					qm_dqrr_cci, DQRR_MAXFILL,
+#ifdef CONFIG_FSL_QMAN_PORTAL_DISABLEAUTO_DCA
+			qm_dqrr_cci
+#else
+			qm_dqrr_cdc
+#endif
+			, DQRR_MAXFILL,
 			(flags & QMAN_PORTAL_FLAG_RSTASH) ? 1 : 0,
 			(flags & QMAN_PORTAL_FLAG_DSTASH) ? 1 : 0)) {
 		pr_err("Qman DQRR initialisation failed\n");
@@ -292,72 +282,63 @@ struct qman_portal *qman_create_portal(struct qm_portal *__p, u32 flags,
 	ret = platform_device_add(portal->pdev);
 	if (ret)
 		goto fail_devadd;
+	qman_rbtree_init(&portal->retire_table);
 	isdr = 0xffffffff;
 	qm_isr_disable_write(portal->p, isdr);
 	qm_isr_enable_write(portal->p, QM_PIRQ_EQCI | QM_PIRQ_EQRI |
-		((flags & QMAN_PORTAL_FLAG_IRQ_FAST) ? QM_PIRQ_DQRI : 0) |
+#ifdef CONFIG_FSL_QMAN_PORTAL_FLAG_IRQ_FAST
+		QM_PIRQ_DQRI |
+#endif
 		QM_PIRQ_MRI | (cgrs ? QM_PIRQ_CSCI : 0));
 	qm_isr_status_clear(portal->p, 0xffffffff);
-	if (flags & QMAN_PORTAL_FLAG_IRQ) {
-		if (request_irq(config->irq, portal_isr, 0, "Qman portal 0",
+#ifdef CONFIG_FSL_QMAN_HAVE_IRQ
+	if (request_irq(config->irq, portal_isr, 0, "Qman portal 0",
 					portal)) {
-			pr_err("request_irq() failed\n");
-			goto fail_irq;
-		}
-		if ((config->cpu != -1) &&
-				irq_can_set_affinity(config->irq) &&
+		pr_err("request_irq() failed\n");
+		goto fail_irq;
+	}
+	if ((config->cpu != -1) && irq_can_set_affinity(config->irq) &&
 				irq_set_affinity(config->irq,
-				     cpumask_of(config->cpu))) {
-			pr_err("irq_set_affinity() failed\n");
-			goto fail_affinity;
-		}
-		qm_isr_uninhibit(portal->p);
-	} else
-		/* without IRQ, we can't block */
-		flags &= ~QMAN_PORTAL_FLAG_WAIT;
+					cpumask_of(config->cpu))) {
+		pr_err("irq_set_affinity() failed\n");
+		goto fail_affinity;
+	}
+	qm_isr_uninhibit(portal->p);
+#endif
 	/* Need EQCR to be empty before continuing */
 	isdr ^= QM_PIRQ_EQCI;
 	qm_isr_disable_write(portal->p, isdr);
-	if (!(flags & QMAN_PORTAL_FLAG_RECOVER) ||
-			!(flags & QMAN_PORTAL_FLAG_WAIT))
-		ret = qm_eqcr_get_fill(portal->p);
-	else if (flags & QMAN_PORTAL_FLAG_WAIT_INT)
-		ret = wait_event_interruptible(affine_queue,
-			!qm_eqcr_get_fill(portal->p));
-	else {
-		wait_event(affine_queue, !qm_eqcr_get_fill(portal->p));
-		ret = 0;
-	}
+#ifdef CONFIG_FSL_QMAN_PORTAL_FLAG_RECOVER
+	wait_event(affine_queue, !qm_eqcr_get_fill(portal->p));
+	ret = 0;
+#else
+	ret = qm_eqcr_get_fill(portal->p);
+#endif
 	if (ret) {
 		pr_err("Qman EQCR unclean, need recovery\n");
 		goto fail_eqcr_empty;
 	}
+#ifdef CONFIG_FSL_QMAN_PORTAL_FLAG_RECOVER
 	/* Check DQRR and MR are empty too, subject to RECOVERY logic */
 	if (flags & QMAN_PORTAL_FLAG_RECOVER)
 		portal->bits |= PORTAL_BITS_RECOVER;
+#endif
 	isdr ^= (QM_PIRQ_DQRI | QM_PIRQ_MRI);
 	qm_isr_disable_write(portal->p, isdr);
-	if (!(flags & QMAN_PORTAL_FLAG_RECOVER))
-		ret = !int_dqrr_mr_empty(portal, 0);
-	else {
-		if (!(flags & QMAN_PORTAL_FLAG_WAIT))
-			ret = !int_dqrr_mr_empty(portal, 0);
-		else if (flags & QMAN_PORTAL_FLAG_WAIT_INT)
-			ret = wait_event_interruptible(affine_queue,
-				int_dqrr_mr_empty(portal, 1));
-		else {
-			wait_event(affine_queue,
-				int_dqrr_mr_empty(portal, 1));
-			ret = 0;
-		}
-		qman_disable_portal_ex(portal);
-		portal->bits ^= PORTAL_BITS_RECOVER;
-	}
+#ifdef CONFIG_FSL_QMAN_PORTAL_FLAG_RECOVER
+	wait_event(affine_queue, int_dqrr_mr_empty(portal, 1));
+	ret = 0;
+	qman_disable_portal_ex(portal);
+	portal->bits ^= PORTAL_BITS_RECOVER;
+#else
+	ret = !int_dqrr_mr_empty(portal, 0);
+#endif
 	if (ret) {
-		if (flags & QMAN_PORTAL_FLAG_RECOVER)
-			pr_err("Qman DQRR/MR unclean, recovery failed\n");
-		else
-			pr_err("Qman DQRR/MR unclean, need recovery\n");
+#ifdef CONFIG_FSL_QMAN_PORTAL_FLAG_RECOVER
+		pr_err("Qman DQRR/MR unclean, recovery failed\n");
+#else
+		pr_err("Qman DQRR/MR unclean, need recovery\n");
+#endif
 		goto fail_dqrr_mr_empty;
 	}
 	qm_isr_disable_write(portal->p, 0);
@@ -367,8 +348,9 @@ struct qman_portal *qman_create_portal(struct qm_portal *__p, u32 flags,
 fail_dqrr_mr_empty:
 fail_eqcr_empty:
 fail_affinity:
-	if (flags & QMAN_PORTAL_FLAG_IRQ)
-		free_irq(config->irq, portal);
+#ifdef CONFIG_FSL_QMAN_HAVE_IRQ
+	free_irq(config->irq, portal);
+#endif
 fail_irq:
 	platform_device_del(portal->pdev);
 fail_devadd:
@@ -395,9 +377,10 @@ void qman_destroy_portal(struct qman_portal *qm)
 {
 	/* NB we do this to "quiesce" EQCR. If we add enqueue-completions or
 	 * something related to QM_PIRQ_EQCI, this may need fixing. */
-	qm_eqcr_cci_update(qm->p);
-	if (qm->options & QMAN_PORTAL_FLAG_IRQ)
-		free_irq(qm_portal_config(qm->p)->irq, qm);
+	qm_eqcr_cce_update(qm->p);
+#ifdef CONFIG_FSL_QMAN_HAVE_IRQ
+	free_irq(qm_portal_config(qm->p)->irq, qm);
+#endif
 	if (qm->cgrs)
 		kfree(qm->cgrs);
 	qm_isr_finish(qm->p);
@@ -425,15 +408,15 @@ void qman_set_null_cb(const struct qman_fq_cb *null_cb)
 EXPORT_SYMBOL(qman_set_null_cb);
 
 /* Inline helper to reduce nesting in __poll_portal_slow() */
-static inline void fq_state_change(struct qman_fq *fq, struct qm_mr_entry *msg,
-					u8 verb)
+static inline void fq_state_change(struct qman_portal *p, struct qman_fq *fq,
+				struct qm_mr_entry *msg, u8 verb)
 {
 	FQLOCK(fq);
 	switch(verb) {
 	case QM_MR_VERB_FQRL:
 		QM_ASSERT(fq_isset(fq, QMAN_FQ_STATE_ORL));
 		fq_clear(fq, QMAN_FQ_STATE_ORL);
-		table_del_fq(fq);
+		table_del_fq(p, fq);
 		break;
 	case QM_MR_VERB_FQRN:
 		QM_ASSERT((fq->state == qman_fq_state_parked) ||
@@ -445,13 +428,8 @@ static inline void fq_state_change(struct qman_fq *fq, struct qm_mr_entry *msg,
 		if (msg->fq.fqs & QM_MR_FQS_ORLPRESENT)
 			fq_set(fq, QMAN_FQ_STATE_ORL);
 		else
-			table_del_fq(fq);
+			table_del_fq(p, fq);
 		fq->state = qman_fq_state_retired;
-		break;
-	case QM_MR_VERB_FQRNI:
-		/* we processed retirement with the MC command */
-		if (fq_isclear(fq, QMAN_FQ_STATE_ORL))
-			table_del_fq(fq);
 		break;
 	case QM_MR_VERB_FQPN:
 		QM_ASSERT(fq->state == qman_fq_state_sched);
@@ -461,25 +439,26 @@ static inline void fq_state_change(struct qman_fq *fq, struct qm_mr_entry *msg,
 	FQUNLOCK(fq);
 }
 
-static inline void eqcr_set_thresh(struct qman_portal *p, int check)
+static noinline void eqcr_set_thresh(struct qman_portal *p, int check)
 {
 	if (!check || !qm_eqcr_get_ithresh(p->p))
 		qm_eqcr_set_ithresh(p->p, EQCR_ITHRESH);
 }
 
-static u32 __poll_portal_slow(struct qman_portal *p, u32 is)
+static u32 __poll_portal_slow(struct qman_portal *p, struct qm_portal *lowp,
+				u32 is)
 {
 	struct qm_mr_entry *msg;
 
-	qm_mr_pvb_prefetch(p->p);
+	qm_mr_pvb_prefetch(lowp);
 
 	if (is & QM_PIRQ_CSCI) {
 		struct qm_mc_result *mcr;
 		unsigned int i;
 		local_irq_disable();
-		qm_mc_start(p->p);
-		qm_mc_commit(p->p, QM_MCC_VERB_QUERYCONGESTION);
-		while (!(mcr = qm_mc_result(p->p)))
+		qm_mc_start(lowp);
+		qm_mc_commit(lowp, QM_MCC_VERB_QUERYCONGESTION);
+		while (!(mcr = qm_mc_result(lowp)))
 			cpu_relax();
 		p->cgrs[1].q = mcr->querycongestion.state;
 		local_irq_enable();
@@ -502,8 +481,8 @@ static u32 __poll_portal_slow(struct qman_portal *p, u32 is)
 #endif
 	if (is & QM_PIRQ_EQRI) {
 		local_irq_disable();
-		p->eq_cons += qm_eqcr_cci_update(p->p);
-		qm_eqcr_set_ithresh(p->p, 0);
+		p->eq_cons += qm_eqcr_cce_update(lowp);
+		qm_eqcr_set_ithresh(lowp, 0);
 		wake_up(&affine_queue);
 		local_irq_enable();
 	}
@@ -511,9 +490,9 @@ static u32 __poll_portal_slow(struct qman_portal *p, u32 is)
 	if (is & QM_PIRQ_MRI) {
 		u8 num = 0;
 mr_loop:
-		if (qm_mr_pvb_update(p->p))
-			qm_mr_pvb_prefetch(p->p);
-		msg = qm_mr_current(p->p);
+		if (qm_mr_pvb_update(lowp))
+			qm_mr_pvb_prefetch(lowp);
+		msg = qm_mr_current(lowp);
 		if (msg) {
 			struct qman_fq *fq = (void *)msg->ern.tag;
 			u8 verb = msg->verb & QM_MR_VERB_TYPE_MASK;
@@ -526,14 +505,15 @@ mr_loop:
 				else if (p->null_cb.fqs)
 					p->null_cb.fqs(p, NULL, msg);
 			}
-			if ((verb == QM_MR_VERB_FQRN) ||
-					(verb == QM_MR_VERB_FQRNI) ||
+			if (verb == QM_MR_VERB_FQRNI) {
+				; /* nada, we drop FQRNIs on the floor */
+			} else if ((verb == QM_MR_VERB_FQRN) ||
 					(verb == QM_MR_VERB_FQRL)) {
 				/* It's retirement related - need a lookup */
-				fq = table_find_fq(msg->fq.fqid);
+				fq = table_find_fq(p, msg->fq.fqid);
 				if (!fq)
 					panic("unexpected FQ retirement");
-				fq_state_change(fq, msg, verb);
+				fq_state_change(p, fq, msg, verb);
 				if (fq->cb.fqs)
 					fq->cb.fqs(p, fq, msg);
 			} else if (likely(fq)) {
@@ -553,10 +533,10 @@ mr_loop:
 					p->null_cb.fqs(p, NULL, msg);
 			}
 			num++;
-			qm_mr_next(p->p);
+			qm_mr_next(lowp);
 			goto mr_loop;
 		}
-		qm_mr_cci_consume(p->p, num);
+		qm_mr_cci_consume(lowp, num);
 	}
 
 	return is & (QM_PIRQ_CSCI | QM_PIRQ_EQCI | QM_PIRQ_EQRI | QM_PIRQ_MRI);
@@ -589,24 +569,26 @@ mr_loop:
  * user callbacks to call into any Qman API *except* qman_poll() (as that's the
  * sole API that could be invoking the callback through this function).
  */
-static void __poll_portal_fast(struct qman_portal *p)
+static inline void __poll_portal_fast(struct qman_portal *p,
+				struct qm_portal *lowp)
 {
 	struct qm_dqrr_entry *dq;
 	struct qman_fq *fq;
 	enum qman_cb_dqrr_result res;
-	u8 num = 0;
+	int prefetch = !(p->options & QMAN_PORTAL_FLAG_RSTASH);
 
-	qm_dqrr_pvb_prefetch(p->p);
-
-dqrr_loop:
-	if (qm_dqrr_pvb_update(p->p))
-		qm_dqrr_pvb_prefetch(p->p);
-	dq = qm_dqrr_current(p->p);
-	if (!dq || (num == CONFIG_FSL_QMAN_POLL_LIMIT))
+	if (qm_dqrr_pvb_update(lowp) && prefetch)
+		qm_dqrr_pvb_prefetch(lowp);
+	dq = qm_dqrr_current(lowp);
+	if (!dq)
 		goto done;
 	fq = (void *)dq->contextB;
 	/* Interpret 'dq' from the owner's perspective. */
-	if (unlikely((p->bits & PORTAL_BITS_RECOVER) || !fq)) {
+	if (unlikely(
+#ifdef CONFIG_FSL_QMAN_PORTAL_FLAG_RECOVER
+			(p->bits & PORTAL_BITS_RECOVER) ||
+#endif
+			!fq)) {
 		/* use portal default handlers */
 		res = p->null_cb.dqrr(p, NULL, dq);
 		QM_ASSERT(res == qman_cb_dqrr_consume);
@@ -619,7 +601,7 @@ dqrr_loop:
 	}
 	/* Interpret 'dq' from a driver perspective. */
 #define VDQCR_DONE (QM_DQRR_STAT_UNSCHEDULED | QM_DQRR_STAT_DQCR_EXPIRED)
-	if ((dq->stat & VDQCR_DONE) == VDQCR_DONE) {
+	if (unlikely((dq->stat & VDQCR_DONE) == VDQCR_DONE)) {
 		PORTAL_BITS_INC_V(p);
 		wake_up(&affine_queue);
 	}
@@ -628,48 +610,48 @@ dqrr_loop:
 	 * check for HELDACTIVE to cover both. */
 	QM_ASSERT((dq->stat & QM_DQRR_STAT_FQ_HELDACTIVE) ||
 		(res != qman_cb_dqrr_park));
-	if (p->options & QMAN_PORTAL_FLAG_DCA) {
-		/* Defer just means "skip it, I'll consume it
-		 * myself later on" */
-		if (res != qman_cb_dqrr_defer)
-			qm_dqrr_cdc_consume_1ptr(p->p, dq,
-				(res == qman_cb_dqrr_park));
-	} else if (res == qman_cb_dqrr_park)
-		/* The only thing to do for non-DCA is the
-		 * park-request */
-		qm_dqrr_park_ci(p->p);
+#ifdef CONFIG_FSL_QMAN_PORTAL_DISABLEAUTO_DCA
+	if (res == qman_cb_dqrr_park)
+		/* The only thing to do for non-DCA is the park-request */
+		qm_dqrr_park_ci(lowp);
 	/* Move forward */
-	num++;
-	qm_dqrr_next(p->p);
-	goto dqrr_loop;
+	qm_dqrr_next(lowp);
+	qm_dqrr_cci_consume(lowp, 1);
+#else
+	/* Defer just means "skip it, I'll consume it myself later on" */
+	if (res != qman_cb_dqrr_defer)
+		qm_dqrr_cdc_consume_1ptr(lowp, dq, (res == qman_cb_dqrr_park));
+	/* Move forward */
+	qm_dqrr_next(lowp);
+#endif
 done:
-	if (num) {
-		if (!(p->options & QMAN_PORTAL_FLAG_DCA))
-			qm_dqrr_cci_consume(p->p, num);
-	}
+	if (prefetch)
+		qm_dqrr_pvb_prefetch(lowp);
 }
 
+#ifdef CONFIG_FSL_QMAN_HAVE_POLL
 void qman_poll(void)
 {
 	struct qman_portal *p = get_affine_portal();
-	if (!(p->options & QMAN_PORTAL_FLAG_IRQ)) {
-		/* we handle slow- and fast-path */
-		__poll_portal_fast(p);
-		if (!(p->slowpoll--)) {
-			u32 is = qm_isr_status_read(p->p);
-			u32 active = __poll_portal_slow(p, is);
-			if (active) {
-				qm_isr_status_clear(p->p, active);
-				p->slowpoll = SLOW_POLL_BUSY;
-			} else
-				p->slowpoll = SLOW_POLL_IDLE;
-		}
-	} else if (!(p->options & QMAN_PORTAL_FLAG_IRQ_FAST))
-		/* we handle fast-path only */
-		__poll_portal_fast(p);
+	struct qm_portal *lowp = p->p;
+#ifndef CONFIG_FSL_QMAN_PORTAL_FLAG_IRQ_SLOW
+	if (!(p->slowpoll--)) {
+		u32 is = qm_isr_status_read(lowp);
+		u32 active = __poll_portal_slow(p, lowp, is);
+		if (active) {
+			qm_isr_status_clear(lowp, active);
+			p->slowpoll = SLOW_POLL_BUSY;
+		} else
+			p->slowpoll = SLOW_POLL_IDLE;
+	}
+#endif
+#ifndef CONFIG_FSL_QMAN_PORTAL_FLAG_IRQ_FAST
+	__poll_portal_fast(p, lowp);
+#endif
 	put_affine_portal();
 }
 EXPORT_SYMBOL(qman_poll);
+#endif
 
 void qman_disable_portal(void)
 {
@@ -1035,7 +1017,7 @@ int qman_retire_fq(struct qman_fq *fq, u32 *flags)
 		rval = -EBUSY;
 		goto out;
 	}
-	rval = table_push_fq(fq);
+	rval = table_push_fq(p, fq);
 	if (rval)
 		goto out;
 	mcc = qm_mc_start(p->p);
@@ -1049,7 +1031,7 @@ int qman_retire_fq(struct qman_fq *fq, u32 *flags)
 	 * and defer the flags until FQRNI or FQRN (respectively) show up. But
 	 * "Friendly" is to process OK immediately, and not set CHANGING. We do
 	 * friendly, otherwise the caller doesn't necessarily have a fully
-	 * "retired" FQ on return even if the retirement was immediate.  However
+	 * "retired" FQ on return even if the retirement was immediate. However
 	 * this does mean some code duplication between here and
 	 * fq_state_change(). */
 	if (likely(res == QM_MCR_RESULT_OK)) {
@@ -1059,15 +1041,32 @@ int qman_retire_fq(struct qman_fq *fq, u32 *flags)
 			fq_set(fq, QMAN_FQ_STATE_NE);
 		if (mcr->alterfq.fqs & QM_MCR_FQS_ORLPRESENT)
 			fq_set(fq, QMAN_FQ_STATE_ORL);
+		else
+			table_del_fq(p, fq);
 		if (flags)
 			*flags = fq->flags;
 		fq->state = qman_fq_state_retired;
+		if (fq->cb.fqs) {
+			/* Another issue with supporting "immediate" retirement
+			 * is that we're forced to drop FQRNIs, because by the
+			 * time they're seen it may already be "too late" (the
+			 * fq may have been OOS'd and free()'d already). But if
+			 * the upper layer wants a callback whether it's
+			 * immediate or not, we have to fake a "MR" entry to
+			 * look like an FQRNI... */
+			struct qm_mr_entry msg;
+			msg.verb = QM_MR_VERB_FQRNI;
+			msg.fq.fqs = mcr->alterfq.fqs;
+			msg.fq.fqid = fq->fqid;
+			msg.fq.contextB = (u32)fq;
+			fq->cb.fqs(p, fq, &msg);
+		}
 	} else if (res == QM_MCR_RESULT_PENDING) {
 		rval = 1;
 		fq_set(fq, QMAN_FQ_STATE_CHANGING);
 	} else {
 		rval = -EIO;
-		table_del_fq(fq);
+		table_del_fq(p, fq);
 		pr_err("ALTER_RETIRE failed: %s\n", mcr_result_str(res));
 	}
 out:
@@ -1194,7 +1193,7 @@ static int set_vdqcr(struct qman_portal **p, u32 vdqcr, u16 *v)
 	return ret;
 }
 
-static inline int wait_vdqcr_start(struct qman_portal **p, u32 vdqcr, u16 *v,
+static int wait_vdqcr_start(struct qman_portal **p, u32 vdqcr, u16 *v,
 					u32 flags)
 {
 	int ret = 0;
@@ -1242,29 +1241,49 @@ EXPORT_SYMBOL(qman_volatile_dequeue);
 static struct qm_eqcr_entry *try_eq_start(struct qman_portal **p)
 {
 	struct qm_eqcr_entry *eq;
+	struct qm_portal *lowp;
+	u8 avail;
 	*p = get_affine_portal();
+	lowp = (*p)->p;
 	local_irq_disable();
-	if (qm_eqcr_get_avail((*p)->p) < EQCR_THRESH)
-		(*p)->eq_cons += qm_eqcr_cci_update((*p)->p);
-	eq = qm_eqcr_start((*p)->p);
+	avail = qm_eqcr_get_avail(lowp);
+	if (avail == EQCR_THRESH)
+		/* We don't need EQCR:CI yet, but we will next time */
+		qm_eqcr_cce_prefetch(lowp);
+	else if (avail < EQCR_THRESH)
+		/* The EQCR::CI cacheline is prefetched post-enqueue, so this
+		 * would ideally be in cache from the previous commit. */
+		(*p)->eq_cons += qm_eqcr_cce_update(lowp);
+	eq = qm_eqcr_start(lowp);
 	if (unlikely(!eq)) {
-		eqcr_set_thresh(*p, 1);
 		local_irq_enable();
 		put_affine_portal();
 	}
 	return eq;
 }
 
-static inline int wait_eq_start(struct qman_portal **p,
-			struct qm_eqcr_entry **eq, u32 flags)
+static inline struct qm_eqcr_entry *__try_eq(struct qman_portal **p)
 {
+	struct qm_eqcr_entry *eq = try_eq_start(p);
+	if (unlikely(!eq))
+		/* TODO: this used to be in try_eq_start() prior to
+		 * local_irq_enable() - verify that the reorder hasn't created a
+		 * race... */
+		eqcr_set_thresh(*p, 1);
+	return eq;
+}
+
+static noinline struct qm_eqcr_entry *wait_eq_start(struct qman_portal **p,
+							u32 flags)
+{
+	struct qm_eqcr_entry *eq;
 	int ret = 0;
 	if (flags & QMAN_ENQUEUE_FLAG_WAIT_INT)
 		ret = wait_event_interruptible(affine_queue,
-					(*eq = try_eq_start(p)));
+					(eq = __try_eq(p)));
 	else
-		wait_event(affine_queue, (*eq = try_eq_start(p)));
-	return ret;
+		wait_event(affine_queue, (eq = __try_eq(p)));
+	return eq;
 }
 
 /* Used as a wait_event() condition to determine if eq_cons has caught up to
@@ -1296,6 +1315,20 @@ static int eqcr_completed(struct qman_portal *p, u32 eq_poll)
 	return 0;
 }
 
+static noinline void wait_eqcr_commit(struct qman_portal *p, u32 flags,
+					u32 eq_poll)
+{
+	eqcr_set_thresh(p, 1);
+	/* So we're supposed to wait until the commit is consumed */
+	if (flags & QMAN_ENQUEUE_FLAG_WAIT_INT)
+		/* See __enqueue() (where this inline is called) as to why we're
+		 * ignoring return codes from wait_***(). */
+		wait_event_interruptible(affine_queue,
+					eqcr_completed(p, eq_poll));
+	else
+		wait_event(affine_queue, eqcr_completed(p, eq_poll));
+}
+
 static inline void eqcr_commit(struct qman_portal *p, u32 flags, int orp)
 {
 	u32 eq_poll;
@@ -1305,22 +1338,11 @@ static inline void eqcr_commit(struct qman_portal *p, u32 flags, int orp)
 		(orp ? QM_EQCR_VERB_ORP : 0));
 	/* increment the producer count and capture it for SYNC */
 	eq_poll = ++p->eq_prod;
-	if ((flags & QMAN_ENQUEUE_FLAG_WAIT_SYNC) ==
-			QMAN_ENQUEUE_FLAG_WAIT_SYNC)
-		eqcr_set_thresh(p, 1);
 	local_irq_enable();
 	put_affine_portal();
-	if ((flags & QMAN_ENQUEUE_FLAG_WAIT_SYNC) !=
+	if ((flags & QMAN_ENQUEUE_FLAG_WAIT_SYNC) ==
 			QMAN_ENQUEUE_FLAG_WAIT_SYNC)
-		return;
-	/* So we're supposed to wait until the commit is consumed */
-	if (flags & QMAN_ENQUEUE_FLAG_WAIT_INT)
-		/* See __enqueue() (where this inline is called) as to why we're
-		 * ignoring return codes from wait_***(). */
-		wait_event_interruptible(affine_queue,
-					eqcr_completed(p, eq_poll));
-	else
-		wait_event(affine_queue, eqcr_completed(p, eq_poll));
+		wait_eqcr_commit(p, flags, eq_poll);
 }
 
 static inline void eqcr_abort(struct qman_portal *p)
@@ -1337,7 +1359,7 @@ static inline int __enqueue(struct qman_fq *fq, const struct qm_fd *fd,
 				u32 flags, struct qman_fq *orp_fq,
 				u16 orp_seqnum, int orp)
 {
-	struct qm_eqcr_entry *eq;
+	register struct qm_eqcr_entry *eq;
 	struct qman_portal *p;
 
 #ifdef CONFIG_FSL_QMAN_CHECKING
@@ -1352,9 +1374,9 @@ static inline int __enqueue(struct qman_fq *fq, const struct qm_fd *fd,
 	eq = try_eq_start(&p);
 	if (unlikely(!eq)) {
 		if (flags & QMAN_ENQUEUE_FLAG_WAIT) {
-			int ret = wait_eq_start(&p, &eq, flags);
-			if (ret)
-				return ret;
+			eq = wait_eq_start(&p, flags);
+			if (!eq)
+				return -EBUSY;
 		} else
 			return -EBUSY;
 	}
@@ -1363,12 +1385,14 @@ static inline int __enqueue(struct qman_fq *fq, const struct qm_fd *fd,
 	 * block (if the caller doesn't retry). The idea is to enqueue via the
 	 * ORP anyway, and let congestion take effect in h/w once
 	 * order-restoration has occurred. */
+#if 0
 	if (unlikely(!orp && (flags & QMAN_ENQUEUE_FLAG_WATCH_CGR) && p->cgrs &&
 			fq_isset(fq, QMAN_FQ_STATE_CGR_EN) &&
 			qman_cgrs_get(&p->cgrs[1], fq->cgr_groupid))) {
 		eqcr_abort(p);
 		return -EAGAIN;
 	}
+#endif
 	if (flags & QMAN_ENQUEUE_FLAG_DCA) {
 		u8 dca = QM_EQCR_DCA_ENABLE;
 		if (unlikely(flags & QMAN_ENQUEUE_FLAG_DCA_PARK))
@@ -1392,7 +1416,27 @@ static inline int __enqueue(struct qman_fq *fq, const struct qm_fd *fd,
 	}
 	eq->fqid = fq->fqid;
 	eq->tag = (u32)fq;
-	eq->fd = *fd;
+	/* gcc does a dreadful job of the following;
+	 *	eq->fd = *fd;
+	 * It causes the entire function to save/restore a wider range of
+	 * registers, and comes up with instruction-waste galore. This will do
+	 * until we can rework the function for better code-generation. */
+	{
+		int *eqfdptr = (int *)&eq->fd;
+		int *fdptr = (int *)fd;
+		int temp;
+		asm volatile (
+			"lwz %0,0(%2);"
+			"stw %0,0(%1);"
+			"lwz %0,4(%2);"
+			"stw %0,4(%1);"
+			"lwz %0,8(%2);"
+			"stw %0,8(%1);"
+			"lwz %0,12(%2);"
+			"stw %0,12(%1);"
+			: "=&r"(temp) : "b"(eqfdptr), "b"(fdptr)
+		);
+	}
 	/* Issue the enqueue command, and wait for sync if requested.
 	 * NB: design choice - the commit can't fail, only waiting can. Don't
 	 * propogate any failure if a signal arrives. Otherwise the caller can't
