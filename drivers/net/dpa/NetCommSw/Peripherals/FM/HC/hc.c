@@ -47,18 +47,6 @@
 #define SIZE_OF_HC_FRAME_PROFILE_CNT        (sizeof(t_HcFrame)-sizeof(t_FmPcdPlcrInterModuleProfileRegs)+sizeof(uint32_t))
 #define SIZE_OF_HC_FRAME_READ_OR_CC_DYNAMIC 16
 
-/*
-#define BUILD_FD(len)                                                           \
-do {                                                                            \
-        memset(&fmFd, 0, sizeof(t_FmFD));                                       \
-        FM_FD_SET_DD(&fmFd, (uint32_t)0x3);                                     \
-        FM_FD_SET_PID(&fmFd, (uint32_t)0x3f);                                   \
-        FM_FD_SET_BPID(&fmFd, (uint32_t)0xff);                                  \
-        FM_FD_SET_ADDR(&fmFd, &hcFrame);                                        \
-        FM_FD_SET_OFFSET(&fmFd, 0);                                             \
-        FM_FD_SET_LENGTH(&fmFd, len);                                           \
-} while (0)
-*/
 #define BUILD_FD(len)                                                           \
 do {                                                                            \
         memset(&fmFd, 0, sizeof(t_FmFD));                                       \
@@ -73,6 +61,8 @@ do {                                                                            
     p_FmHc->seqNum = (uint32_t)((p_FmHc->seqNum+1)%32);                         \
     ASSERT_COND(!p_FmHc->wait[savedSeqNum]);                                    \
     p_FmHc->wait[savedSeqNum] = TRUE;                                           \
+    DBG(TRACE, ("Send Hc 0x%x , SeqNum %d, fd addr 0x%x, fd offset 0x%x",       \
+            p_FmHc,savedSeqNum,FM_FD_GET_ADDR(frm),FM_FD_GET_OFFSET(frm)));     \
     err = p_FmHc->f_QmEnqueueCB(p_FmHc->h_QmArg, p_FmHc->enqFqid, (void *)frm); \
     if(err)                                                                     \
         RETURN_ERROR(MINOR, err, ("HC enqueue failed"));                        \
@@ -85,6 +75,8 @@ do {                                                                            
     p_FmHc->seqNum = (uint32_t)((p_FmHc->seqNum+1)%32);                         \
     ASSERT_COND(!p_FmHc->wait[savedSeqNum]);                                    \
     p_FmHc->wait[savedSeqNum] = TRUE;                                           \
+    DBG(TRACE, ("Send Hc Null 0x%x , SeqNum %d, fd addr 0x%x, fd offset 0x%x",  \
+            p_FmHc,savedSeqNum,FM_FD_GET_ADDR(frm),FM_FD_GET_OFFSET(frm)));     \
     err = p_FmHc->f_QmEnqueueCB(p_FmHc->h_QmArg, p_FmHc->enqFqid, (void *)frm); \
     if(err)  {                                                                  \
         REPORT_ERROR(MINOR, err, ("HC enqueue failed")); return NULL;           \
@@ -176,8 +168,8 @@ typedef struct t_FmHc {
     t_Handle                h_FmPcd;
     t_Handle                h_HcPortDev;
     uint32_t                enqFqid;            /**< Host-Command enqueue Queue Id. */
-    t_FmPcdQmEnqueueCB      *f_QmEnqueueCB;     /**< TBD */
-    t_Handle                h_QmArg;            /**< TBD */
+    t_FmPcdQmEnqueueCB      *f_QmEnqueueCB;     /**< A callback for enquing frames to the QM */
+    t_Handle                h_QmArg;            /**< A handle to the QM module */
 
     //volatile bool           lock;
     uint32_t                seqNum;
@@ -190,7 +182,7 @@ static t_Error KgHcSetClsPlan(t_FmHc *p_FmHc, t_FmPcdKgInterModuleClsPlanSet *p_
     t_HcFrame               hcFrame;
     t_FmFD                  fmFd;
     int                     i;
-    t_Error                 err;
+    t_Error                 err = E_OK;
 
     ASSERT_COND(p_FmHc);
 
@@ -215,7 +207,7 @@ static t_Error CcHcDoDynamicChange(t_FmHc *p_FmHc, bool keyModify, t_Handle p_Ol
 {
     t_HcFrame               hcFrame;
     t_FmFD                  fmFd;
-    t_Error                 err;
+    t_Error                 err = E_OK;
 
     ASSERT_COND(p_FmHc);
 
@@ -242,7 +234,7 @@ static t_Error CcHcDoDynamicChange(t_FmHc *p_FmHc, bool keyModify, t_Handle p_Ol
 
 static t_Error CcHcDynamicChangeForNextEngine(t_FmHc *p_FmHc, t_Handle h_OldPointer, t_Handle h_NewPointer)
 {
-    t_Error err;
+    t_Error err = E_OK;
 
     ASSERT_COND(p_FmHc);
 
@@ -260,7 +252,7 @@ static t_Error HcDynamicChangeForKey(t_FmHc *p_FmHc,t_Handle  *h_OldPointersLst,
 
     t_List      *p_Pos;
     uint16_t    i = 0;
-    t_Error     err;
+    t_Error     err = E_OK;
     t_List      *p_OldPointersLst = (t_List *)h_OldPointersLst;
 
     LIST_FOR_EACH(p_Pos, p_OldPointersLst)
@@ -288,7 +280,7 @@ t_Handle    FmHcConfigAndInit(t_FmHcParams *p_FmHcParams)
     t_FmHc          *p_FmHc;
 #ifndef CONFIG_GUEST_PARTITION
     t_FmPortParams  fmPortParam;
-    t_Error         err;
+    t_Error         err = E_OK;
 #endif /* !CONFIG_GUEST_PARTITION */
 
     p_FmHc = XX_Malloc(sizeof(t_FmHc));
@@ -357,6 +349,10 @@ void FmHcTxConf(t_Handle h_FmHc, t_FmFD *p_Fd)
 
     p_HcFrame  = CAST_UINT64_TO_POINTER_TYPE(t_HcFrame,
                                              (CAST_POINTER_TO_UINT64(FM_FD_GET_ADDR(p_Fd)) + FM_FD_GET_OFFSET(p_Fd)));
+
+    DBG(TRACE, ("Hc Conf 0x%x , SeqNum %d, fd addr 0x%x, fd offset 0x%x",
+            p_FmHc,p_HcFrame->commandSequence,FM_FD_GET_ADDR(p_Fd),FM_FD_GET_OFFSET(p_Fd)));
+
     ASSERT_COND(p_FmHc->wait[p_HcFrame->commandSequence]);
 
     p_FmHc->wait[p_HcFrame->commandSequence] = FALSE;
@@ -365,7 +361,7 @@ void FmHcTxConf(t_Handle h_FmHc, t_FmFD *p_Fd)
 t_Handle FmHcPcdKgSetScheme(t_Handle h_FmHc, t_FmPcdKgSchemeParams *p_Scheme)
 {
     t_FmHc                              *p_FmHc = (t_FmHc*)h_FmHc;
-    t_Error                             err;
+    t_Error                             err = E_OK;
     t_FmPcdKgInterModuleSchemeRegs      schemeRegs;
     t_HcFrame                           hcFrame;
     t_FmFD                              fmFd;
@@ -463,7 +459,7 @@ t_Handle FmHcPcdKgSetScheme(t_Handle h_FmHc, t_FmPcdKgSchemeParams *p_Scheme)
 t_Error FmHcPcdKgDeleteScheme(t_Handle h_FmHc, t_Handle h_Scheme)
 {
     t_FmHc                              *p_FmHc = (t_FmHc*)h_FmHc;
-    t_Error                             err;
+    t_Error                             err = E_OK;
     t_HcFrame                           hcFrame;
     t_FmFD                              fmFd;
     uint8_t                             relativeSchemeId;
@@ -508,7 +504,7 @@ t_Error FmHcPcdKgDeleteScheme(t_Handle h_FmHc, t_Handle h_Scheme)
 uint32_t  FmHcPcdKgGetSchemeCounter(t_Handle h_FmHc, t_Handle h_Scheme)
 {
     t_FmHc                              *p_FmHc = (t_FmHc*)h_FmHc;
-    t_Error                             err;
+    t_Error                             err = E_OK;
     t_HcFrame                           hcFrame;
     t_FmFD                              fmFd;
     uint32_t                            retVal;
@@ -559,7 +555,7 @@ t_Error  FmHcPcdKgSetSchemeCounter(t_Handle h_FmHc, t_Handle h_Scheme, uint32_t 
 {
 
     t_FmHc                              *p_FmHc = (t_FmHc*)h_FmHc;
-    t_Error                             err;
+    t_Error                             err = E_OK;
     t_HcFrame                           hcFrame;
     t_FmFD                              fmFd;
     uint8_t                             relativeSchemeId, physicalSchemeId = (uint8_t)(CAST_POINTER_TO_UINT32(h_Scheme)-1);
@@ -619,7 +615,7 @@ t_Handle FmHcPcdKgSetClsPlanGrp(t_Handle h_FmHc, t_FmPcdKgClsPlanGrpParams *p_Gr
     t_FmHc                          *p_FmHc = (t_FmHc*)h_FmHc;
     t_FmPcdKgInterModuleClsPlanSet  clsPlanSet;
     t_Handle                        h_ClsPlanGrp;
-    t_Error                         err;
+    t_Error                         err = E_OK;
 
     h_ClsPlanGrp = FmPcdKgBuildClsPlanGrp(p_FmHc->h_FmPcd, p_Grp, &clsPlanSet);
     if(!h_ClsPlanGrp)
@@ -661,7 +657,7 @@ t_Handle FmHcPcdPlcrSetProfile(t_Handle h_FmHc,t_FmPcdPlcrProfileParams *p_Profi
 {
     t_FmHc                              *p_FmHc = (t_FmHc*)h_FmHc;
     t_FmPcdPlcrInterModuleProfileRegs              profileRegs;
-    t_Error                             err;
+    t_Error                             err = E_OK;
     uint16_t                            profileIndx;
     t_HcFrame                           hcFrame;
     t_FmFD                              fmFd;
@@ -746,7 +742,7 @@ t_Error FmHcPcdPlcrDeleteProfile(t_Handle h_FmHc, t_Handle h_Profile)
 {
     t_FmHc                              *p_FmHc = (t_FmHc*)h_FmHc;
     uint16_t                            absoluteProfileId = (uint16_t)(CAST_POINTER_TO_UINT32(h_Profile)-1);
-    t_Error                             err;
+    t_Error                             err = E_OK;
     t_HcFrame                           hcFrame;
     t_FmFD                              fmFd;
 
@@ -776,7 +772,7 @@ t_Error  FmHcPcdPlcrSetProfileCounter(t_Handle h_FmHc, t_Handle h_Profile, e_FmP
 
     t_FmHc                              *p_FmHc = (t_FmHc*)h_FmHc;
     uint16_t                            absoluteProfileId = (uint16_t)(CAST_POINTER_TO_UINT32(h_Profile)-1);
-    t_Error                             err;
+    t_Error                             err = E_OK;
     t_HcFrame                           hcFrame;
     t_FmFD                              fmFd;
 
@@ -821,7 +817,7 @@ uint32_t FmHcPcdPlcrGetProfileCounter(t_Handle h_FmHc, t_Handle h_Profile, e_FmP
 {
     t_FmHc                              *p_FmHc = (t_FmHc*)h_FmHc;
     uint16_t                            absoluteProfileId = (uint16_t)(CAST_POINTER_TO_UINT32(h_Profile)-1);
-    t_Error                             err;
+    t_Error                             err = E_OK;
     t_HcFrame                           hcFrame;
     t_FmFD                              fmFd;
     uint32_t                            retVal;
@@ -968,8 +964,8 @@ t_Error FmHcPcdCcRemoveKey(t_Handle h_FmHc, t_Handle h_CcNode, uint8_t keyIndex)
     t_FmHc      *p_FmHc = (t_FmHc*)h_FmHc;
     t_Handle    h_NewPointer;
     t_List      h_OldPointersLst;
-    t_Error     err;
-    t_List      h_List      ;
+    t_Error     err = E_OK;
+    t_List      h_List;
 
     INIT_LIST(&h_List);
 
@@ -1005,7 +1001,7 @@ t_Error FmHcPcdCcAddKey(t_Handle h_FmHc, t_Handle h_CcNode, uint8_t keyIndex, ui
     t_FmHc      *p_FmHc = (t_FmHc*)h_FmHc;
     t_Handle    h_NewPointer;
     t_List      h_OldPointersLst;
-    t_Error     err;
+    t_Error     err = E_OK;
     t_List      h_List;
 
     UNUSED(keySize);
@@ -1045,7 +1041,7 @@ t_Error FmHcPcdCcModifyKeyAndNextEngine(t_Handle h_FmHc, t_Handle h_CcNode, uint
     t_FmHc      *p_FmHc = (t_FmHc*)h_FmHc;
     t_List      h_OldPointersLst;
     t_Handle    h_NewPointer;
-    t_Error     err;
+    t_Error     err = E_OK;
     t_List      h_List;
 
     UNUSED(keySize);
@@ -1084,7 +1080,7 @@ t_Error FmHcPcdCcModifyKey(t_Handle h_FmHc, t_Handle h_CcNode, uint8_t keyIndex,
     t_FmHc      *p_FmHc = (t_FmHc*)h_FmHc;
     t_List      h_OldPointersLst;
     t_Handle    h_NewPointer;
-    t_Error     err;
+    t_Error     err = E_OK;
     t_List      h_List;
     UNUSED(keySize);
 
@@ -1121,7 +1117,7 @@ t_Error FmHcKgWriteSp(t_Handle h_FmHc, uint8_t hardwarePortId, uint32_t spReg, b
     t_FmHc                  *p_FmHc = (t_FmHc*)h_FmHc;
     t_HcFrame               hcFrame;
     t_FmFD                  fmFd;
-    t_Error                 err;
+    t_Error                 err = E_OK;
 
     ASSERT_COND(p_FmHc);
 
@@ -1157,7 +1153,7 @@ t_Error FmHcKgWriteCpp(t_Handle h_FmHc, uint8_t hardwarePortId, uint32_t cppReg)
     t_FmHc                  *p_FmHc = (t_FmHc*)h_FmHc;
     t_HcFrame               hcFrame;
     t_FmFD                  fmFd;
-    t_Error                 err;
+    t_Error                 err = E_OK;
 
     ASSERT_COND(p_FmHc);
 

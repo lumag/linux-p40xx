@@ -165,8 +165,6 @@ static int fm_pcd_proc_dump_stats(char *buffer, char **start, off_t offset,
     }
 
     local_irq_save(flags);
-    ProcBuff_Write (h_ProcBuff, "FM-PCD driver statistics:\n");
-
     ProcBuff_Write (h_ProcBuff,
                     "\tFM-PCD counters:\n"
                     "e_FM_COUNTERS_ENQ_TOTAL_FRAME: %d\n"
@@ -228,6 +226,84 @@ static int fm_pcd_proc_dump_stats(char *buffer, char **start, off_t offset,
     return numOfWrittenChars;
 }
 
+static int fm_port_proc_dump_stats(char *buffer, char **start, off_t offset,
+                                   int length, int *eof, void *data)
+{
+    t_LnxWrpFmPortDev           *p_LnxWrpFmPortDev = (t_LnxWrpFmPortDev*)data;
+    t_LnxWrpFmDev               *p_LnxWrpFmDev;
+    t_Handle                    h_ProcBuff = ProcBuff_Init(buffer,start,offset,length,eof);
+    unsigned long               flags;
+    int                         numOfWrittenChars;
+
+    if (!p_LnxWrpFmPortDev)
+    {
+        REPORT_ERROR(MINOR, E_INVALID_STATE, ("FM-Port not initialized!"));
+        return 0;
+    }
+    p_LnxWrpFmDev = (t_LnxWrpFmDev *)p_LnxWrpFmPortDev->h_LnxWrpFmDev;
+    if (!p_LnxWrpFmDev->active || !p_LnxWrpFmDev->h_Dev)
+    {
+        REPORT_ERROR(MINOR, E_INVALID_STATE, ("FM not initialized!"));
+        return 0;
+    }
+
+    local_irq_save(flags);
+    ProcBuff_Write (h_ProcBuff,
+             "\tFM %d %s Port %d counters:\n"
+             "e_FM_PORT_COUNTERS_CYCLE=%d\n"
+             "e_FM_PORT_COUNTERS_TASK_UTIL=%d\n"
+             "e_FM_PORT_COUNTERS_QUEUE_UTIL=%d\n"
+             "e_FM_PORT_COUNTERS_DMA_UTIL=%d\n"
+             "e_FM_PORT_COUNTERS_FIFO_UTIL=%d\n"
+             "e_FM_PORT_COUNTERS_RX_PAUSE_ACTIVATION=%d\n"
+             "e_FM_PORT_COUNTERS_FRAME=%d\n"
+             "e_FM_PORT_COUNTERS_DISCARD_FRAME=%d\n"
+             "e_FM_PORT_COUNTERS_DEALLOC_BUF=%d\n"
+             "e_FM_PORT_COUNTERS_RX_BAD_FRAME=%d\n"
+             "e_FM_PORT_COUNTERS_RX_LARGE_FRAME=%d\n"
+             "e_FM_PORT_COUNTERS_RX_OUT_OF_BUFFERS_DISCARD=%d\n"
+             "e_FM_PORT_COUNTERS_RX_FILTER_FRAME=%d\n"
+             "e_FM_PORT_COUNTERS_RX_LIST_DMA_ERR=%d\n"
+             "e_FM_PORT_COUNTERS_WRED_DISCARD=%d\n"
+             "e_FM_PORT_COUNTERS_LENGTH_ERR=%d\n"
+             "e_FM_PORT_COUNTERS_UNSUPPRTED_FORMAT=%d\n"
+             "e_FM_PORT_COUNTERS_DEQ_TOTAL=%d\n"
+             "e_FM_PORT_COUNTERS_ENQ_TOTAL=%d\n"
+             "e_FM_PORT_COUNTERS_DEQ_FROM_DEFAULT=%d\n"
+             "e_FM_PORT_COUNTERS_DEQ_CONFIRM =%d\n",
+             p_LnxWrpFmDev->id,
+             /*(oh ? "OH" : (rx ? "RX" : "TX"))*/"unknown",
+             p_LnxWrpFmPortDev->id,
+             FM_PORT_GetCounter(p_LnxWrpFmPortDev->h_Dev, e_FM_PORT_COUNTERS_CYCLE),
+             FM_PORT_GetCounter(p_LnxWrpFmPortDev->h_Dev, e_FM_PORT_COUNTERS_TASK_UTIL),
+             FM_PORT_GetCounter(p_LnxWrpFmPortDev->h_Dev, e_FM_PORT_COUNTERS_QUEUE_UTIL),
+             FM_PORT_GetCounter(p_LnxWrpFmPortDev->h_Dev, e_FM_PORT_COUNTERS_DMA_UTIL),
+             FM_PORT_GetCounter(p_LnxWrpFmPortDev->h_Dev, e_FM_PORT_COUNTERS_FIFO_UTIL),
+             FM_PORT_GetCounter(p_LnxWrpFmPortDev->h_Dev, e_FM_PORT_COUNTERS_RX_PAUSE_ACTIVATION),
+             FM_PORT_GetCounter(p_LnxWrpFmPortDev->h_Dev, e_FM_PORT_COUNTERS_FRAME),
+             FM_PORT_GetCounter(p_LnxWrpFmPortDev->h_Dev, e_FM_PORT_COUNTERS_DISCARD_FRAME),
+             FM_PORT_GetCounter(p_LnxWrpFmPortDev->h_Dev, e_FM_PORT_COUNTERS_DEALLOC_BUF),
+             FM_PORT_GetCounter(p_LnxWrpFmPortDev->h_Dev, e_FM_PORT_COUNTERS_RX_BAD_FRAME),
+             FM_PORT_GetCounter(p_LnxWrpFmPortDev->h_Dev, e_FM_PORT_COUNTERS_RX_LARGE_FRAME),
+             FM_PORT_GetCounter(p_LnxWrpFmPortDev->h_Dev, e_FM_PORT_COUNTERS_RX_OUT_OF_BUFFERS_DISCARD),
+             FM_PORT_GetCounter(p_LnxWrpFmPortDev->h_Dev, e_FM_PORT_COUNTERS_RX_FILTER_FRAME),
+             FM_PORT_GetCounter(p_LnxWrpFmPortDev->h_Dev, e_FM_PORT_COUNTERS_RX_LIST_DMA_ERR),
+             FM_PORT_GetCounter(p_LnxWrpFmPortDev->h_Dev, e_FM_PORT_COUNTERS_WRED_DISCARD),
+             FM_PORT_GetCounter(p_LnxWrpFmPortDev->h_Dev, e_FM_PORT_COUNTERS_LENGTH_ERR),
+             FM_PORT_GetCounter(p_LnxWrpFmPortDev->h_Dev, e_FM_PORT_COUNTERS_UNSUPPRTED_FORMAT),
+             FM_PORT_GetCounter(p_LnxWrpFmPortDev->h_Dev, e_FM_PORT_COUNTERS_DEQ_TOTAL),
+             FM_PORT_GetCounter(p_LnxWrpFmPortDev->h_Dev, e_FM_PORT_COUNTERS_ENQ_TOTAL),
+             FM_PORT_GetCounter(p_LnxWrpFmPortDev->h_Dev, e_FM_PORT_COUNTERS_DEQ_FROM_DEFAULT),
+             FM_PORT_GetCounter(p_LnxWrpFmPortDev->h_Dev, e_FM_PORT_COUNTERS_DEQ_CONFIRM)
+             );
+
+    numOfWrittenChars = ProcBuff_GetNumOfWrittenChars(h_ProcBuff);
+    ProcBuff_Free(h_ProcBuff);
+    local_irq_restore(flags);
+
+    return numOfWrittenChars;
+}
+
 static int fm_proc_dump_regs(char *buffer, char **start, off_t offset,
                              int length, int *eof, void *data)
 {
@@ -235,7 +311,6 @@ static int fm_proc_dump_regs(char *buffer, char **start, off_t offset,
 
 #if (defined(DEBUG_ERRORS) && (DEBUG_ERRORS > 0))
     t_LnxWrpFmDev   *p_LnxWrpFmDev = (t_LnxWrpFmDev*)data;
-    int             i;
     char            *next = buffer;
     unsigned        size = length;
     int             t;
@@ -248,21 +323,7 @@ static int fm_proc_dump_regs(char *buffer, char **start, off_t offset,
     if (!p_LnxWrpFmDev->active || !p_LnxWrpFmDev->h_Dev)
         REPORT_ERROR(MINOR, E_INVALID_STATE, ("FM not initialized!"));
     else
-    {
         FM_DumpRegs(p_LnxWrpFmDev->h_Dev);
-
-        for (i=0; i<FM_MAX_NUM_OF_OP_PORTS; i++)
-            if (p_LnxWrpFmDev->opPorts[i].active && p_LnxWrpFmDev->opPorts[i].h_Dev)
-                FM_PORT_DumpRegs(p_LnxWrpFmDev->opPorts[i].h_Dev);
-        for (i=0; i<FM_MAX_NUM_OF_TX_PORTS; i++)
-            if (p_LnxWrpFmDev->txPorts[i].active && p_LnxWrpFmDev->txPorts[i].h_Dev)
-                FM_PORT_DumpRegs(p_LnxWrpFmDev->txPorts[i].h_Dev);
-        for (i=0; i<FM_MAX_NUM_OF_RX_PORTS; i++)
-            if (p_LnxWrpFmDev->rxPorts[i].active && p_LnxWrpFmDev->rxPorts[i].h_Dev)
-                FM_PORT_DumpRegs(p_LnxWrpFmDev->rxPorts[i].h_Dev);
-        if (p_LnxWrpFmDev->hcPort.active && p_LnxWrpFmDev->hcPort.h_Dev)
-            FM_PORT_DumpRegs(p_LnxWrpFmDev->hcPort.h_Dev);
-    }
 
     local_irq_restore(flags);
     *eof = 1;
@@ -323,6 +384,46 @@ static int fm_pcd_proc_dump_regs(char *buffer, char **start, off_t offset,
 #endif /* (defined(DEBUG_ERRORS) && ... */
 }
 
+static int fm_port_proc_dump_regs(char *buffer, char **start, off_t offset,
+                                  int length, int *eof, void *data)
+{
+    unsigned long   flags;
+
+#if (defined(DEBUG_ERRORS) && (DEBUG_ERRORS > 0))
+    t_LnxWrpFmPortDev           *p_LnxWrpFmPortDev = (t_LnxWrpFmPortDev*)data;
+    char            *next = buffer;
+    unsigned        size = length;
+    int             t;
+
+    local_irq_save(flags);
+    t = scnprintf(next, size, "FM port driver registers dump.\n");
+    size -= t;
+    next += t;
+
+    if (!p_LnxWrpFmPortDev->h_Dev)
+        REPORT_ERROR(MINOR, E_INVALID_STATE, ("FM port not initialized!"));
+    else
+        FM_PORT_DumpRegs(p_LnxWrpFmPortDev->h_Dev);
+
+    local_irq_restore(flags);
+    *eof = 1;
+
+    return length - size;
+
+#else
+    t_Handle    h_ProcBuff = ProcBuff_Init(buffer,start,offset,length,eof);
+    int         numOfWrittenChars;
+
+    local_irq_save(flags);
+    ProcBuff_Write (h_ProcBuff, "Debug level is too low to dump registers!!!\n");
+    numOfWrittenChars = ProcBuff_GetNumOfWrittenChars(h_ProcBuff);
+    ProcBuff_Free(h_ProcBuff);
+    local_irq_restore(flags);
+
+    return numOfWrittenChars;
+#endif /* (defined(DEBUG_ERRORS) && ... */
+}
+
 static irqreturn_t fm_irq(int irq, void *_dev)
 {
     t_LnxWrpFmDev       *p_LnxWrpFmDev = (t_LnxWrpFmDev *)_dev;
@@ -330,7 +431,19 @@ static irqreturn_t fm_irq(int irq, void *_dev)
     if (!p_LnxWrpFmDev || !p_LnxWrpFmDev->h_Dev)
         return IRQ_NONE;
 
-    FM_Isr(p_LnxWrpFmDev->h_Dev);
+    FM_EventIsr(p_LnxWrpFmDev->h_Dev);
+
+    return IRQ_HANDLED;
+}
+
+static irqreturn_t fm_err_irq(int irq, void *_dev)
+{
+    t_LnxWrpFmDev       *p_LnxWrpFmDev = (t_LnxWrpFmDev *)_dev;
+
+    if (!p_LnxWrpFmDev || !p_LnxWrpFmDev->h_Dev)
+        return IRQ_NONE;
+
+    FM_ErrorIsr(p_LnxWrpFmDev->h_Dev);
 
     return IRQ_HANDLED;
 }
@@ -470,7 +583,7 @@ static t_LnxWrpFmDev * CreateFmDev(uint8_t  id)
         p_LnxWrpFmDev->txPorts[j].settings.advConfig = (t_SysObjectAdvConfigEntry*)XX_Malloc(FM_MAX_NUM_OF_ADV_SETTINGS*sizeof(t_SysObjectAdvConfigEntry));
         memset(p_LnxWrpFmDev->txPorts[j].settings.advConfig, 0, (FM_MAX_NUM_OF_ADV_SETTINGS*sizeof(t_SysObjectAdvConfigEntry)));
     }
-    for (j=0; j<FM_MAX_NUM_OF_OP_PORTS; j++)
+    for (j=0; j<FM_MAX_NUM_OF_OH_PORTS-1; j++)
     {
         p_LnxWrpFmDev->opPorts[j].settings.advConfig = (t_SysObjectAdvConfigEntry*)XX_Malloc(FM_MAX_NUM_OF_ADV_SETTINGS*sizeof(t_SysObjectAdvConfigEntry));
         memset(p_LnxWrpFmDev->opPorts[j].settings.advConfig, 0, (FM_MAX_NUM_OF_ADV_SETTINGS*sizeof(t_SysObjectAdvConfigEntry)));
@@ -483,7 +596,7 @@ static void DistroyFmDev(t_LnxWrpFmDev *p_LnxWrpFmDev)
 {
     int             j;
 
-    for (j=0; j<FM_MAX_NUM_OF_OP_PORTS; j++)
+    for (j=0; j<FM_MAX_NUM_OF_OH_PORTS-1; j++)
         if (p_LnxWrpFmDev->opPorts[j].settings.advConfig)
             XX_Free(p_LnxWrpFmDev->opPorts[j].settings.advConfig);
     for (j=0; j<FM_MAX_NUM_OF_TX_PORTS; j++)
@@ -652,11 +765,21 @@ static t_LnxWrpFmDev * ReadFmDevTreeNode (struct of_device *of_dev)
     p_LnxWrpFmDev->id = *uint32_prop;
 
     /* Get the FM interrupt */
-    p_LnxWrpFmDev->irq1 = of_irq_to_resource(fm_node, 0, NULL);
-    if (unlikely(p_LnxWrpFmDev->irq1 == NO_IRQ)) {
+    p_LnxWrpFmDev->irq = of_irq_to_resource(fm_node, 0, NULL);
+    if (unlikely(p_LnxWrpFmDev->irq == /*NO_IRQ*/0)) {
         REPORT_ERROR(MAJOR, E_INVALID_VALUE, ("of_irq_to_resource() = %d", NO_IRQ));
         return NULL;
     }
+
+    /* Get the FM error interrupt */
+    p_LnxWrpFmDev->err_irq = of_irq_to_resource(fm_node, 1, NULL);
+    /* TODO - un-comment it once there will be err_irq in the DTS */
+#if 0
+    if (unlikely(p_LnxWrpFmDev->err_irq == /*NO_IRQ*/0)) {
+        REPORT_ERROR(MAJOR, E_INVALID_VALUE, ("of_irq_to_resource() = %d", NO_IRQ));
+        return NULL;
+    }
+#endif /* 0 */
 
     /* Get the FM address */
     _errno = of_address_to_resource(fm_node, 0, &res);
@@ -862,7 +985,7 @@ static t_LnxWrpFmPortDev * ReadFmPortDevTreeNode (struct of_device *of_dev)
     }
     BUG_ON(lenp != sizeof(uint32_t));
     if (of_device_is_compatible(port_node, "fsl,fman-port-oh")) {
-        if (unlikely(*uint32_prop >= FM_MAX_NUM_OF_OP_PORTS+1)) {
+        if (unlikely(*uint32_prop >= FM_MAX_NUM_OF_OH_PORTS)) {
             REPORT_ERROR(MAJOR, E_INVALID_VALUE, ("of_get_property(%s, cell-index) failed", port_node->full_name));
             return NULL;
         }
@@ -1023,12 +1146,21 @@ static t_Error ConfigureFmDev(t_LnxWrpFmDev  *p_LnxWrpFmDev)
     if (!p_LnxWrpFmDev->active)
         RETURN_ERROR(MAJOR, E_INVALID_STATE, ("FM not configured!!!"));
 
-    _errno = can_request_irq(p_LnxWrpFmDev->irq1, 0);
+    _errno = can_request_irq(p_LnxWrpFmDev->irq, 0);
     if (unlikely(_errno < 0))
         RETURN_ERROR(MAJOR, E_INVALID_STATE, ("can_request_irq() = %d", _errno));
-    _errno = devm_request_irq(p_LnxWrpFmDev->dev, p_LnxWrpFmDev->irq1, fm_irq, 0, "fman", p_LnxWrpFmDev);
+    _errno = devm_request_irq(p_LnxWrpFmDev->dev, p_LnxWrpFmDev->irq, fm_irq, 0, "fman", p_LnxWrpFmDev);
     if (unlikely(_errno < 0))
-        RETURN_ERROR(MAJOR, E_INVALID_STATE, ("request_irq(%d) = %d", p_LnxWrpFmDev->irq1, _errno));
+        RETURN_ERROR(MAJOR, E_INVALID_STATE, ("request_irq(%d) = %d", p_LnxWrpFmDev->irq, _errno));
+
+    if (p_LnxWrpFmDev->err_irq != 0) {
+        _errno = can_request_irq(p_LnxWrpFmDev->err_irq, 0);
+        if (unlikely(_errno < 0))
+            RETURN_ERROR(MAJOR, E_INVALID_STATE, ("can_request_irq() = %d", _errno));
+        _errno = devm_request_irq(p_LnxWrpFmDev->dev, p_LnxWrpFmDev->err_irq, fm_err_irq, IRQF_SHARED, "fman-err", p_LnxWrpFmDev);
+        if (unlikely(_errno < 0))
+            RETURN_ERROR(MAJOR, E_INVALID_STATE, ("request_irq(%d) = %d", p_LnxWrpFmDev->err_irq, _errno));
+    }
 
     fmPhysAddr = p_LnxWrpFmDev->fmBaseAddr;
     p_LnxWrpFmDev->res = devm_request_mem_region(p_LnxWrpFmDev->dev, p_LnxWrpFmDev->fmBaseAddr, p_LnxWrpFmDev->fmMemSize, "fman");
@@ -1150,6 +1282,16 @@ static t_Error InitFmPcdDev(t_LnxWrpFmDev  *p_LnxWrpFmDev)
                                                        LNXWRP_FM_NUM_OF_SHARED_PROFILES))!= E_OK)
             RETURN_ERROR(MAJOR, err, NO_MSG);
 
+        if (p_LnxWrpFmDev->err_irq != 0) {
+            FM_PCD_SetException(p_LnxWrpFmDev->h_PcdDev,e_FM_PCD_KG_ERR_EXCEPTION_DOUBLE_ECC,FALSE);
+            FM_PCD_SetException(p_LnxWrpFmDev->h_PcdDev,e_FM_PCD_KG_ERR_EXCEPTION_KEYSIZE_OVERFLOW,FALSE);
+            FM_PCD_SetException(p_LnxWrpFmDev->h_PcdDev,e_FM_PCD_PLCR_ERR_EXCEPTION_INIT_ENTRY_ERROR,FALSE);
+            FM_PCD_SetException(p_LnxWrpFmDev->h_PcdDev,e_FM_PCD_PLCR_ERR_EXCEPTION_DOUBLE_ECC,FALSE);
+            FM_PCD_SetException(p_LnxWrpFmDev->h_PcdDev,e_FM_PCD_PRS_EXCEPTION_DOUBLE_ECC,FALSE);
+            FM_PCD_SetException(p_LnxWrpFmDev->h_PcdDev,e_FM_PCD_PRS_EXCEPTION_ILLEGAL_ACCESS,FALSE);
+            FM_PCD_SetException(p_LnxWrpFmDev->h_PcdDev,e_FM_PCD_PRS_EXCEPTION_PORT_ILLEGAL_ACCESS,FALSE);
+        }
+
         if((err = FM_PCD_Init(p_LnxWrpFmDev->h_PcdDev))!= E_OK)
             RETURN_ERROR(MAJOR, err, NO_MSG);
     }
@@ -1173,18 +1315,39 @@ static t_Error InitFmDev(t_LnxWrpFmDev  *p_LnxWrpFmDev)
     if (FM_ConfigResetOnInit(p_LnxWrpFmDev->h_Dev, TRUE) != E_OK)
         RETURN_ERROR(MAJOR, E_INVALID_STATE, ("FM"));
 
+    if (p_LnxWrpFmDev->err_irq != 0) {
+        FM_SetException(p_LnxWrpFmDev->h_Dev, e_FM_EX_DMA_BUS_ERROR,FALSE);
+        FM_SetException(p_LnxWrpFmDev->h_Dev,e_FM_EX_DMA_READ_ECC,FALSE);
+        FM_SetException(p_LnxWrpFmDev->h_Dev,e_FM_EX_DMA_SYSTEM_WRITE_ECC,FALSE);
+        FM_SetException(p_LnxWrpFmDev->h_Dev,e_FM_EX_DMA_FM_WRITE_ECC,FALSE);
+        FM_SetException(p_LnxWrpFmDev->h_Dev,e_FM_EX_FPM_STALL_ON_TASKS , FALSE);
+        FM_SetException(p_LnxWrpFmDev->h_Dev,e_FM_EX_FPM_SINGLE_ECC,FALSE);
+        FM_SetException(p_LnxWrpFmDev->h_Dev,e_FM_EX_FPM_DOUBLE_ECC,FALSE);
+        FM_SetException(p_LnxWrpFmDev->h_Dev,e_FM_EX_IRAM_ECC,FALSE);
+        FM_SetException(p_LnxWrpFmDev->h_Dev,e_FM_EX_MURAM_ECC,FALSE);
+        FM_SetException(p_LnxWrpFmDev->h_Dev,e_FM_EX_QMI_DOUBLE_ECC,FALSE);
+        FM_SetException(p_LnxWrpFmDev->h_Dev,e_FM_EX_QMI_DEQ_FROM_DEFQ,FALSE);
+        FM_SetException(p_LnxWrpFmDev->h_Dev,e_FM_EX_BMI_LIST_RAM_ECC,FALSE);
+        FM_SetException(p_LnxWrpFmDev->h_Dev,e_FM_EX_BMI_PIPELINE_ECC,FALSE);
+        FM_SetException(p_LnxWrpFmDev->h_Dev,e_FM_EX_BMI_STATISTICS_RAM_ECC, FALSE);
+    }
+
+#ifdef BUP_FM_HALT_SIG_ERRATA
     /* Workaround for silicon! not relevant for simulator */
-    if (FM_ConfigCatastrophicErr(p_LnxWrpFmDev->h_Dev, e_FM_CATASTROPHIC_ERR_STALL_TASK) != E_OK)
-        RETURN_ERROR(MAJOR, E_INVALID_STATE, ("FM"));
-    if (FM_ConfigDmaErr(p_LnxWrpFmDev->h_Dev, e_FM_DMA_ERR_REPORT) != E_OK)
-        RETURN_ERROR(MAJOR, E_INVALID_STATE, ("FM"));
     if (FM_ConfigHaltOnExternalActivation(p_LnxWrpFmDev->h_Dev, FALSE) != E_OK)
         RETURN_ERROR(MAJOR, E_INVALID_STATE, ("FM"));
     if (FM_ConfigHaltOnUnrecoverableEccError(p_LnxWrpFmDev->h_Dev, FALSE) != E_OK)
         RETURN_ERROR(MAJOR, E_INVALID_STATE, ("FM"));
+#endif /* BUP_FM_HALT_SIG_ERRATA */
 
     if (FM_Init(p_LnxWrpFmDev->h_Dev) != E_OK)
         RETURN_ERROR(MAJOR, E_INVALID_STATE, ("FM"));
+
+#ifdef FM_MURAM_ERR_IRQ_ERRATA
+        FM_SetException(p_LnxWrpFmDev->h_Dev, e_FM_EX_BMI_LIST_RAM_ECC, FALSE);
+        FM_SetException(p_LnxWrpFmDev->h_Dev, e_FM_EX_MURAM_ECC, FALSE);
+        FM_SetException(p_LnxWrpFmDev->h_Dev, e_FM_EX_IRAM_ECC, FALSE);
+#endif /* FM_MURAM_ERR_IRQ_ERRATA */
 
 //    return InitFmPcdDev(p_LnxWrpFmDev);
     return E_OK;
@@ -1324,6 +1487,33 @@ static t_Error InitFmPortDev(t_LnxWrpFmPortDev *p_LnxWrpFmPortDev)
     if ((p_LnxWrpFmPortDev->h_Dev = FM_PORT_Config(&p_LnxWrpFmPortDev->settings.param)) == NULL)
         RETURN_ERROR(MAJOR, E_INVALID_HANDLE, ("FM-port"));
 
+    if (p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_RX_10G)
+    {
+        t_FmPortRsrc    portRsrc;
+        t_Error         errCode;
+
+        portRsrc.num = 24;
+        portRsrc.extra = 8;
+
+        if ((errCode = FM_PORT_ConfigNumOfTasks(p_LnxWrpFmPortDev->h_Dev, &portRsrc)) != E_OK)
+             RETURN_ERROR(MAJOR, errCode, NO_MSG);
+    }
+
+    if (((t_LnxWrpFmDev *)p_LnxWrpFmPortDev->h_LnxWrpFmDev)->err_irq != 0) {
+        FM_MAC_SetException(p_LnxWrpFmPortDev->h_Dev, e_FM_MAC_EX_10G_MDIO_SCAN_EVENTMDIO,FALSE);
+        FM_MAC_SetException(p_LnxWrpFmPortDev->h_Dev, e_FM_MAC_EX_10G_MDIO_CMD_CMPL,FALSE);
+        FM_MAC_SetException(p_LnxWrpFmPortDev->h_Dev, e_FM_MAC_EX_10G_REM_FAULT,FALSE);
+        FM_MAC_SetException(p_LnxWrpFmPortDev->h_Dev, e_FM_MAC_EX_10G_LOC_FAULT,FALSE);
+        FM_MAC_SetException(p_LnxWrpFmPortDev->h_Dev, e_FM_MAC_EX_10G_1TX_ECC_ER,FALSE);
+        FM_MAC_SetException(p_LnxWrpFmPortDev->h_Dev, e_FM_MAC_EX_10G_TX_FIFO_UNFL,FALSE);
+        FM_MAC_SetException(p_LnxWrpFmPortDev->h_Dev, e_FM_MAC_EX_10G_TX_FIFO_OVFL,FALSE);
+        FM_MAC_SetException(p_LnxWrpFmPortDev->h_Dev, e_FM_MAC_EX_10G_TX_ER,FALSE);
+        FM_MAC_SetException(p_LnxWrpFmPortDev->h_Dev, e_FM_MAC_EX_10G_RX_FIFO_OVFL,FALSE);
+        FM_MAC_SetException(p_LnxWrpFmPortDev->h_Dev, e_FM_MAC_EX_10G_RX_ECC_ER,FALSE);
+        FM_MAC_SetException(p_LnxWrpFmPortDev->h_Dev, e_FM_MAC_EX_10G_RX_JAB_FRM,FALSE);
+        FM_MAC_SetException(p_LnxWrpFmPortDev->h_Dev, e_FM_MAC_EX_10G_RX_OVRSZ_FRM,FALSE);
+    }
+
     /* Call the driver's advanced configuration routines, if requested:
        Compare the function pointer of each entry to the available routines,
        and invoke the matching routine with proper casting of arguments. */
@@ -1448,10 +1638,10 @@ static int fm_open(struct inode *inode, struct file *file)
     else if (minor == DEV_FM_PCD_MINOR_BASE)
         file->private_data = p_LnxWrpFmDev;
     else {
-        if (minor == DEV_FM_HC_PORT_MINOR_BASE)
+        if (minor == DEV_FM_OH_PORTS_MINOR_BASE)
             p_LnxWrpFmPortDev = &p_LnxWrpFmDev->hcPort;
-        else if ((minor >= DEV_FM_OP_PORTS_MINOR_BASE) && (minor < DEV_FM_RX_PORTS_MINOR_BASE))
-            p_LnxWrpFmPortDev = &p_LnxWrpFmDev->opPorts[minor-DEV_FM_OP_PORTS_MINOR_BASE];
+        else if ((minor > DEV_FM_OH_PORTS_MINOR_BASE) && (minor < DEV_FM_RX_PORTS_MINOR_BASE))
+            p_LnxWrpFmPortDev = &p_LnxWrpFmDev->opPorts[minor-DEV_FM_OH_PORTS_MINOR_BASE-1];
         else if ((minor >= DEV_FM_RX_PORTS_MINOR_BASE) && (minor < DEV_FM_TX_PORTS_MINOR_BASE))
             p_LnxWrpFmPortDev = &p_LnxWrpFmDev->rxPorts[minor-DEV_FM_RX_PORTS_MINOR_BASE];
         else if ((minor >= DEV_FM_TX_PORTS_MINOR_BASE) && (minor < DEV_FM_MAX_MINORS))
@@ -1491,8 +1681,7 @@ static int fm_close(struct inode *inode, struct file *file)
             return -ENODEV;
         fm_unbind((struct fm *)p_LnxWrpFmDev);
     }
-    else if ((minor == DEV_FM_HC_PORT_MINOR_BASE) ||
-             ((minor >= DEV_FM_OP_PORTS_MINOR_BASE) && (minor < DEV_FM_RX_PORTS_MINOR_BASE)) ||
+    else if (((minor >= DEV_FM_OH_PORTS_MINOR_BASE) && (minor < DEV_FM_RX_PORTS_MINOR_BASE)) ||
              ((minor >= DEV_FM_RX_PORTS_MINOR_BASE) && (minor < DEV_FM_TX_PORTS_MINOR_BASE)) ||
              ((minor >= DEV_FM_TX_PORTS_MINOR_BASE) && (minor < DEV_FM_MAX_MINORS)))
     {
@@ -1520,8 +1709,7 @@ static int fm_ioctl(struct inode *inode, struct file *file, unsigned int cmd, un
         if (LnxwrpFmIOCTL(p_LnxWrpFmDev, cmd, arg))
             return -EFAULT;
     }
-    else if ((minor == DEV_FM_HC_PORT_MINOR_BASE) ||
-             ((minor >= DEV_FM_OP_PORTS_MINOR_BASE) && (minor < DEV_FM_RX_PORTS_MINOR_BASE)) ||
+    else if (((minor >= DEV_FM_OH_PORTS_MINOR_BASE) && (minor < DEV_FM_RX_PORTS_MINOR_BASE)) ||
              ((minor >= DEV_FM_RX_PORTS_MINOR_BASE) && (minor < DEV_FM_TX_PORTS_MINOR_BASE)) ||
              ((minor >= DEV_FM_TX_PORTS_MINOR_BASE) && (minor < DEV_FM_MAX_MINORS)))
     {
@@ -1554,7 +1742,6 @@ static struct file_operations fm_fops =
 static int /*__devinit*/ fm_probe(struct of_device *of_dev, const struct of_device_id *match)
 {
     t_LnxWrpFmDev   *p_LnxWrpFmDev;
-    char            fmName[10];
 
     if ((p_LnxWrpFmDev = ReadFmDevTreeNode(of_dev)) == NULL)
         return -EIO;
@@ -1563,20 +1750,31 @@ static int /*__devinit*/ fm_probe(struct of_device *of_dev, const struct of_devi
     if (InitFmDev(p_LnxWrpFmDev) != E_OK)
         return -EIO;
 
-    memset(fmName,0,sizeof(fmName));
-    Sprint (fmName, "%s%d", DEV_FM_NAME, p_LnxWrpFmDev->id);
+    Sprint (p_LnxWrpFmDev->name, "%s%d", DEV_FM_NAME, p_LnxWrpFmDev->id);
 
     /* Register to the /dev for IOCTL API */
     /* Register dynamically a new major number for the character device: */
-    if ((p_LnxWrpFmDev->major = register_chrdev(0, fmName, &fm_fops)) <= 0)
-    {
-        FreeFmDev(p_LnxWrpFmDev);
-        REPORT_ERROR(MAJOR, E_INVALID_STATE, ("Failed to allocate a major number for device \"%s\"", DEV_FM_NAME));
+    if ((p_LnxWrpFmDev->major = register_chrdev(0, p_LnxWrpFmDev->name, &fm_fops)) <= 0) {
+        REPORT_ERROR(MAJOR, E_INVALID_STATE, ("Failed to allocate a major number for device \"%s\"", p_LnxWrpFmDev->name));
         return -EIO;
     }
 
+    /* Creating classes for FM */
+    DBG(TRACE ,("class_create fm_class"));
+    p_LnxWrpFmDev->fm_class = class_create(THIS_MODULE, p_LnxWrpFmDev->name);
+    if (IS_ERR(p_LnxWrpFmDev->fm_class)) {
+        unregister_chrdev(p_LnxWrpFmDev->major, p_LnxWrpFmDev->name);
+        REPORT_ERROR(MAJOR, E_INVALID_STATE, ("class_create error fm_class"));
+        return -EIO;
+    }
+
+    device_create(p_LnxWrpFmDev->fm_class, NULL, MKDEV(p_LnxWrpFmDev->major, DEV_FM_MINOR_BASE), NULL,
+                  "fm%d", p_LnxWrpFmDev->id);
+    device_create(p_LnxWrpFmDev->fm_class, NULL, MKDEV(p_LnxWrpFmDev->major, DEV_FM_PCD_MINOR_BASE), NULL,
+                  "fm%d-pcd", p_LnxWrpFmDev->id);
+
     /* Register to the /proc for debug and statistics API */
-    if (((p_LnxWrpFmDev->proc_fm = proc_mkdir(fmName, NULL)) == NULL) ||
+    if (((p_LnxWrpFmDev->proc_fm = proc_mkdir(p_LnxWrpFmDev->name, NULL)) == NULL) ||
         ((p_LnxWrpFmDev->proc_fm_regs = create_proc_read_entry("regs", 0, p_LnxWrpFmDev->proc_fm, fm_proc_dump_regs, p_LnxWrpFmDev)) == NULL) ||
         ((p_LnxWrpFmDev->proc_fm_stats = create_proc_read_entry("stats", 0, p_LnxWrpFmDev->proc_fm, fm_proc_dump_stats, p_LnxWrpFmDev)) == NULL) ||
         ((p_LnxWrpFmDev->proc_fm_pcd = proc_mkdir("fm-pcd", p_LnxWrpFmDev->proc_fm)) == NULL) ||
@@ -1600,22 +1798,24 @@ static int __devexit fm_remove(struct of_device *of_dev)
 {
     t_LnxWrpFmDev   *p_LnxWrpFmDev;
     struct device   *dev;
-    char            fmName[10];
 
     dev = &of_dev->dev;
     p_LnxWrpFmDev = dev_get_drvdata(dev);
 
     remove_proc_entry("stats", p_LnxWrpFmDev->proc_fm_pcd);
     remove_proc_entry("regs", p_LnxWrpFmDev->proc_fm_pcd);
-    remove_proc_entry(p_LnxWrpFmDev->proc_fm_pcd, p_LnxWrpFmDev->proc_fm);
+    remove_proc_entry("fm-pcd", p_LnxWrpFmDev->proc_fm);
     remove_proc_entry("stats", p_LnxWrpFmDev->proc_fm);
     remove_proc_entry("regs", p_LnxWrpFmDev->proc_fm);
-    memset(fmName,0,sizeof(fmName));
-    Sprint (fmName, "%s%d", DEV_FM_NAME, p_LnxWrpFmDev->id);
-    remove_proc_entry(fmName, NULL);
+    remove_proc_entry(p_LnxWrpFmDev->name, NULL);
+
+    DBG(TRACE, ("destroy fm_class"));
+    device_destroy(p_LnxWrpFmDev->fm_class, MKDEV(p_LnxWrpFmDev->major, DEV_FM_MINOR_BASE));
+    device_destroy(p_LnxWrpFmDev->fm_class, MKDEV(p_LnxWrpFmDev->major, DEV_FM_PCD_MINOR_BASE));
+    class_destroy(p_LnxWrpFmDev->fm_class);
 
     /* Destroy chardev */
-    unregister_chrdev(p_LnxWrpFmDev->major, DEV_FM_NAME);
+    unregister_chrdev(p_LnxWrpFmDev->major, p_LnxWrpFmDev->name);
 
     FreeFmDev(p_LnxWrpFmDev);
 
@@ -1647,6 +1847,7 @@ static struct of_platform_driver fm_driver = {
 static int /*__devinit*/ fm_port_probe(struct of_device *of_dev, const struct of_device_id *match)
 {
     t_LnxWrpFmPortDev   *p_LnxWrpFmPortDev;
+    t_LnxWrpFmDev       *p_LnxWrpFmDev;
     struct device       *dev;
 
     dev = &of_dev->dev;
@@ -1668,30 +1869,57 @@ static int /*__devinit*/ fm_port_probe(struct of_device *of_dev, const struct of
 
     dev_set_drvdata(dev, p_LnxWrpFmPortDev);
 
-    DBG(TRACE, ("FM-port-%s%d probed",
-               (((p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_RX_10G) ||
-                 (p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_RX)) ? "rx" :
-                (((p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_TX_10G) ||
-                  (p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_TX)) ? "tx" :
-                 ((p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_OFFLINE_PARSING) ? "op" : "hc"))),
-               p_LnxWrpFmPortDev->id));
-
     if ((p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_HOST_COMMAND) &&
         (InitFmPcdDev((t_LnxWrpFmDev *)p_LnxWrpFmPortDev->h_LnxWrpFmDev) != E_OK))
         return -EIO;
 
-#if 0
+    p_LnxWrpFmDev = (t_LnxWrpFmDev *)p_LnxWrpFmPortDev->h_LnxWrpFmDev;
+
+    if (p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_RX)
+    {
+        Sprint (p_LnxWrpFmPortDev->name, "%s-port-rx%d", p_LnxWrpFmDev->name, p_LnxWrpFmPortDev->id);
+        p_LnxWrpFmPortDev->minor = p_LnxWrpFmPortDev->id + DEV_FM_RX_PORTS_MINOR_BASE;
+    }
+    else if (p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_RX_10G)
+    {
+        Sprint (p_LnxWrpFmPortDev->name, "%s-port-rx%d", p_LnxWrpFmDev->name, p_LnxWrpFmPortDev->id+FM_MAX_NUM_OF_1G_RX_PORTS);
+        p_LnxWrpFmPortDev->minor = p_LnxWrpFmPortDev->id + FM_MAX_NUM_OF_1G_RX_PORTS + DEV_FM_RX_PORTS_MINOR_BASE;
+    }
+    else if (p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_TX)
+    {
+        Sprint (p_LnxWrpFmPortDev->name, "%s-port-tx%d", p_LnxWrpFmDev->name, p_LnxWrpFmPortDev->id);
+        p_LnxWrpFmPortDev->minor = p_LnxWrpFmPortDev->id + DEV_FM_TX_PORTS_MINOR_BASE;
+    }
+    else if (p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_TX_10G)
+    {
+        Sprint (p_LnxWrpFmPortDev->name, "%s-port-tx%d", p_LnxWrpFmDev->name, p_LnxWrpFmPortDev->id+FM_MAX_NUM_OF_1G_TX_PORTS);
+        p_LnxWrpFmPortDev->minor = p_LnxWrpFmPortDev->id + FM_MAX_NUM_OF_1G_TX_PORTS + DEV_FM_TX_PORTS_MINOR_BASE;
+    }
+    else if (p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_HOST_COMMAND)
+    {
+        Sprint (p_LnxWrpFmPortDev->name, "%s-port-oh%d", p_LnxWrpFmDev->name, p_LnxWrpFmPortDev->id);
+        p_LnxWrpFmPortDev->minor = p_LnxWrpFmPortDev->id + DEV_FM_OH_PORTS_MINOR_BASE;
+    }
+    else if (p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_OFFLINE_PARSING)
+    {
+        Sprint (p_LnxWrpFmPortDev->name, "%s-port-oh%d", p_LnxWrpFmDev->name, p_LnxWrpFmPortDev->id+1);
+        p_LnxWrpFmPortDev->minor = p_LnxWrpFmPortDev->id + 1 + DEV_FM_OH_PORTS_MINOR_BASE;
+    }
+
+    device_create(p_LnxWrpFmDev->fm_class, NULL, MKDEV(p_LnxWrpFmDev->major, p_LnxWrpFmPortDev->minor), NULL, p_LnxWrpFmPortDev->name);
+
     /* Register to the /proc for debug and statistics API */
-    if (((p_LnxWrpFmPortDev->proc = proc_mkdir(fmName, NULL)) == NULL) ||
-        ((p_LnxWrpFmPortDev->proc_regs = create_proc_read_entry("regs", 0, p_LnxWrpFmDev->proc_fm, fm_proc_dump_regs, p_LnxWrpFmDev)) == NULL) ||
-        ((p_LnxWrpFmPortDev->proc_stats = create_proc_read_entry("stats", 0, p_LnxWrpFmDev->proc_fm, fm_proc_dump_stats, p_LnxWrpFmDev)) == NULL)
+    if (((p_LnxWrpFmPortDev->proc = proc_mkdir(p_LnxWrpFmPortDev->name, p_LnxWrpFmDev->proc_fm)) == NULL) ||
+        ((p_LnxWrpFmPortDev->proc_regs = create_proc_read_entry("regs", 0, p_LnxWrpFmPortDev->proc, fm_port_proc_dump_regs, p_LnxWrpFmPortDev)) == NULL) ||
+        ((p_LnxWrpFmPortDev->proc_stats = create_proc_read_entry("stats", 0, p_LnxWrpFmPortDev->proc, fm_port_proc_dump_stats, p_LnxWrpFmPortDev)) == NULL)
         )
     {
         FreeFmDev(p_LnxWrpFmDev);
         REPORT_ERROR(MAJOR, E_INVALID_STATE, ("Unable to create proc entry - fm!!!"));
         return -EIO;
     }
-#endif /* 0 */
+
+    DBG(TRACE, ("%s probed", p_LnxWrpFmPortDev->name));
 
     return 0;
 }
@@ -1699,10 +1927,18 @@ static int /*__devinit*/ fm_port_probe(struct of_device *of_dev, const struct of
 static int __devexit fm_port_remove(struct of_device *of_dev)
 {
     t_LnxWrpFmPortDev   *p_LnxWrpFmPortDev;
+    t_LnxWrpFmDev       *p_LnxWrpFmDev;
     struct device       *dev;
 
     dev = &of_dev->dev;
     p_LnxWrpFmPortDev = dev_get_drvdata(dev);
+
+    remove_proc_entry("stats", p_LnxWrpFmPortDev->proc_stats);
+    remove_proc_entry("regs", p_LnxWrpFmPortDev->proc_regs);
+    remove_proc_entry(p_LnxWrpFmPortDev->name, p_LnxWrpFmPortDev->proc);
+
+    p_LnxWrpFmDev = (t_LnxWrpFmDev *)p_LnxWrpFmPortDev->h_LnxWrpFmDev;
+    device_destroy(p_LnxWrpFmDev->fm_class, MKDEV(p_LnxWrpFmDev->major, p_LnxWrpFmPortDev->minor));
 
     FreeFmPortDev(p_LnxWrpFmPortDev);
 
@@ -1747,7 +1983,6 @@ t_Handle LNXWRP_FM_Init(void)
 {
 #ifdef NO_OF_SUPPORT
     t_LnxWrpFmDev   *p_LnxWrpFmDev;
-    char            fmName[10];
     int             i, j;
 #endif /* NO_OF_SUPPORT */
 
@@ -1770,18 +2005,18 @@ t_Handle LNXWRP_FM_Init(void)
             if (InitFmDev(p_LnxWrpFmDev) != E_OK)
                 return NULL;
 
+            Sprint (p_LnxWrpFmDev->name, "%s%d", DEV_FM_NAME, p_LnxWrpFmDev->id);
+
             /* Register to the /dev for IOCTL API */
             /* Register dynamically a new major number for the character device: */
-            if ((p_LnxWrpFmDev->major = register_chrdev(0, DEV_FM_NAME, &fm_fops)) <= 0)
+            if ((p_LnxWrpFmDev->major = register_chrdev(0, p_LnxWrpFmDev->name, &fm_fops)) <= 0)
             {
-                REPORT_ERROR(MAJOR, E_INVALID_STATE, ("Failed to allocate a major number for device \"%s\"", DEV_FM_NAME));
+                REPORT_ERROR(MAJOR, E_INVALID_STATE, ("Failed to allocate a major number for device \"%s\"", p_LnxWrpFmDev->name));
                 return NULL;
             }
 
             /* Register to the /proc for debug and statistics API */
-            memset(fmName,0,sizeof(fmName));
-            Sprint (fmName, "%s%d", DEV_FM_NAME, p_LnxWrpFmDev->id);
-            if (((p_LnxWrpFmDev->proc_fm = proc_mkdir(fmName, NULL)) == NULL) ||
+            if (((p_LnxWrpFmDev->proc_fm = proc_mkdir(p_LnxWrpFmDev->name, NULL)) == NULL) ||
                 ((p_LnxWrpFmDev->proc_fm_regs = create_proc_read_entry("regs", 0, p_LnxWrpFmDev->proc_fm, fm_proc_dump_regs, p_LnxWrpFmDev)) == NULL) ||
                 ((p_LnxWrpFmDev->proc_fm_stats = create_proc_read_entry("stats", 0, p_LnxWrpFmDev->proc_fm, fm_proc_dump_stats, p_LnxWrpFmDev)) == NULL))
             {
@@ -1801,6 +2036,12 @@ t_Handle LNXWRP_FM_Init(void)
     of_register_platform_driver(&fm_port_driver);
 #endif /* !NO_OF_SUPPORT */
 
+#ifdef CONFIG_FSL_FMAN_TEST
+	/* Seed the QMan allocator so we'll have enough queues to run PCD with
+	   dinamically fqid-range allocation */
+	qman_release_fqid_range(0x100, 0x100);
+#endif /* CONFIG_FSL_FMAN_TEST */
+
     return &lnxWrpFm;
 }
 
@@ -1810,7 +2051,6 @@ t_Error LNXWRP_FM_Free(t_Handle h_LnxWrpFm)
     t_LnxWrpFm          *p_LnxWrpFm = (t_LnxWrpFm *)h_LnxWrpFm;
     t_LnxWrpFmDev       *p_LnxWrpFmDev;
     int                 i, j;
-    char                fmName[10];
 
     for (i=0; i<INTG_MAX_NUM_OF_FM; i++)
     {
@@ -1818,12 +2058,10 @@ t_Error LNXWRP_FM_Free(t_Handle h_LnxWrpFm)
 
         remove_proc_entry("stats", p_LnxWrpFmDev->proc_fm);
         remove_proc_entry("regs", p_LnxWrpFmDev->proc_fm);
-        memset(fmName,0,sizeof(fmName));
-        Sprint (fmName, "%s%d", DEV_FM_NAME, p_LnxWrpFmDev->id);
-        remove_proc_entry(fmName, NULL);
+        remove_proc_entry(p_LnxWrpFmDev->name, NULL);
 
         /* Destroy chardev */
-        unregister_chrdev(p_LnxWrpFmDev->major, DEV_FM_NAME);
+        unregister_chrdev(p_LnxWrpFmDev->major, p_LnxWrpFmDev->name);
 
         FreeFmDev(p_LnxWrpFmDev);
 

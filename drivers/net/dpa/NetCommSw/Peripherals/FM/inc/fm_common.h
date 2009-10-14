@@ -165,6 +165,79 @@ do {                                                            \
 #define FM_MASTER_PARTITION
 #endif /* defined (CONFIG_GUEST_PARTITION) && ... */
 
+/**************************************************************************//**
+ @Collection   Defines used for enabling/disabling FM interrupts
+
+ @{
+*//***************************************************************************/
+
+typedef uint32_t t_FmBlockErrIntrEnable;
+
+#define ERR_INTR_EN_DMA         0x00010000
+#define ERR_INTR_EN_FPM         0x80000000
+#define ERR_INTR_EN_BMI         0x00800000
+#define ERR_INTR_EN_QMI         0x00400000
+#define ERR_INTR_EN_PRS         0x00200000
+#define ERR_INTR_EN_KG          0x00100000
+#define ERR_INTR_EN_PLCR        0x00080000
+#define ERR_INTR_EN_MURAM       0x00040000
+#define ERR_INTR_EN_IRAM        0x00020000
+#define ERR_INTR_EN_10G_MAC0    0x00008000
+#define ERR_INTR_EN_1G_MAC0     0x00004000
+#define ERR_INTR_EN_1G_MAC1     0x00002000
+#define ERR_INTR_EN_1G_MAC2     0x00001000
+#define ERR_INTR_EN_1G_MAC3     0x00000800
+
+typedef uint32_t t_FmBlockIntrEnable;
+
+#define INTR_EN_BMI             0x80000000
+#define INTR_EN_QMI             0x40000000
+#define INTR_EN_PRS             0x20000000
+#define INTR_EN_KG              0x10000000
+#define INTR_EN_PLCR            0x08000000
+#define INTR_EN_REV0            0x00008000
+#define INTR_EN_REV1            0x00004000
+#define INTR_EN_REV2            0x00002000
+#define INTR_EN_REV3            0x00001000
+#define INTR_EN_BRK             0x00000080
+#define INTR_EN_TMR             0x01000000
+#define INTR_EN_1G_MAC0_TMR     0x00080000
+#define INTR_EN_1G_MAC1_TMR     0x00040000
+#define INTR_EN_1G_MAC2_TMR     0x00020000
+#define INTR_EN_1G_MAC3_TMR     0x00010000
+#define INTR_EN_1G_MAC1         0x00400000
+#define INTR_EN_1G_MAC2         0x00200000
+#define INTR_EN_1G_MAC3         0x00100000
+
+/* @} */
+
+
+/**************************************************************************//**
+ @Description   Enum for inter-module interrupts registration
+*//***************************************************************************/
+typedef enum e_FmInterModuleEvent {
+    e_FM_EV_PRS,                    /**< Parser event */
+    e_FM_EV_ERR_PRS,                /**< Parser error event */
+    e_FM_EV_KG,                     /**< Keygen event */
+    e_FM_EV_ERR_KG,                 /**< Keygen error event */
+    e_FM_EV_PLCR,                   /**< Policer event */
+    e_FM_EV_ERR_PLCR,               /**< Policer error event */
+    e_FM_EV_ERR_10G_MAC0,           /**< 10G MAC 0 error event */
+    e_FM_EV_ERR_1G_MAC0,            /**< 1G MAC 0 error event */
+    e_FM_EV_ERR_1G_MAC1,            /**< 1G MAC 1 error event */
+    e_FM_EV_ERR_1G_MAC2,            /**< 1G MAC 2 error event */
+    e_FM_EV_ERR_1G_MAC3,            /**< 1G MAC 3 error event */
+    e_FM_EV_TMR,                    /**< Timer event */
+    e_FM_EV_1G_MAC1,                /**< 1G MAC 1 event */
+    e_FM_EV_1G_MAC2,                /**< 1G MAC 2 event */
+    e_FM_EV_1G_MAC3,                /**< 1G MAC 3 event */
+    e_FM_EV_1G_MAC0_TMR,            /**< 1G MAC 0 Timer event */
+    e_FM_EV_1G_MAC1_TMR,            /**< 1G MAC 1 Timer event */
+    e_FM_EV_1G_MAC2_TMR,            /**< 1G MAC 2 Timer event */
+    e_FM_EV_1G_MAC3_TMR,            /**< 1G MAC 3 Timer event */
+    e_FM_EV_DUMMY_LAST
+} e_FmInterModuleEvent;
+
 
 #define MAX_NUM_OF_OP_PORTS                 7
 #define MAX_NUM_OF_RX_1G_PORTS              4
@@ -277,6 +350,9 @@ typedef struct
 {
     void        (*f_Isr) (t_Handle h_Arg);
     t_Handle    h_SrcHandle;
+#ifdef FM_MASTER_PARTITION
+    uint8_t     partitionId;
+#endif
 } t_FmIntrSrc;
 
 #define ILLEGAL_HDR_NUM                         0xFF
@@ -587,9 +663,6 @@ t_Error     FmPcdCcUnbindTree(t_Handle h_FmPcd, t_Handle h_CcTree);
 t_Error     FmPcdHandleIpcMsg(t_Handle h_FmPcd, uint32_t msgId, uint8_t msgBody[MSG_BODY_SIZE]);
 #endif /* (defined(CONFIG_MULTI_PARTITION_SUPPORT) && ... */
 
-#ifdef CONFIG_MULTI_PARTITION_SUPPORT
-uint8_t     FmPcdGetPartitionId(t_Handle h_FmPcd);
-#endif /* CONFIG_MULTI_PARTITION_SUPPORT */
 
 t_Error     FmPortSetPcd(t_Handle h_FmPort, t_FmPortPcdParams *p_PcdParams);
 t_Error     FmPortDeletePcd(t_Handle h_FmPort);
@@ -602,5 +675,44 @@ void        FmPortPcdKgSwUnbindClsPlanGrp (t_Handle h_FmPort);
 t_Error     FmPortAttachPCD(t_Handle h_FmPort);
 
 
+#ifdef CONFIG_MULTI_PARTITION_SUPPORT
+uint8_t     FmGetPartitionId(t_Handle h_Fm);
+#endif /* CONFIG_MULTI_PARTITION_SUPPORT */
+/**************************************************************************//**
+ @Function      FmRegisterIntr
+
+ @Description   Used to register an inter-module event handler to be processed by FM
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+ @Param[in]     mod             The module that causes the event
+ @Param[in]     modId           Module id - if more than 1 instansiation of this
+                                mode exists,0 otherwise.
+ @Param[in]     intrType        Interrupt type (error/normal) selection.
+ @Param[in]     f_Isr           The interrupt service routine.
+ @Param[in]     h_Arg           Argument to be passed to f_Isr.
+
+ @Return        None.
+*//***************************************************************************/
+void FmRegisterIntr(t_Handle                h_Fm,
+                     e_FmEventModules       mod,
+                     uint8_t                modId,
+                     e_FmIntrType           intrType,
+                     void                   (*f_Isr) (t_Handle h_Arg),
+                     t_Handle               h_Arg);
+
+/**************************************************************************//**
+ @Function      FmRegisterFmCtlIntr
+
+ @Description   Used to register to one of the fmCtl events in the FM module
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+ @Param[in]     eventRegId      FmCtl event id (0-7).
+ @Param[in]     f_Isr           The interrupt service routine.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+void  FmRegisterFmCtlIntr(t_Handle h_Fm, uint8_t eventRegId, void (*f_Isr) (t_Handle h_Fm, uint32_t event));
 
 #endif /* __FM_COMMON_H */

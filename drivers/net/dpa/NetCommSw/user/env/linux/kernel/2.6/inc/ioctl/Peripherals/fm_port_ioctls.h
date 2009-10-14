@@ -275,7 +275,10 @@ typedef struct ioc_fm_pcd_prs_additional_hdr_params_t {
     bool                        err_disable;        /**< TRUE to disable error indication */
     bool                        soft_prs_enable;    /**< Enable jump to SW parser when this
                                                          header is recognized by the HW parser. */
-    char                        *soft_prs_label;    /**< Label of SW parser to jump to. */
+    uint8_t                     index_per_hdr;      /**< Normally 0, if more than one sw parser
+                                                         attachments exists for the same header,
+                                                         (in the main sw parser code) use this
+                                                         index to distinguish between them. */
     bool                        use_prs_opts;       /**< TRUE to use parser options. */
     ioc_fm_pcd_hdr_prs_opts_u   prs_opts;           /**< A unuion according to header type,
                                                          defining the parser options selected.*/

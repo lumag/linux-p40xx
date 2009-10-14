@@ -42,12 +42,284 @@ typedef enum e_SysModule
 
     /* ----------- Modules ----------- */
     e_SYS_MODULE_PLATFORM,
+    e_SYS_MODULE_DEV_MNG,
+    e_SYS_MODULE_DATA_POOL_MNG,
+    e_SYS_MODULE_TRAFFIC_MNG,
+    e_SYS_MODULE_APP,
+    /* Stacks */
+    e_SYS_MODULE_PCI_STACK,
+    e_SYS_MODULE_ESDHC_STACK,
+    e_SYS_MODULE_RIO_STACK,
+    e_SYS_MODULE_I2C_STACK,
+    e_SYS_MODULE_SPI_STACK,
+    e_SYS_MODULE_USB_STACK,
+    e_SYS_MODULE_IMA_STACK,
+    /* Wrappers */
+    e_SYS_MODULE_WRP_ECM,
+    e_SYS_MODULE_WRP_ARBITER,
+    e_SYS_MODULE_WRP_DUART,
+    e_SYS_MODULE_WRP_UART,
+    e_SYS_MODULE_WRP_QE,
+    e_SYS_MODULE_WRP_UPC,
+    e_SYS_MODULE_WRP_UCC_ATM,
+    e_SYS_MODULE_WRP_UCC_POS,
+    e_SYS_MODULE_WRP_UCC_GETH,
+    e_SYS_MODULE_WRP_UCC_HDLC,
+    e_SYS_MODULE_WRP_UCC_TRNS,
+    e_SYS_MODULE_WRP_UCC_UART,
+    e_SYS_MODULE_WRP_QMC,
+    e_SYS_MODULE_WRP_QMC_HDLC,
+    e_SYS_MODULE_WRP_QMC_TRANS,
+    e_SYS_MODULE_WRP_L2_SWITCH,
+    e_SYS_MODULE_WRP_SI,
+    e_SYS_MODULE_WRP_TDM,
+    e_SYS_MODULE_WRP_MCC,
+    e_SYS_MODULE_WRP_MCC_HDLC,
+    e_SYS_MODULE_WRP_MCC_TRANS,
+    e_SYS_MODULE_WRP_MCC_SS7,
+    e_SYS_MODULE_WRP_PPPOHT,
+    e_SYS_MODULE_WRP_IW_PPPOHT,
+    e_SYS_MODULE_WRP_PCI,
+    e_SYS_MODULE_WRP_ESDHC,
+    e_SYS_MODULE_WRP_RIO,
+    e_SYS_MODULE_WRP_I2C,
+    e_SYS_MODULE_WRP_SPI,
+    e_SYS_MODULE_WRP_ETSEC,
+    e_SYS_MODULE_WRP_SRIO,
+    e_SYS_MODULE_WRP_IMA,
+    e_SYS_MODULE_WRP_MTC,
+    e_SYS_MODULE_WRP_QE_IW,
+    e_SYS_MODULE_WRP_QE_FILTERING,
+    e_SYS_MODULE_WRP_QE_RTC,
+    e_SYS_MODULE_WRP_VP,
+    e_SYS_MODULE_WRP_GTIMERS,
+    e_SYS_MODULE_WRP_DMA,
+    e_SYS_MODULE_WRP_PTP,
 
+    /* Bus Device Drivers */
+    e_SYS_MODULE_MPC8568_RIO_DEV,
+    e_SYS_MODULE_MPC8568_PCI_DEV,
+    e_SYS_MODULE_MPC836X_PCI_DEV,
+    e_SYS_MODULE_MPC832X_PCI_DEV,
+    e_SYS_MODULE_MPC8568_PCIE_DEV,
+    e_SYS_MODULE_MPC8569_PCIE_DEV,
+    e_SYS_MODULE_MPC8568_SPI_FLASH_DEV,
+    e_SYS_MODULE_MPC8568_SPI_LB_DEV,
+    e_SYS_MODULE_SD_DEV,
+    e_SYS_MODULE_SPD_I2C_DEV,
+    e_SYS_MODULE_DS1374_I2C_DEV,
+    e_SYS_MODULE_PCA9555_I2C_DEV,
+    e_SYS_MODULE_M24256_I2C_DEV,
+    e_SYS_MODULE_AT24C01A_I2C_DEV,
+
+    /* Must close the modules list and open the sub-modules list */
+    e_SYS_SUBMODULE_DUMMY_FIRST,
+
+    /* --------- Sub-modules --------- */
+    e_SYS_SUBMODULE_DATA_POOL,
+    e_SYS_SUBMODULE_PG,
+    e_SYS_SUBMODULE_TG,
+    e_SYS_SUBMODULE_TA,
+    e_SYS_SUBMODULE_DEC,
+    e_SYS_SUBMODULE_PART,
+    e_SYS_SUBMODULE_IPIC,
+    e_SYS_SUBMODULE_EPIC,
+    e_SYS_SUBMODULE_QE_IC,
+    e_SYS_SUBMODULE_LAW,
+    e_SYS_SUBMODULE_DDR,
+    e_SYS_SUBMODULE_LBC,
+    e_SYS_SUBMODULE_ECM,
+    e_SYS_SUBMODULE_ARBITER,
+    e_SYS_SUBMODULE_L2,
+    e_SYS_SUBMODULE_QE,
+    e_SYS_SUBMODULE_QE_TIMERS,
+    e_SYS_SUBMODULE_GTIMERS,
+    e_SYS_SUBMODULE_PAR_IO,
+    e_SYS_SUBMODULE_SI,
+    e_SYS_SUBMODULE_TDM,
+    e_SYS_SUBMODULE_TDM_RX_FRAME,
+    e_SYS_SUBMODULE_TDM_TX_FRAME,
+    e_SYS_SUBMODULE_MCC,
+    e_SYS_SUBMODULE_MCC_HDLC_CH,
+    e_SYS_SUBMODULE_MCC_TRANS_CH,
+    e_SYS_SUBMODULE_MCC_SS7_CH,
+    e_SYS_SUBMODULE_UPC,
+    e_SYS_SUBMODULE_DUART,
+    e_SYS_SUBMODULE_I2C_CTRL,
+    e_SYS_SUBMODULE_DMA,
+    e_SYS_SUBMODULE_DMA_CH,
+    e_SYS_SUBMODULE_PM,
+    e_SYS_SUBMODULE_RTC,
+    e_SYS_SUBMODULE_TLU,
+    e_SYS_SUBMODULE_SEC,
+    e_SYS_SUBMODULE_PCI_CTRL,
+    e_SYS_SUBMODULE_PCIE_CTRL,
+    e_SYS_SUBMODULE_ESDHC,
+    e_SYS_SUBMODULE_SRIO_PORT,
+    e_SYS_SUBMODULE_SRIO_MU,
+    e_SYS_SUBMODULE_SPI_CTRL,
+    e_SYS_SUBMODULE_ETSEC,
+    e_SYS_SUBMODULE_USB,
+    e_SYS_SUBMODULE_UCC_GETH,
+    e_SYS_SUBMODULE_UCC_ATM_COMMON,
+    e_SYS_SUBMODULE_UCC_ATM_AAL2_COMMON,
+    e_SYS_SUBMODULE_UCC_ATM_CTRL,
+    e_SYS_SUBMODULE_UCC_POS_COMMON,
+    e_SYS_SUBMODULE_UCC_POS_CTRL,
+    e_SYS_SUBMODULE_EOS_LINK,
+    e_SYS_SUBMODULE_PPPOS_LINK,
+    e_SYS_SUBMODULE_UTOPIA_PORT,
+    e_SYS_SUBMODULE_UCC_ATM_POLICER,
+    e_SYS_SUBMODULE_UCC_ATM_AAL0,
+    e_SYS_SUBMODULE_UCC_ATM_AAL5,
+    e_SYS_SUBMODULE_UCC_ATM_AAL1,
+    e_SYS_SUBMODULE_UCC_ATM_AAL2,
+    e_SYS_SUBMODULE_UCC_ATM_AAL2_TQD,
+    e_SYS_SUBMODULE_UCC_ATM_AAL2_CID,
+    e_SYS_SUBMODULE_UCC_HDLC,
+    e_SYS_SUBMODULE_UCC_TRNS,
+    e_SYS_SUBMODULE_UCC_UART,
+    e_SYS_SUBMODULE_QMC,
+    e_SYS_SUBMODULE_QMC_HDLC_CH,
+    e_SYS_SUBMODULE_QMC_TRANS_CH,
+    e_SYS_SUBMODULE_L2_SWITCH,
+    e_SYS_SUBMODULE_L2_SWITCH_PORT,
+    e_SYS_SUBMODULE_PPPOHT,
+    e_SYS_SUBMODULE_PPPOHT_BUNDLE,
+    e_SYS_SUBMODULE_PPPOHT_LINK,
+    e_SYS_SUBMODULE_PPPOHT_RX_FBP,
+    e_SYS_SUBMODULE_PPPOHT_TX_FBPS,
+    e_SYS_SUBMODULE_IW_PPPOHT,
+    e_SYS_SUBMODULE_IW_PPPOHT_BUNDLE,
+    e_SYS_SUBMODULE_IW_PPPOHT_LINK,
+    e_SYS_SUBMODULE_IMA,
+    e_SYS_SUBMODULE_IMA_GROUP_PORT,
+    e_SYS_SUBMODULE_IMA_GROUP,
+    e_SYS_SUBMODULE_IMA_LINK,
+    e_SYS_SUBMODULE_MTC_COMMON,
+    e_SYS_SUBMODULE_MTC,
+    e_SYS_SUBMODULE_MTC_UCC,
+    e_SYS_SUBMODULE_MTC_MCC,
+    e_SYS_SUBMODULE_MTC_MCC_COMMON,
+    e_SYS_SUBMODULE_IW_COMMON,
+    e_SYS_SUBMODULE_IW_DEV,
+    e_SYS_SUBMODULE_IW_CONN,
+    e_SYS_SUBMODULE_IW_CDESC,
+    e_SYS_SUBMODULE_IW_MCAST_GROUP,
+    e_SYS_SUBMODULE_IW_IP_REASS,
+    e_SYS_SUBMODULE_IW_PLCR,
+    e_SYS_SUBMODULE_IW_QM,
+    e_SYS_SUBMODULE_QE_FILTER,
+    e_SYS_SUBMODULE_QE_TABLE,
+    e_SYS_SUBMODULE_QE_RTC,
+    e_SYS_SUBMODULE_VP_DEV,
+    e_SYS_SUBMODULE_VP_PORT,
+    e_SYS_SUBMODULE_MII_MNG,
+    e_SYS_SUBMODULE_PTP,
+    e_SYS_SUBMODULE_BM,
+    e_SYS_SUBMODULE_BM_PORTAL,
+    e_SYS_SUBMODULE_BM_CE_PORTAL,
+    e_SYS_SUBMODULE_BM_CI_PORTAL,
+    e_SYS_SUBMODULE_QM,
+    e_SYS_SUBMODULE_QM_PORTAL,
+    e_SYS_SUBMODULE_QM_CE_PORTAL,
+    e_SYS_SUBMODULE_QM_CI_PORTAL,
+    e_SYS_SUBMODULE_FM,
+    e_SYS_SUBMODULE_FM_MURAM,
+    e_SYS_SUBMODULE_FM_PORT_HO,
+    e_SYS_SUBMODULE_FM_PORT_10GRx,
+    e_SYS_SUBMODULE_FM_PORT_1GRx,
+    e_SYS_SUBMODULE_FM_PORT_10GTx,
+    e_SYS_SUBMODULE_FM_PORT_1GTx,
+    e_SYS_SUBMODULE_FM_PORT_10GMAC,
+    e_SYS_SUBMODULE_FM_PORT_1GMAC,
+    e_SYS_SUBMODULE_IW_IPHC_HC,
+    e_SYS_SUBMODULE_IW_IPHC_HDEC,
     /* Must close the sub-modules list */
     e_SYS_SUBMODULE_DUMMY_LAST
 
 } e_SysModule;
 
+/**************************************************************************//**
+ @Function      SYS_GetHandle
+
+ @Description   Returns a specific object handle.
+
+                This routine may be used to get the handle of any module or
+                sub-module in the system.
+
+                For singleton objects, it is recommended to use the
+                SYS_GetUniqueHandle() routine.
+
+ @Param[in]     module  - Module/sub-module type.
+ @Param[in]     id      - For sub-modules, this is the unique object ID;
+                          For modules, this value must always be zero.
+
+ @Return        The handle of the specified object if exists;
+                NULL if the object is not known or is not initialized.
+*//***************************************************************************/
+t_Handle SYS_GetHandle(e_SysModule module, uint32_t id);
+
+/**************************************************************************//**
+ @Function      SYS_GetUniqueHandle
+
+ @Description   Returns a specific object handle (for singleton objects).
+
+                This routine may be used to get the handle of any singleton
+                module or sub-module in the system.
+
+                This routine simply calls the SYS_GetHandle() routine with
+                the \c id parameter set to zero.
+
+ @Param[in]     module - Module/sub-module type.
+
+ @Return        The handle of the specified object if exists;
+                NULL if the object is not known or is not initialized.
+*//***************************************************************************/
+static __inline__ t_Handle SYS_GetUniqueHandle(e_SysModule module)
+{
+    return SYS_GetHandle(module, 0);
+}
+
+/**************************************************************************//**
+ @Function      SYS_ForceHandle
+
+ @Description   Forces a handle for a specific object in the system.
+
+                This routine allows forcing an object handle into the system
+                and thus bypassing the normal initialization flow.
+
+                The forced handle must be removed as soon as it is not valid
+                anymore, using the SYS_RemoveForcedHandle() routine.
+
+ @Param[in]     module      - The object (module/sub-module) type.
+ @Param[in]     id          - Unique object ID;
+ @Param[in]     h_Module    - The object handle;
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      This routine must not be used in normal flow - it serves only
+                rare and special cases in platform initialization.
+*//***************************************************************************/
+t_Error SYS_ForceHandle(e_SysModule module, uint32_t id, t_Handle h_Module);
+
+/**************************************************************************//**
+ @Function      SYS_RemoveForcedHandle
+
+ @Description   Removes a previously forced handle of a specific object.
+
+                This routine must be called to remove object handles that
+                were previously forced using the SYS_ForceHandle() routine.
+
+ @Param[in]     module      - The object (module/sub-module) type.
+ @Param[in]     id          - Unique object ID;
+
+ @Return        None.
+
+ @Cautions      This routine must not be used in normal flow - it serves only
+                rare and special cases in platform initialization.
+*//***************************************************************************/
+void SYS_RemoveForcedHandle(e_SysModule module, uint32_t id);
 
 typedef struct t_SysObjectDescriptor
 {

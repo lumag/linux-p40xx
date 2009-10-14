@@ -150,9 +150,6 @@ typedef enum e_FmPcdCounters {
  @Description   PCD interrupts
 *//***************************************************************************/
 typedef enum e_FmPcdExceptions {
-
-    /*TODO - to understand how it has to be done*/
-    /*maybe module of PCD + specific interrupts*/
     e_FM_PCD_KG_ERR_EXCEPTION_DOUBLE_ECC,                   /**< Keygen ECC error */
     e_FM_PCD_PLCR_ERR_EXCEPTION_DOUBLE_ECC,                 /**< Read Buffer ECC error */
     e_FM_PCD_KG_ERR_EXCEPTION_KEYSIZE_OVERFLOW,             /**< Write Buffer ECC error on system side */
@@ -188,11 +185,11 @@ typedef void (t_FmPcdIdException) ( t_Handle           h_App,
                                     uint16_t           index);
 
 /**************************************************************************//**
- @Description   t_FmPcdQmEnqueueCB - TBD.
+ @Description   t_FmPcdQmEnqueueCB - A callback for enquing frame onto a QM queue.
 
  @Param[in]     h_App           - User's application descriptor.
- @Param[in]     fqid            - TBD.
- @Param[in]     p_Fd            - TBD.
+ @Param[in]     fqid            - Frame queue ID on which frame should be enqueued.
+ @Param[in]     p_Fd            - Frame descriptor for the frame.
 
  @Return        E_OK on success; Error code otherwise.
  *//***************************************************************************/
@@ -217,8 +214,8 @@ typedef struct t_FmPcdHcParams {
     uint8_t                 deqSubPortal;       /**< Host-Command Port Subportal for dequeue. */
 #endif /* !CONFIG_GUEST_PARTITION */
     uint32_t                enqFqid;            /**< Host-Command enqueue Queue Id. */
-    t_FmPcdQmEnqueueCB      *f_QmEnqueueCB;     /**< TBD */
-    t_Handle                h_QmArg;            /**< TBD */
+    t_FmPcdQmEnqueueCB      *f_QmEnqueueCB;     /**< Call back routine for enquing a frame to the QM */
+    t_Handle                h_QmArg;            /**< A handle of the QM module */
 } t_FmPcdHcParams;
 
 /**************************************************************************//**
@@ -240,7 +237,6 @@ typedef struct t_FmPcdParams {
     uint8_t                     numOfSchemes;           /**< Number of schemes dedicated to this partition. */
     uint16_t                    numOfClsPlanEntries;    /**< Number of clsPlan entries dedicated to this partition,
                                                              Must be a power of 2. */
-    uint8_t                     partitionId;            /**< Guest Partition Id */
 #else
     bool                        useHostCommand;
 #endif  /* CONFIG_MULTI_PARTITION_SUPPORT */
@@ -651,10 +647,11 @@ t_Error FM_PCD_ForceIntr (t_Handle h_FmPcd, e_FmPcdExceptions exception);
 /**************************************************************************//**
  @Function      FM_PCD_HcTxConf
 
- @Description   TBD
+ @Description   This routine should be called to confirm frames that were
+                 recieved on the HC confirmation queue.
 
  @Param[in]     h_FmPcd         A handle to an FM PCD Module.
- @Param[in]     p_Fd            TBD
+ @Param[in]     p_Fd            Frame descriptor of the received frame.
 
  @Cautions      Allowed only following FM_PCD_Init(). Allowed only if 'useHostCommand'
                 option was selected in the initialization.

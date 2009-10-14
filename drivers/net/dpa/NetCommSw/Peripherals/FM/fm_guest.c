@@ -144,6 +144,49 @@ uint32_t    FmGetTimeStampPeriod(t_Handle h_Fm)
     return timeStampPeriod;
 }
 
+t_Error     FmHandleIpcMsg(t_Handle h_Fm, uint32_t msgId, uint8_t msgBody[MSG_BODY_SIZE])
+{
+    t_Fm    *p_Fm = (t_Fm*)h_Fm;
+
+    SANITY_CHECK_RETURN_ERROR(p_Fm, E_INVALID_HANDLE);
+
+    switch(msgId)
+    {
+        case (FM_GUEST_ISR):
+            if(((t_FmIpcIsr*)msgBody)->err)
+                FM_ErrorIsr(h_Fm, uint32_t ((t_FmIpcIsr*)msgBody)->pending);
+            else
+                FM_EventIsr(h_Fm, uint32_t ((t_FmIpcIsr*)msgBody)->pending);
+        break;
+        default:
+            RETURN_ERROR(MINOR, E_INVALID_SELECTION, ("command not found!!!"));
+    }
+    return E_OK;
+}
+
+void FmRegisterIntr(t_Handle h_Fm,
+                        e_FmEventModules        module,
+                        uint8_t                 modId,
+                        bool                    err,
+                        void (*f_Isr) (t_Handle h_Arg),
+                        t_Handle    h_Arg)
+{
+    t_Fm                *p_Fm = (t_Fm*)h_Fm;
+    uint8_t             event= 0;
+    t_FmIpcRegisterIntr *fmIpcRegisterIntr;
+
+    /* register in local FM structure */
+    GET_MODULE_EVENT(module, modId,err, event);
+    ASSERT_COND(event != e_FM_EV_DUMMY_LAST);
+    p_Fm->intrMng[event].f_Isr = f_Isr;
+    p_Fm->intrMng[event].h_SrcHandle = h_Arg;
+
+    /* register in Master FM structure */
+    fmIpcRegisterIntr.event = event;
+    fmIpcRegisterIntr.partitionId = p_Fm->partitionId;
+    return XX_SendMessage(((t_Fm*)h_Fm)->fmModuleName, FM_REGISTER_INTR, (uint8_t*)&fmIpcRegisterIntr, NULL, NULL);
+}
+
 #if (defined(DEBUG_ERRORS) && (DEBUG_ERRORS > 0))
 t_Error FmDumpPortRegs (t_Handle h_Fm,uint8_t hardwarePortId)
 {
@@ -176,7 +219,7 @@ t_Handle FM_Config(t_FmParams *p_FmParam)
         p_Fm->portsTypes[i] = e_FM_PORT_TYPE_DUMMY;
     /* register to inter-core messaging mechanism */
     memset(p_Fm->fmModuleName, 0, MODULE_NAME_SIZE);
-    if(Sprint (p_Fm->fmModuleName, "FM-%d",p_Fm->fmId) != 4)
+    if(Sprint (p_Fm->fmModuleName, "FM-%d-%d",p_Fm->fmId, p_Fm->partitionId) != (p_Fm->partitionId<10 ? 6:7))
     {
         XX_Free(p_Fm);
         REPORT_ERROR(MAJOR, E_INVALID_STATE, ("Sprint failed"));
@@ -197,7 +240,16 @@ t_Handle FM_Config(t_FmParams *p_FmParam)
 *//***************************************************************************/
 t_Error FM_Init(t_Handle h_Fm)
 {
-    UNUSED(h_Fm);
+    t_Fm                    *p_Fm = (t_Fm*)h_Fm;
+    int                     i;
+
+    for(i=0;i<e_FM_EV_DUMMY_LAST;i++)
+        p_Fm->intrMng[i].f_Isr = UnimplementedIsr;
+
+    err = XX_RegisterMessageHandler(p_Fm->fmModuleName, FmHandleIpcMsg, p_Fm);
+    if(err)
+        RETURN_ERROR(MAJOR, err, NO_MSG);
+
     return E_OK;
 }
 
@@ -275,6 +327,51 @@ uint32_t  FM_GetCounter(t_Handle h_Fm, e_FmCounters counter)
         REPORT_ERROR(MINOR, err, NO_MSG);
 
     return counterParams.val;
+}
+
+void FM_ErrorIsr(t_Handle h_Fm, uint32_t pending)
+{
+    t_Fm                    *p_Fm = (t_Fm*)h_Fm;
+    uint32_t                pending;
+
+    SANITY_CHECK_RETURN(h_Fm, E_INVALID_HANDLE);
+
+    /* error interrupts */
+    if(pending & ERR_INTR_EN_1G_MAC0)
+        p_Fm->intrMng[e_FM_EV_ERR_1G_MAC0].f_Isr(p_Fm->intrMng[e_FM_EV_ERR_1G_MAC0].h_SrcHandle);
+    if(pending & ERR_INTR_EN_1G_MAC1)
+        p_Fm->intrMng[e_FM_EV_ERR_1G_MAC1].f_Isr(p_Fm->intrMng[e_FM_EV_ERR_1G_MAC1].h_SrcHandle);
+    if(pending & ERR_INTR_EN_1G_MAC2)
+        p_Fm->intrMng[e_FM_EV_ERR_1G_MAC2].f_Isr(p_Fm->intrMng[e_FM_EV_ERR_1G_MAC2].h_SrcHandle);
+    if(pending & ERR_INTR_EN_1G_MAC3)
+        p_Fm->intrMng[e_FM_EV_ERR_1G_MAC3].f_Isr(p_Fm->intrMng[e_FM_EV_ERR_1G_MAC3].h_SrcHandle);
+    if(pending & ERR_INTR_EN_10G_MAC0)
+        p_Fm->intrMng[e_FM_EV_ERR_10G_MAC0].f_Isr(p_Fm->intrMng[e_FM_EV_ERR_10G_MAC0].h_SrcHandle);
+}
+
+void FM_EventIsr(t_Handle h_Fm, uint32_t pending)
+{
+    t_Fm                    *p_Fm = (t_Fm*)h_Fm;
+    uint32_t                pending;
+
+    SANITY_CHECK_RETURN(h_Fm, E_INVALID_HANDLE);
+
+    if(pending & INTR_EN_1G_MAC1)
+       p_Fm->intrMng[e_FM_EV_1G_MAC1].f_Isr(p_Fm->intrMng[e_FM_EV_1G_MAC1].h_SrcHandle);
+    if(pending & INTR_EN_1G_MAC2)
+        p_Fm->intrMng[e_FM_EV_1G_MAC2].f_Isr(p_Fm->intrMng[e_FM_EV_1G_MAC2].h_SrcHandle);
+    if(pending & INTR_EN_1G_MAC3)
+        p_Fm->intrMng[e_FM_EV_1G_MAC3].f_Isr(p_Fm->intrMng[e_FM_EV_1G_MAC3].h_SrcHandle);
+    if(pending & INTR_EN_1G_MAC0_TMR)
+        p_Fm->intrMng[e_FM_EV_1G_MAC0_TMR].f_Isr(p_Fm->intrMng[e_FM_EV_1G_MAC0_TMR].h_SrcHandle);
+    if(pending & INTR_EN_1G_MAC1_TMR)
+        p_Fm->intrMng[e_FM_EV_1G_MAC1_TMR].f_Isr(p_Fm->intrMng[e_FM_EV_1G_MAC1_TMR].h_SrcHandle);
+    if(pending & INTR_EN_1G_MAC2_TMR)
+        p_Fm->intrMng[e_FM_EV_1G_MAC2_TMR].f_Isr(p_Fm->intrMng[e_FM_EV_1G_MAC2_TMR].h_SrcHandle);
+    if(pending & INTR_EN_1G_MAC3_TMR)
+        p_Fm->intrMng[e_FM_EV_1G_MAC3_TMR].f_Isr(p_Fm->intrMng[e_FM_EV_1G_MAC3_TMR].h_SrcHandle);
+    if(pending & INTR_EN_TMR)
+        p_Fm->intrMng[e_FM_EV_TMR].f_Isr(p_Fm->intrMng[e_FM_EV_TMR].h_SrcHandle);
 }
 
 #if (defined(DEBUG_ERRORS) && (DEBUG_ERRORS > 0))

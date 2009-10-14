@@ -39,10 +39,10 @@
 
 
 /*****************************************************************************/
-t_Error TGEC_MII_WritePhyReg(t_Handle h_Tgec,
-                        uint8_t     phyAddr,
-                        uint8_t     reg,
-                        uint16_t    data)
+t_Error TGEC_MII_WritePhyReg(t_Handle   h_Tgec,
+                             uint8_t    phyAddr,
+                             uint8_t    reg,
+                             uint16_t   data)
 {
     t_Tgec                  *p_Tgec = (t_Tgec *)h_Tgec;
     t_TgecMiiAccessMemMap   *p_MiiAccess;
@@ -67,14 +67,13 @@ t_Error TGEC_MII_WritePhyReg(t_Handle h_Tgec,
     return E_OK;
 }
 
-
 /*****************************************************************************/
 t_Error TGEC_MII_ReadPhyReg(t_Handle h_Tgec,
-                   uint8_t  phyAddr,
-                   uint8_t  reg,
-                   uint16_t *p_Data)
+                            uint8_t  phyAddr,
+                            uint8_t  reg,
+                            uint16_t *p_Data)
 {
-    t_Tgec             *p_Tgec = (t_Tgec *)h_Tgec;
+    t_Tgec                  *p_Tgec = (t_Tgec *)h_Tgec;
     t_TgecMiiAccessMemMap   *p_MiiAccess;
 
     SANITY_CHECK_RETURN_ERROR(p_Tgec, E_INVALID_HANDLE);
@@ -98,6 +97,9 @@ t_Error TGEC_MII_ReadPhyReg(t_Handle h_Tgec,
         XX_UDelay (1);
 
     *p_Data =  (uint16_t)GET_UINT32(p_MiiAccess->mdio_data);
+
+    if (*p_Data == 0xffff)
+        RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("Read wrong data (0xffff): phyAddr 0x%x, reg 0x%x", phyAddr, reg));
 
     return E_OK;
 }

@@ -33,7 +33,7 @@
 /******************************************************************************
  @File          lnxwrp_fm_ext.h
 
- @Description   TBD
+ @Description   TODO
 *//***************************************************************************/
 
 #ifndef __LNXWRP_FM_EXT_H
@@ -148,7 +148,7 @@ t_Error  LNXWRP_FM_TEST_Free(t_Handle h_FmTestLnxWrp);
 
  @Description   Control Unit
 
-                TBD
+                TODO
  @{
 *//***************************************************************************/
 

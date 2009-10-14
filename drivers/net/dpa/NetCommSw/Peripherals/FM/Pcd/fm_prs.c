@@ -81,11 +81,16 @@ t_Handle PrsConfig(t_FmPcd *p_FmPcd,t_FmPcdParams *p_FmPcdParams)
 static void PcdPrsErrorException(t_Handle h_FmPcd)
 {
     t_FmPcd                 *p_FmPcd = (t_FmPcd *)h_FmPcd;
-    uint32_t                event;
+    uint32_t                event, mask;
 
     event = GET_UINT32(p_FmPcd->p_FmPcdPrs->p_FmPcdPrsRegs->perr);
-    event &= GET_UINT32(p_FmPcd->p_FmPcdPrs->p_FmPcdPrsRegs->perer);
+    mask = GET_UINT32(p_FmPcd->p_FmPcdPrs->p_FmPcdPrsRegs->perer);
 
+    /* clear the forced events */
+    if(GET_UINT32(p_FmPcd->p_FmPcdPrs->p_FmPcdPrsRegs->perfr)& event)
+        WRITE_UINT32(p_FmPcd->p_FmPcdPrs->p_FmPcdPrsRegs->perfr,  event & ~(event & mask));
+
+    event &= mask;
     WRITE_UINT32(p_FmPcd->p_FmPcdPrs->p_FmPcdPrsRegs->perr, event);
 
     DBG(TRACE, ("parser error - 0x%08x\n",event));
@@ -95,7 +100,7 @@ static void PcdPrsErrorException(t_Handle h_FmPcd)
     if(event & FM_PCD_PRS_ILLEGAL_ACCESS)
         p_FmPcd->f_FmPcdException(p_FmPcd->h_App,e_FM_PCD_PRS_EXCEPTION_ILLEGAL_ACCESS);
     if(event & FM_PCD_PRS_PORT_ILLEGAL_ACCESS)
-//#warning - change to indexed? how?
+/* TODO - change to indexed? how? */
         p_FmPcd->f_FmPcdException(p_FmPcd->h_App,e_FM_PCD_PRS_EXCEPTION_PORT_ILLEGAL_ACCESS);
 }
 
@@ -110,6 +115,9 @@ static void PcdPrsException(t_Handle h_FmPcd)
     ASSERT_COND(event & FM_PCD_PRS_SINGLE_ECC);
 
     DBG(TRACE, ("parser event - 0x%08x\n",event));
+
+    if(GET_UINT32(p_FmPcd->p_FmPcdPrs->p_FmPcdPrsRegs->pevfr)& event)
+        WRITE_UINT32(p_FmPcd->p_FmPcdPrs->p_FmPcdPrsRegs->pevfr, ~event);
 
     WRITE_UINT32(p_FmPcd->p_FmPcdPrs->p_FmPcdPrsRegs->pevr, event);
 
@@ -140,20 +148,42 @@ t_Error PrsInit(t_FmPcd *p_FmPcd)
 {
     t_FmPcdDriverParam  *p_Param = p_FmPcd->p_FmPcdDriverParam;
     t_FmPcdPrsRegs      *p_Regs = p_FmPcd->p_FmPcdPrs->p_FmPcdPrsRegs;
-    uint32_t            i, j;
-    uint32_t            tmpReg;
+    uint32_t            i, j, tmpReg;
+#ifdef FM_PRS_MEM_ERRATA
+    uint32_t            regsToGlobalOffset = 0x840;
+    uint32_t            firstPortToGlobalOffset = 0x45800;
+    uint32_t            globalAddr = (uint32_t)p_Regs - regsToGlobalOffset;
+    uint32_t            firstPortAddr = globalAddr - firstPortToGlobalOffset;
+    uint32_t            portSize = 0x1000;
+#endif   /* FM_PRS_MEM_ERRATA */
     uint8_t             swPrsL4Patch[] = SW_PRS_L4_PATCH;
 
+#ifdef FM_PRS_MEM_ERRATA
+    /* clear all parser memory */
+    for(i = 0;i<0x1000;i+=4)
+        WRITE_UINT32(*(uint32_t*)(globalAddr+i), 0x00000000);
+    for(i = 0;i<16;i++)
+    {
+        for(j = 0;j<0x3F8;j+=4)
+            WRITE_UINT32(*(uint32_t*)(firstPortAddr+i*portSize+j), 0x00000000);
+        /* disable all ports parser*/
+        WRITE_UINT32(*(uint32_t*)(firstPortAddr+i*portSize+0x3F8), 0x00000001);
+        /* wait for parser to be in idle state */
+        while(GET_UINT32(*(uint32_t*)(firstPortAddr+i*portSize+0x3F8)) & 0x00000100) ;
+/* TODO - ask Liat */
+        WRITE_UINT32(*(uint32_t*)(firstPortAddr+i*portSize+0x3FC), 0x91009100);
+    }
+#endif   /* FM_PRS_MEM_ERRATA */
+
     /**********************RPCLIM******************/
-    /*TODO - what default value to put*/
     WRITE_UINT32(p_Regs->rpclim, (uint32_t)p_Param->prsMaxParseCycleLimit);
     /**********************FMPL_RPCLIM******************/
 
     /* register even if no interrupts enabled, to allow future enablement */
-    FmRegisterIntr(p_FmPcd->h_Fm, e_FM_EV_ERR_PRS, PcdPrsErrorException, p_FmPcd);
+    FmRegisterIntr(p_FmPcd->h_Fm, e_FM_MOD_PRS, 0, e_FM_INTR_TYPE_ERR, PcdPrsErrorException, p_FmPcd);
 
     /* register even if no interrupts enabled, to allow future enablement */
-    FmRegisterIntr(p_FmPcd->h_Fm, e_FM_EV_PRS, PcdPrsException, p_FmPcd);
+    FmRegisterIntr(p_FmPcd->h_Fm, e_FM_MOD_PRS, 0, e_FM_INTR_TYPE_NORMAL, PcdPrsException, p_FmPcd);
 
     /**********************PEVR******************/
     WRITE_UINT32(p_Regs->pevr, (FM_PCD_PRS_SINGLE_ECC | FM_PCD_PRS_PORT_IDLE_STS) );
@@ -249,7 +279,7 @@ void FmPcdPrsIncludePortInStatistics(t_Handle h_FmPcd, uint8_t hardwarePortId, b
 uint32_t FmPcdGetSwPrsOffset(t_Handle h_FmPcd, e_NetHeaderType hdr, uint8_t indexPerHdr)
 {
 #ifdef CONFIG_GUEST_PARTITION
-    t_Error                 err;
+    t_Error                 err = E_OK;
     t_FmPcdIpcSwPrsLable    labelParams;
 
     labelParams.hdr = hdr;

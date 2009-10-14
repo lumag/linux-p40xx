@@ -185,7 +185,7 @@ static int __init __cold fm_load (void)
     }
 #endif /* CONFIG_FSL_FMAN_TEST */
 
-    printk (KERN_CRIT "Freescale FM module ("__DATE__ ":"__TIME__")\n\n");
+    printk (KERN_CRIT "Freescale FM module ("__DATE__ ":"__TIME__")\n");
 
     return 0;
 }

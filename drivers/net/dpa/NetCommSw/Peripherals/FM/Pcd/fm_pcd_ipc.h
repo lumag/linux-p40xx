@@ -38,9 +38,7 @@
 #ifndef __FM_PCD_IPC_H
 #define __FM_PCD_IPC_H
 
-#include "error_ext.h"
 #include "std_ext.h"
-#include "net_ext.h"
 
 
 /**************************************************************************//**
@@ -73,9 +71,6 @@ typedef uint32_t fmPcdIpcEngines_t; /**< options as defined below: */
 #define FM_PCD_IPC_CC                   0x20000000          /**< Coarse classification indicated */
 #define FM_PCD_IPC_PLCR                 0x10000000          /**< Policer indicated */
 /* @} */
-/**************************************************************************//**
- @Description   struct for defining port PCD modes
-*//***************************************************************************/
 
 
 /**************************************************************************//**
@@ -94,15 +89,6 @@ typedef struct
     uint32_t                offset;                         /**< OUT. MURAM offset for the labeled code. */
 }t_FmPcdIpcSwPrsLable;
 
-/**************************************************************************//**
- @Description   Structure for port-PCD communication.
-                Fields commented 'IN' are passed by the port module to be used
-                by the FM module.
-                Fields commented 'OUT' will be filled by FM before returning to port.
-                Some fields are optional (depending on configuration) and
-                will be analized by the port and FM modules accordingly.
-*//***************************************************************************/
-
 
 /**************************************************************************//**
  @Description   Structure for port-PCD communication.
@@ -112,8 +98,6 @@ typedef struct
                 Some fields are optional (depending on configuration) and
                 will be analized by the port and FM modules accordingly.
 *//***************************************************************************/
-
-
 typedef struct
 {
     uint8_t     partitionId;                                /**< IN */
@@ -146,7 +130,7 @@ typedef _Packed struct t_FmPcdIcPhysAddr
 {
     volatile uint16_t high;
     volatile uint32_t low;
-}_PackedType t_FmPcdIcPhysAddr;
+} _PackedType t_FmPcdIcPhysAddr;
 
 #define MEM_MAP_END
 #ifdef __MWERKS__
@@ -163,6 +147,7 @@ typedef _Packed struct t_FmPcdIcPhysAddr
 
 *//***************************************************************************/
 #define FM_PCD_GET_SET_PORT_PARAMS              20
+
 /**************************************************************************//**
  @Function      FM_PCD_CLEAR_PORT_PARAMS
 
@@ -178,6 +163,7 @@ typedef _Packed struct t_FmPcdIcPhysAddr
 #define FM_PCD_ALLOC_PROFILES                   24
 #define FM_PCD_FREE_PROFILES                    25
 #define FM_PCD_GET_PHYS_MURAM_BASE              26
+
 /**************************************************************************//**
  @Function      FM_PCD_GET_SW_PRS_OFFSET
 
@@ -191,6 +177,7 @@ typedef _Packed struct t_FmPcdIcPhysAddr
 
 #define FM_PCD_ALLOC_SHARED_PROFILES            28
 #define FM_PCD_FREE_SHARED_PROFILES             29
+
 /**************************************************************************//**
  @Function      FM_PCD_GET_SET_KG_SCHEME_HC_PARAMS
 

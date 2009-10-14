@@ -52,7 +52,7 @@
 static t_Error CheckInitParameters(t_FmPort *p_FmPort)
 {
     t_FmPortDriverParam *p_Params = p_FmPort->p_FmPortDriverParam;
-    t_Error             ans;
+    t_Error             ans = E_OK;
     uint8_t             i;
     uint32_t            unusedMask;
 
@@ -1653,7 +1653,7 @@ void          FmPortPcdKgSwUnbindClsPlanGrp (t_Handle h_FmPort)
 t_Error          FmPortPcdKgSwBindClsPlanGrp (t_Handle h_FmPort, bool useClsPlan, uint8_t newClsPlanGrpId)
 {
     t_FmPort        *p_FmPort = (t_FmPort*)h_FmPort;
-    t_Error         err;
+    t_Error         err = E_OK;
 
     if(useClsPlan)
     {
@@ -2257,7 +2257,7 @@ t_Error FM_PORT_ConfigRxFifoThreshold(t_Handle h_FmPort, uint32_t fifoThreshold)
     return E_OK;
 }
 
-t_Error FM_PORT_ConfigRxPriElevationLevel(t_Handle h_FmPort, uint32_t priElevationLevel)
+t_Error FM_PORT_ConfigRxFifoPriElevationLevel(t_Handle h_FmPort, uint32_t priElevationLevel)
 {
     t_FmPort *p_FmPort = (t_FmPort*)h_FmPort;
 
@@ -2575,7 +2575,9 @@ void FM_PORT_Disable(t_Handle h_FmPort)
 
     /* Disable BMI */
     WRITE_UINT32(*p_BmiCfgReg, GET_UINT32(*p_BmiCfgReg) & ~BMI_PORT_CFG_EN);
+#ifndef BUP_FM_PORT_DISABLE_ERRATA
     while(GET_UINT32(*p_BmiStatusReg) & BMI_PORT_STATUS_BSY) ;
+#endif /* !BUP_FM_PORT_DISABLE_ERRATA */
 }
 
 void FM_PORT_Enable(t_Handle h_FmPort)
@@ -2606,7 +2608,6 @@ void FM_PORT_Enable(t_Handle h_FmPort)
             break;
     }
 
-
     /* Enable QMI */
     if (!rxPort && !p_FmPort->imEn)
         WRITE_UINT32(p_FmPort->p_FmPortQmiRegs->fmqm_pnc,
@@ -2625,7 +2626,6 @@ t_Error FM_PORT_SetFrameQueueCounters(t_Handle h_FmPort, bool enable)
     SANITY_CHECK_RETURN_ERROR(!p_FmPort->p_FmPortDriverParam, E_INVALID_STATE);
 
     tmpReg = GET_UINT32(p_FmPort->p_FmPortQmiRegs->fmqm_pnc);
-
     if(enable)
         tmpReg |= QMI_PORT_CFG_EN_COUNTERS ;
     else
@@ -3092,7 +3092,7 @@ t_Error FM_PORT_ReleaseStalled(t_Handle h_FmPort)
 t_Error FM_PORT_PcdPlcrAllocProfiles(t_Handle h_FmPort, uint16_t numOfProfiles)
 {
     t_FmPort                    *p_FmPort = (t_FmPort*)h_FmPort;
-    t_Error                     err;
+    t_Error                     err = E_OK;
 
     p_FmPort->h_FmPcd = FmGetPcdHandle(p_FmPort->h_Fm);
     ASSERT_COND(p_FmPort->h_FmPcd);
@@ -3109,7 +3109,7 @@ t_Error FM_PORT_PcdPlcrAllocProfiles(t_Handle h_FmPort, uint16_t numOfProfiles)
 t_Error FM_PORT_PcdPlcrFreeProfiles(t_Handle h_FmPort)
 {
     t_FmPort                    *p_FmPort = (t_FmPort*)h_FmPort;
-    t_Error                     err;
+    t_Error                     err = E_OK;
 
     err = FmPcdPlcrFreeProfiles(p_FmPort->h_FmPcd, p_FmPort->hardwarePortId);
     if(err)
@@ -3243,7 +3243,7 @@ t_Error          FM_PORT_PcdCcModifyTree (t_Handle h_FmPort, t_Handle h_CcTree)
     t_FmPort                            *p_FmPort = (t_FmPort*)h_FmPort;
     uint32_t                            ccTreePhysOffset;
     volatile uint32_t                   *p_BmiCcBase=NULL;
-    t_Error                             err;
+    t_Error                             err = E_OK;
     volatile uint32_t                   *p_BmiNia=NULL;
 
     SANITY_CHECK_RETURN_ERROR(p_FmPort, E_INVALID_VALUE);
@@ -3307,7 +3307,7 @@ t_Error FM_PORT_AttachPCD(t_Handle h_FmPort)
 {
 
     t_FmPort        *p_FmPort = (t_FmPort*)h_FmPort;
-    t_Error         err;
+    t_Error         err = E_OK;
 
     SANITY_CHECK_RETURN_ERROR(h_FmPort, E_INVALID_HANDLE);
     SANITY_CHECK_RETURN_ERROR(!p_FmPort->p_FmPortDriverParam, E_INVALID_STATE);
@@ -3461,7 +3461,7 @@ t_Error FM_PORT_DeletePCD(t_Handle h_FmPort)
 t_Error FM_PORT_PcdKgModifyClsPlanGrp (t_Handle h_FmPort, bool useClsPlan, t_Handle h_NewClsPlanGrp)
 {
     t_FmPort            *p_FmPort = (t_FmPort*)h_FmPort;
-    t_Error             err;
+    t_Error             err = E_OK;
     uint32_t            tmpHxs[FM_PCD_PRS_NUM_OF_HDRS];
     int                 i = 0;
     uint8_t             hdrNum;
@@ -3614,7 +3614,7 @@ t_Error  FM_PORT_PcdKgBindSchemes (t_Handle h_FmPort, t_FmPcdPortSchemesParams *
 {
     t_FmPort                                *p_FmPort = (t_FmPort*)h_FmPort;
     t_FmPcdKgInterModuleBindPortToSchemes   schemeBind;
-    t_Error                                 err;
+    t_Error                                 err = E_OK;
     uint32_t                                tmpScmVec=0;
     int                                     i;
 
@@ -3645,7 +3645,7 @@ t_Error FM_PORT_PcdKgUnbindSchemes (t_Handle h_FmPort, t_FmPcdPortSchemesParams 
 {
     t_FmPort                                *p_FmPort = (t_FmPort*)h_FmPort;
     t_FmPcdKgInterModuleBindPortToSchemes   schemeBind;
-    t_Error                                 err;
+    t_Error                                 err = E_OK;
     uint32_t                                tmpScmVec=0;
     int                                     i;
 
@@ -3722,7 +3722,7 @@ t_Error FM_PORT_DumpRegs(t_Handle h_FmPort)
 {
     t_FmPort        *p_FmPort = (t_FmPort*)h_FmPort;
     t_FmPortQmiRegs *p_FmPortQmiRegs;
-    t_Error         err;
+    t_Error         err = E_OK;
     char            arr[30];
     uint8_t         flag;
     int             i=0;

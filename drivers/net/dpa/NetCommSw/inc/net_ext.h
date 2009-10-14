@@ -227,8 +227,11 @@ typedef uint8_t headerFieldVlan_t;
 #define NET_HEADER_FIELD_VLAN_VID                       (NET_HEADER_FIELD_VLAN_VPRI << 2)
 #define NET_HEADER_FIELD_VLAN_LENGTH                    (NET_HEADER_FIELD_VLAN_VPRI << 3)
 #define NET_HEADER_FIELD_VLAN_TYPE                      (NET_HEADER_FIELD_VLAN_VPRI << 4)
-#define NET_HEADER_FIELD_VLAN_TCI                       (NET_HEADER_FIELD_VLAN_VPRI << 5)
-#define NET_HEADER_FIELD_VLAN_ALL_FIELDS                ((NET_HEADER_FIELD_VLAN_VPRI << 6) - 1)
+#define NET_HEADER_FIELD_VLAN_ALL_FIELDS                ((NET_HEADER_FIELD_VLAN_VPRI << 5) - 1)
+
+#define NET_HEADER_FIELD_VLAN_TCI                       (NET_HEADER_FIELD_VLAN_VPRI | \
+                                                         NET_HEADER_FIELD_VLAN_CFI | \
+                                                         NET_HEADER_FIELD_VLAN_VID)
 
 
 typedef uint8_t headerFieldLlc_t;

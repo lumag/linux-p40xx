@@ -43,6 +43,7 @@
 #include "endian_ext.h"
 #include "crc_mac_addr_ext.h"
 #include "debug_ext.h"
+#include "fm_common.h"
 
 #include "dtsec.h"
 
@@ -110,57 +111,160 @@ static void SetDefaultParam(t_Dtsec *p_Dtsec, t_DtsecDriverParam *p_DtsecDriverP
     p_DtsecDriverParam->pauseExtended       = DEFAULT_pauseExtended;
     p_DtsecDriverParam->pauseTime           = DEFAULT_pauseTime;
 
-    p_DtsecDriverParam->halfDuplex          = DEFAULT_halfDuplex;
+    p_DtsecDriverParam->halfDuplex              = DEFAULT_halfDuplex;
     p_DtsecDriverParam->halfDulexFlowControlEn  = DEFAULT_halfDulexFlowControlEn;
-    p_DtsecDriverParam->txTimeStampEn       = DEFAULT_txTimeStampEn;
-    p_DtsecDriverParam->rxTimeStampEn       = DEFAULT_rxTimeStampEn;
+    p_DtsecDriverParam->txTimeStampEn           = DEFAULT_txTimeStampEn;
+    p_DtsecDriverParam->rxTimeStampEn           = DEFAULT_rxTimeStampEn;
 
     p_DtsecDriverParam->packetAlignmentPadding = DEFAULT_packetAlignment;
-    p_DtsecDriverParam->controlFrameAccept   = DEFAULT_controlFrameAccept;
-    p_DtsecDriverParam->groupHashExtend      = DEFAULT_groupHashExtend;
-    p_DtsecDriverParam->broadcReject         = DEFAULT_broadcReject;
-    p_DtsecDriverParam->rxShortFrame         = DEFAULT_rxShortFrame;
-    p_DtsecDriverParam->exactMatch           = DEFAULT_exactMatch;
-    p_DtsecDriverParam->debugMode            = DEFAULT_debugMode;
+    p_DtsecDriverParam->controlFrameAccept     = DEFAULT_controlFrameAccept;
+    p_DtsecDriverParam->groupHashExtend        = DEFAULT_groupHashExtend;
+    p_DtsecDriverParam->broadcReject           = DEFAULT_broadcReject;
+    p_DtsecDriverParam->rxShortFrame           = DEFAULT_rxShortFrame;
+    p_DtsecDriverParam->exactMatch             = DEFAULT_exactMatch;
+    p_DtsecDriverParam->debugMode              = DEFAULT_debugMode;
 
-    p_DtsecDriverParam->loopback             = DEFAULT_loopback;
-    p_DtsecDriverParam->tbiPhyAddr           = DEFAULT_tbiPhyAddr;
-    p_DtsecDriverParam->actOnRxPauseFrame    = DEFAULT_actOnRxPauseFrame;
-    p_DtsecDriverParam->actOnTxPauseFrame    = DEFAULT_actOnTxPauseFrame;
+    p_DtsecDriverParam->loopback               = DEFAULT_loopback;
+    p_DtsecDriverParam->tbiPhyAddr             = DEFAULT_tbiPhyAddr;
+    p_DtsecDriverParam->actOnRxPauseFrame      = DEFAULT_actOnRxPauseFrame;
+    p_DtsecDriverParam->actOnTxPauseFrame      = DEFAULT_actOnTxPauseFrame;
 
-    p_DtsecDriverParam->preambleLength       = DEFAULT_PreAmLength;
-    p_DtsecDriverParam->preambleRxEn         = DEFAULT_PreAmRxEn;
-    p_DtsecDriverParam->preambleTxEn         = DEFAULT_PreAmTxEn;
-    p_DtsecDriverParam->hugeFramesEnable     = DEFAULT_hugeFrames;
-    p_DtsecDriverParam->lengthCheckEnable    = DEFAULT_lengthCheckEnable;
-    p_DtsecDriverParam->padAndCrcEnable      = DEFAULT_padAndCrcEnable;
-    p_DtsecDriverParam->crcEnable            = DEFAULT_crcEnable;
+    p_DtsecDriverParam->preambleLength         = DEFAULT_PreAmLength;
+    p_DtsecDriverParam->preambleRxEn           = DEFAULT_PreAmRxEn;
+    p_DtsecDriverParam->preambleTxEn           = DEFAULT_PreAmTxEn;
+    p_DtsecDriverParam->hugeFramesEnable       = DEFAULT_hugeFrames;
+    p_DtsecDriverParam->lengthCheckEnable      = DEFAULT_lengthCheckEnable;
+    p_DtsecDriverParam->padAndCrcEnable        = DEFAULT_padAndCrcEnable;
+    p_DtsecDriverParam->crcEnable              = DEFAULT_crcEnable;
 
-    p_DtsecDriverParam->nonBackToBackIpg1    = DEFAULT_nonBackToBackIpg1;
-    p_DtsecDriverParam->nonBackToBackIpg2    = DEFAULT_nonBackToBackIpg2;
-    p_DtsecDriverParam->minIfgEnforcement    = DEFAULT_minIfgEnforcement;
-    p_DtsecDriverParam->backToBackIpg        = DEFAULT_backToBackIpg;
+    p_DtsecDriverParam->nonBackToBackIpg1      = DEFAULT_nonBackToBackIpg1;
+    p_DtsecDriverParam->nonBackToBackIpg2      = DEFAULT_nonBackToBackIpg2;
+    p_DtsecDriverParam->minIfgEnforcement      = DEFAULT_minIfgEnforcement;
+    p_DtsecDriverParam->backToBackIpg          = DEFAULT_backToBackIpg;
 
     p_DtsecDriverParam->alternateBackoffVal    = DEFAULT_altBackoffVal;
     p_DtsecDriverParam->alternateBackoffEnable = DEFAULT_altBackoffEnable;
-    p_DtsecDriverParam->backPressureNoBackoff = DEFAULT_backPressureNoBackoff;
-    p_DtsecDriverParam->noBackoff             = DEFAULT_noBackoff;
-    p_DtsecDriverParam->excessDefer           = DEFAULT_excessDefer;
-    p_DtsecDriverParam->maxRetransmission     = DEFAULT_maxRetransmission;
-    p_DtsecDriverParam->collisionWindow       = DEFAULT_collisionWindow;
+    p_DtsecDriverParam->backPressureNoBackoff  = DEFAULT_backPressureNoBackoff;
+    p_DtsecDriverParam->noBackoff              = DEFAULT_noBackoff;
+    p_DtsecDriverParam->excessDefer            = DEFAULT_excessDefer;
+    p_DtsecDriverParam->maxRetransmission      = DEFAULT_maxRetransmission;
+    p_DtsecDriverParam->collisionWindow        = DEFAULT_collisionWindow;
 
-    p_DtsecDriverParam->maxFrameLength        = DEFAULT_maxFrameLength;
+    p_DtsecDriverParam->maxFrameLength         = DEFAULT_maxFrameLength;
 
-    p_DtsecDriverParam->cam1                  = DEFAULT_cam;
-    p_DtsecDriverParam->cam2                  = DEFAULT_cam;
+    p_DtsecDriverParam->cam1                   = DEFAULT_cam;
+    p_DtsecDriverParam->cam2                   = DEFAULT_cam;
 
-    p_DtsecDriverParam->fifoTxThr          = DEFAULT_fifoTxThr;
-    p_DtsecDriverParam->fifoTxWatermarkH   = DEFAULT_fifoTxWatermarkH;
+    p_DtsecDriverParam->fifoTxThr              = DEFAULT_fifoTxThr;
+    p_DtsecDriverParam->fifoTxWatermarkH       = DEFAULT_fifoTxWatermarkH;
 
-    p_DtsecDriverParam->fifoRxWatermarkL   = DEFAULT_fifoRxWatermarkL;
-
-//#warning /*TODO - Handle Interrupt Mask */ /*    p_DtsecDriverParam->imask              = DEFAULT_imask;    */
+    p_DtsecDriverParam->fifoRxWatermarkL       = DEFAULT_fifoRxWatermarkL;
 }
+
+static void DtsecException(t_Handle h_Dtsec)
+{
+    t_Dtsec             *p_Dtsec = (t_Dtsec *)h_Dtsec;
+    uint32_t            event;
+    t_DtsecMemMap       *p_DtsecMemMap = p_Dtsec->p_MemMap;
+
+    event = GET_UINT32(p_DtsecMemMap->ievent);
+    /* handle only MDIO events */
+    event &= (IMASK_MMRDEN | IMASK_MMWREN);
+    if(event)
+    {
+        event &= GET_UINT32(p_DtsecMemMap->imask);
+
+        WRITE_UINT32(p_DtsecMemMap->ievent, event);
+
+        if(event & IMASK_MMRDEN)
+            p_Dtsec->f_Events(p_Dtsec->h_App, e_FM_MAC_EX_1G_MII_MNG_RD_COMPLET);
+        if(event & IMASK_MMWREN)
+            p_Dtsec->f_Events(p_Dtsec->h_App, e_FM_MAC_EX_1G_MII_MNG_WR_COMPLET);
+    }
+    if (p_Dtsec->structFor1588.enErrExeption)
+    {
+        event = GET_UINT32(p_DtsecMemMap->tmr_pevent);
+        event &= GET_UINT32(p_DtsecMemMap->tmr_pemask);
+        if(event)
+        {
+            WRITE_UINT32(p_DtsecMemMap->tmr_pevent, event);
+
+            if(event & PEMASK_TSRE)
+                p_Dtsec->f_Exceptions(p_Dtsec->h_App, e_FM_MAC_EX_1G_1588_TS_RX_ERR);
+        }
+/* TODO - For Moti */
+ /*       if(event & PEMASK_EVENTS)*/
+    }
+
+}
+
+static void DtsecErrException(t_Handle h_Dtsec)
+{
+    t_Dtsec             *p_Dtsec = (t_Dtsec *)h_Dtsec;
+    uint32_t            event;
+    t_DtsecMemMap       *p_DtsecMemMap = p_Dtsec->p_MemMap;
+
+    event = GET_UINT32(p_DtsecMemMap->ievent);
+    /* do not handle MDIO events */
+    event &= ~(IMASK_MMRDEN | IMASK_MMWREN);
+
+    event &= GET_UINT32(p_DtsecMemMap->imask);
+
+    WRITE_UINT32(p_DtsecMemMap->ievent, event);
+
+    if(event & IMASK_BREN)
+        p_Dtsec->f_Exceptions(p_Dtsec->h_App, e_FM_MAC_EX_1G_BAB_RX);
+    if(event & IMASK_RXCEN)
+        p_Dtsec->f_Exceptions(p_Dtsec->h_App, e_FM_MAC_EX_1G_RX_CTL);
+    if(event & IMASK_MSROEN)
+        p_Dtsec->f_Exceptions(p_Dtsec->h_App, e_FM_MAC_EX_1G_MIB_CNT_OVFL);
+    if(event & IMASK_GTSCEN)
+        p_Dtsec->f_Exceptions(p_Dtsec->h_App, e_FM_MAC_EX_1G_GRATEFUL_TX_STP_COMPLET);
+    if(event & IMASK_BTEN)
+        p_Dtsec->f_Exceptions(p_Dtsec->h_App, e_FM_MAC_EX_1G_BAB_TX);
+    if(event & IMASK_TXCEN)
+        p_Dtsec->f_Exceptions(p_Dtsec->h_App, e_FM_MAC_EX_1G_TX_CTL);
+    if(event & IMASK_TXEEN)
+        p_Dtsec->f_Exceptions(p_Dtsec->h_App, e_FM_MAC_EX_1G_TX_ERR);
+    if(event & IMASK_LCEN)
+        p_Dtsec->f_Exceptions(p_Dtsec->h_App, e_FM_MAC_EX_1G_LATE_COL);
+    if(event & IMASK_CRLEN)
+        p_Dtsec->f_Exceptions(p_Dtsec->h_App, e_FM_MAC_EX_1G_COL_RET_LMT);
+    if(event & IMASK_XFUNEN)
+        p_Dtsec->f_Exceptions(p_Dtsec->h_App, e_FM_MAC_EX_1G_TX_FIFO_UNDRN);
+    if(event & IMASK_MAGEN)
+        p_Dtsec->f_Exceptions(p_Dtsec->h_App, e_FM_MAC_EX_1G_MAG_PCKT);
+    if(event & IMASK_GRSCEN)
+        p_Dtsec->f_Exceptions(p_Dtsec->h_App, e_FM_MAC_EX_1G_GRATEFUL_RX_STP_COMPLET);
+    if(event & IMASK_TDPEEN)
+        p_Dtsec->f_Exceptions(p_Dtsec->h_App, e_FM_MAC_EX_1G_TX_DATA_ERR);
+    if(event & IMASK_RDPEEN)
+        p_Dtsec->f_Exceptions(p_Dtsec->h_App, e_FM_MAC_EX_1G_RX_DATA_ERR);
+
+    /*  - masked interrupts */
+    ASSERT_COND(!(event & IMASK_ABRTEN));
+    ASSERT_COND(!(event & IMASK_IFERREN));
+}
+
+/*
+static void Tmr1588Exception(t_Handle h_Dtsec)
+{
+    t_Dtsec             *p_Dtsec = (t_Dtsec *)h_Dtsec;
+    uint32_t            event;
+    t_DtsecMemMap       *p_DtsecMemMap = p_Dtsec->p_MemMap;
+
+    ASSERT_COND(p_Dtsec->support1588);
+
+    event = GET_UINT32(p_DtsecMemMap->tmr_pevent);
+    event &= GET_UINT32(p_DtsecMemMap->tmr_pemask);
+
+    WRITE_UINT32(p_DtsecMemMap->tmr_pevent, event);
+
+    if(event & PEMASK_TSRE)
+        p_Dtsec->f_Exceptions(p_Dtsec->h_App, e_FM_MAC_EX_1G_1588_TS_RX_ERR);
+
+}
+*/
 
 /* ........................................................................... */
 
@@ -252,31 +356,31 @@ static t_Error DtsecInit(t_Handle h_Dtsec)
     p_Dtsec->debugMode  = p_DtsecDriverParam->debugMode;
     p_DtsecMemMap       = p_Dtsec->p_MemMap;
 
-/*************dtsec_id2******************/
-   tmpReg32 =  GET_UINT32(p_DtsecMemMap->tsec_id2);
+    /*************dtsec_id2******************/
+    tmpReg32 =  GET_UINT32(p_DtsecMemMap->tsec_id2);
 
-   if ((p_Dtsec->enetMode == e_ENET_MODE_RGMII_10) ||
-       (p_Dtsec->enetMode == e_ENET_MODE_RGMII_100) ||
-       (p_Dtsec->enetMode == e_ENET_MODE_RGMII_1000))
-       if(tmpReg32 & ID2_INT_REDUCED_OFF)
-       {
-            RETURN_ERROR(MAJOR, E_NOT_SUPPORTED, ("no support for reduced interface in current DTSEC version"));
-       }
+    if ((p_Dtsec->enetMode == e_ENET_MODE_RGMII_10) ||
+        (p_Dtsec->enetMode == e_ENET_MODE_RGMII_100) ||
+        (p_Dtsec->enetMode == e_ENET_MODE_RGMII_1000))
+        if(tmpReg32 & ID2_INT_REDUCED_OFF)
+        {
+             RETURN_ERROR(MAJOR, E_NOT_SUPPORTED, ("no support for reduced interface in current DTSEC version"));
+        }
 
-   if ((p_Dtsec->enetMode == e_ENET_MODE_SGMII_10) ||
-       (p_Dtsec->enetMode == e_ENET_MODE_SGMII_100) ||
-       (p_Dtsec->enetMode == e_ENET_MODE_SGMII_1000))
-       if(tmpReg32 & ID2_INT_NORMAL_OFF)
-       {
-            RETURN_ERROR(MAJOR, E_NOT_SUPPORTED, ("no support for normal interface in current DTSEC version"));
-       }
-/*************dtsec_id2******************/
+    if ((p_Dtsec->enetMode == e_ENET_MODE_SGMII_10) ||
+        (p_Dtsec->enetMode == e_ENET_MODE_SGMII_100) ||
+        (p_Dtsec->enetMode == e_ENET_MODE_SGMII_1000))
+        if(tmpReg32 & ID2_INT_NORMAL_OFF)
+        {
+             RETURN_ERROR(MAJOR, E_NOT_SUPPORTED, ("no support for normal interface in current DTSEC version"));
+        }
+    /*************dtsec_id2******************/
 
-/***************EDIS************************/
+    /***************EDIS************************/
     WRITE_UINT32(p_DtsecMemMap->edis, p_DtsecDriverParam->errorDisabled);
-/***************EDIS************************/
+    /***************EDIS************************/
 
-/***************ECNTRL************************/
+    /***************ECNTRL************************/
     tmpReg32 = GET_UINT32(p_DtsecMemMap->ecntrl);
     if(tmpReg32 & ECNTRL_CFG_RO)
     {
@@ -336,23 +440,20 @@ static t_Error DtsecInit(t_Handle h_Dtsec)
     if(p_DtsecDriverParam->statisticsEnable)
         tmpReg32 |= ECNTRL_STEN;
     WRITE_UINT32(p_DtsecMemMap->ecntrl, tmpReg32);
+    /***************ECNTRL************************/
 
-/***************ECNTRL************************/
-/***************PTV************************/
+    /***************PTV************************/
     /* initialize PTV */
     tmpReg32 = 0;
-
     if (p_DtsecDriverParam->pauseTime)
         tmpReg32 |= (uint32_t)p_DtsecDriverParam->pauseTime;
 
     if (p_DtsecDriverParam->pauseExtended)
         tmpReg32 |= ((uint32_t)p_DtsecDriverParam->pauseExtended) << PTV_PTE_OFST;
-
     WRITE_UINT32(p_DtsecMemMap->ptv, tmpReg32);
+    /***************PTV************************/
 
-/***************PTV************************/
-
-/***************TCTRL************************/
+    /***************TCTRL************************/
     tmpReg32 = 0;
     if(p_DtsecDriverParam->halfDuplex)
     {
@@ -365,8 +466,9 @@ static t_Error DtsecInit(t_Handle h_Dtsec)
             tmpReg32 |= TCTRL_TTSE;
     }
     WRITE_UINT32(p_DtsecMemMap->tctrl, tmpReg32);
-/***************TCTRL************************/
-/***************RCTRL************************/
+    /***************TCTRL************************/
+
+    /***************RCTRL************************/
     tmpReg32 = 0;
     if (p_DtsecDriverParam->packetAlignmentPadding)
         tmpReg32 |= ((uint32_t)(0x0000001f & p_DtsecDriverParam->packetAlignmentPadding)) << 16;
@@ -422,21 +524,31 @@ static t_Error DtsecInit(t_Handle h_Dtsec)
         tmpReg16 = 0x1340;
         DTSEC_MII_WritePhyReg(p_Dtsec, p_DtsecDriverParam->tbiPhyAddr, 0, tmpReg16);
     }
+    /***************RCTRL************************/
 
-/***************RCTRL************************/
-/***************IMASK************************/
-    WRITE_UINT32(p_DtsecMemMap->imask, p_DtsecDriverParam->imask);
-/***************IMASK************************/
-/***************IEVENT************************/
-    WRITE_UINT32(p_DtsecMemMap->ievent, 0xc7c7cfc3);
-/***************IEVENT************************/
-/***************DEBUG************************/
+    /***************IMASK************************/
+    WRITE_UINT32(p_DtsecMemMap->imask, p_Dtsec->exceptions);
+    /***************IMASK************************/
+
+    /***************IEVENT************************/
+    WRITE_UINT32(p_DtsecMemMap->ievent, EVENTS_MASK);
+
+    if(p_Dtsec->support1588)
+    {
+        tmpReg32 = PEMASK_EVENTS;
+        if (p_Dtsec->structFor1588.enErrExeption)
+            tmpReg32 |= PEMASK_TSRE;
+        WRITE_UINT32(p_DtsecMemMap->tmr_pemask, tmpReg32);
+        WRITE_UINT32(p_DtsecMemMap->tmr_pevent, tmpReg32);
+    }
+
+    /***************DEBUG************************/
     tmpReg32 = 0;
     if(p_DtsecDriverParam->debugMode)
         WRITE_UINT32(p_DtsecMemMap->tsec_id1, TSEC_ID1_DEBUG);
-/***************DEBUG************************/
-/***************MACCFG1***********************/
+    /***************DEBUG************************/
 
+    /***************MACCFG1***********************/
     WRITE_UINT32(p_DtsecMemMap->maccfg1, MACCFG1_SOFT_RESET);
     WRITE_UINT32(p_DtsecMemMap->maccfg1, 0);
     tmpReg32 = 0;
@@ -447,9 +559,9 @@ static t_Error DtsecInit(t_Handle h_Dtsec)
     if(p_DtsecDriverParam->actOnTxPauseFrame)
         tmpReg32 |= MACCFG1_TX_FLOW;
     WRITE_UINT32(p_DtsecMemMap->maccfg1, tmpReg32);
+    /***************MACCFG1***********************/
 
-/***************MACCFG1***********************/
-/***************MACCFG2***********************/
+    /***************MACCFG2***********************/
     tmpReg32 = 0;
     if((p_Dtsec->enetMode == e_ENET_MODE_RGMII_10) ||
         (p_Dtsec->enetMode == e_ENET_MODE_RGMII_100)||
@@ -482,10 +594,9 @@ static t_Error DtsecInit(t_Handle h_Dtsec)
     if(!p_DtsecDriverParam->halfDuplex)
         tmpReg32 |= MACCFG2_FULL_DUPLEX;
     WRITE_UINT32(p_DtsecMemMap->maccfg2, tmpReg32);
+    /***************MACCFG2***********************/
 
-/***************MACCFG2***********************/
-/***************IPGIFG************************/
-
+    /***************IPGIFG************************/
     tmpReg32 = 0;
     ASSERT_COND(p_DtsecDriverParam->nonBackToBackIpg1 <= p_DtsecDriverParam->nonBackToBackIpg2);
     tmpReg32 = (uint32_t)((((uint32_t)p_DtsecDriverParam->nonBackToBackIpg1 <<
@@ -495,11 +606,10 @@ static t_Error DtsecInit(t_Handle h_Dtsec)
               (((uint32_t)p_DtsecDriverParam->minIfgEnforcement <<
                 IPGIFG_MIN_IFG_ENFORCEMENT_SHIFT) & IPGIFG_MIN_IFG_ENFORCEMENT) |
               ((uint32_t)p_DtsecDriverParam->backToBackIpg & IPGIFG_BACK_TO_BACK_IPG));
-
     WRITE_UINT32(p_DtsecMemMap->ipgifg, tmpReg32);
+    /***************IPGIFG************************/
 
-/***************IPGIFG************************/
-/***************HAFDUP************************/
+    /***************HAFDUP************************/
     tmpReg32 = 0;
     if(p_DtsecDriverParam->alternateBackoffEnable)
     {
@@ -518,32 +628,25 @@ static t_Error DtsecInit(t_Handle h_Dtsec)
     tmpReg32|= ((uint32_t)p_DtsecDriverParam->collisionWindow & HAFDUP_COLLISION_WINDOW) ;
 
     WRITE_UINT32(p_DtsecMemMap->hafdup, tmpReg32);
-/***************HAFDUP************************/
-/***************MAXFRM************************/
+    /***************HAFDUP************************/
 
+    /***************MAXFRM************************/
     /* Initialize MAXFRM */
     WRITE_UINT32(p_DtsecMemMap->maxfrm,
                  p_DtsecDriverParam->maxFrameLength);
+    /***************MAXFRM************************/
 
-/***************MAXFRM************************/
-/***************MII************************/
-//#warning /*TODO - to take care about MII stuff*/
-/***************MII************************/
-/***************CAM1************************/
-
+    /***************CAM1************************/
     WRITE_UINT32(p_DtsecMemMap->cam1,
                  p_DtsecDriverParam->cam1);
+    /***************CAM1************************/
 
-/***************CAM1************************/
-/***************CAM2************************/
-
+    /***************CAM2************************/
     WRITE_UINT32(p_DtsecMemMap->cam2,
                  p_DtsecDriverParam->cam2);
+    /***************CAM2************************/
 
-/***************CAM2************************/
-
-/***************MACSTNADDR1/2*****************/
-
+    /***************MACSTNADDR1/2*****************/
     /*  Initialize MAC Station Address registers (1 & 2)    */
     /*  Station address have to be swapped (big endian to little endian */
     addr = p_Dtsec->addr;
@@ -555,15 +658,15 @@ static t_Error DtsecInit(t_Handle h_Dtsec)
     tmpReg32 = (uint32_t)(addr>>32);
     SwapUint32P(&tmpReg32);
     WRITE_UINT32(p_DtsecMemMap->macstnaddr2, tmpReg32);
-/***************MACSTNADDR1/2*****************/
+    /***************MACSTNADDR1/2*****************/
 
-/***************DEBUG*****************/
+    /***************DEBUG*****************/
     WRITE_UINT32(p_DtsecMemMap->tx_threshold,       (uint32_t)(p_DtsecDriverParam->fifoTxThr & 0x7f));
     WRITE_UINT32(p_DtsecMemMap->tx_watermark_high,  (uint32_t)(p_DtsecDriverParam->fifoTxWatermarkH & 0x7f));
     WRITE_UINT32(p_DtsecMemMap->rx_watermark_low,   (uint32_t)(p_DtsecDriverParam->fifoRxWatermarkL & 0x7f));
-/***************DEBUG*****************/
+    /***************DEBUG*****************/
 
-/*****************HASH************************/
+    /*****************HASH************************/
     for(i=0 ; i<NUM_OF_HASH_REGS ; i++)
     {
         /* Initialize IADDRx */
@@ -586,8 +689,15 @@ static t_Error DtsecInit(t_Handle h_Dtsec)
     }
     /*****************HASH************************/
 
-//#warning /*TODO - Set Interrupt routin*/
-//#warning /*TODO - TBI - need to think*/
+    FmRegisterIntr(p_Dtsec->fmMacControllerDriver.h_Fm, e_FM_MOD_1G_MAC, p_Dtsec->macId, e_FM_INTR_TYPE_ERR, DtsecErrException , p_Dtsec);
+    FmRegisterIntr(p_Dtsec->fmMacControllerDriver.h_Fm, e_FM_MOD_1G_MAC_TMR, p_Dtsec->macId, e_FM_INTR_TYPE_NORMAL, DtsecErrException , p_Dtsec);
+    if ((p_Dtsec->mdioIrq != 0) && (p_Dtsec->mdioIrq != NO_IRQ))
+    {
+        XX_SetIntr(p_Dtsec->mdioIrq, DtsecException, p_Dtsec);
+        XX_EnableIntr(p_Dtsec->mdioIrq);
+    }
+    else if (p_Dtsec->mdioIrq == 0)
+        FmRegisterIntr(p_Dtsec->fmMacControllerDriver.h_Fm, e_FM_MOD_1G_MAC, p_Dtsec->macId, e_FM_INTR_TYPE_NORMAL, DtsecException , p_Dtsec);
 
     XX_Free(p_DtsecDriverParam);
     p_Dtsec->p_DtsecDriverParam = NULL;
@@ -705,6 +815,38 @@ static t_Error DtsecConfigHugeFrames(t_Handle h_Dtsec, bool newVal)
     return E_OK;
 }
 
+static t_Error DtsecConfigException(t_Handle h_Dtsec, e_FmMacExceptions exception, bool enable)
+{
+    t_Dtsec *p_Dtsec = (t_Dtsec *)h_Dtsec;
+    uint32_t    bitMask = 0;
+
+    SANITY_CHECK_RETURN_ERROR(p_Dtsec, E_INVALID_HANDLE);
+    SANITY_CHECK_RETURN_ERROR(p_Dtsec->p_DtsecDriverParam, E_INVALID_STATE);
+
+    if(exception != e_FM_MAC_EX_1G_1588_TS_RX_ERR)
+    {
+        GET_EXCEPTION_FLAG(bitMask, exception);
+        if(bitMask)
+        {
+            if (enable)
+                p_Dtsec->exceptions |= bitMask;
+            else
+                p_Dtsec->exceptions &= ~bitMask;
+        }
+        else
+            RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("Undefined exception"));
+    }
+    else
+    {
+        if(!p_Dtsec->support1588)
+            RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("Exception valid for 1588 only"));
+        if(enable)
+            p_Dtsec->structFor1588.enErrExeption = TRUE;
+        else
+            p_Dtsec->structFor1588.enErrExeption = FALSE;
+    }
+    return E_OK;
+}
 /*****************************************************************************/
 /*                      dTSEC Run Time API functions                         */
 /*****************************************************************************/
@@ -1199,14 +1341,12 @@ static t_Error DtsecAdjustLink(t_Handle h_Dtsec, e_EnetSpeed speed, bool fullDup
     else
         tmpReg32 |= MACCFG2_FULL_DUPLEX;
 
-	tmpReg32 &= ~(MACCFG2_NIBBLE_MODE | MACCFG2_BYTE_MODE);
-
+    tmpReg32 &= ~(MACCFG2_NIBBLE_MODE | MACCFG2_BYTE_MODE);
     if((p_Dtsec->enetMode == e_ENET_MODE_RGMII_10) ||
         (p_Dtsec->enetMode == e_ENET_MODE_RGMII_100)||
         (p_Dtsec->enetMode == e_ENET_MODE_SGMII_10) ||
         (p_Dtsec->enetMode == e_ENET_MODE_SGMII_100))
             tmpReg32 |= MACCFG2_NIBBLE_MODE;
-
     else if((p_Dtsec->enetMode == e_ENET_MODE_RGMII_1000) ||
         (p_Dtsec->enetMode == e_ENET_MODE_SGMII_1000)||
         (p_Dtsec->enetMode == e_ENET_MODE_GMII_1000))
@@ -1232,6 +1372,7 @@ static t_Error DtsecGetId(t_Handle h_Dtsec, uint32_t *macId)
 {
     t_Dtsec              *p_Dtsec = (t_Dtsec *)h_Dtsec;
     t_DtsecMemMap        *p_DtsecMemMap = p_Dtsec->p_MemMap;
+
 UNUSED(macId);
 
     SANITY_CHECK_RETURN_ERROR(p_Dtsec, E_INVALID_HANDLE);
@@ -1261,14 +1402,53 @@ static t_Error DtsecGetVersion(t_Handle h_Dtsec, uint32_t *macVersion)
 
 /* .............................................................................. */
 
-static t_Error DtsecSetExcpetions(t_Handle h_Dtsec, e_FmMacExceptions ex)
+static t_Error DtsecSetExcpetion(t_Handle h_Dtsec, e_FmMacExceptions exception, bool enable)
 {
-    t_Dtsec              *p_Dtsec = (t_Dtsec *)h_Dtsec;
+    t_Dtsec             *p_Dtsec = (t_Dtsec *)h_Dtsec;
+    uint32_t            tmpReg, bitMask = 0;
+    t_DtsecMemMap       *p_DtsecMemMap = (t_DtsecMemMap*)p_Dtsec->p_MemMap;
 
     SANITY_CHECK_RETURN_ERROR(p_Dtsec, E_INVALID_HANDLE);
-UNUSED(ex);
+    SANITY_CHECK_RETURN_ERROR(!p_Dtsec->p_DtsecDriverParam, E_INVALID_HANDLE);
+    //e_FM_MAC_EX_1G_1588_TS_RX_ERR??
 
-    RETURN_ERROR(MINOR, E_NOT_SUPPORTED, NO_MSG);
+    if(exception != e_FM_MAC_EX_1G_1588_TS_RX_ERR)
+    {
+        GET_EXCEPTION_FLAG(bitMask, exception);
+        if(bitMask)
+        {
+            if (enable)
+                p_Dtsec->exceptions |= bitMask;
+            else
+                p_Dtsec->exceptions &= ~bitMask;
+       }
+        else
+            RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("Undefined exception"));
+
+        tmpReg = GET_UINT32(p_DtsecMemMap->imask);
+        if(enable)
+            tmpReg |= bitMask;
+        else
+            tmpReg &= ~bitMask;
+        WRITE_UINT32(p_DtsecMemMap->imask, tmpReg);
+    }
+    else
+    {
+        if(!p_Dtsec->support1588)
+            RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("Exception valid for 1588 only"));
+        if(enable)
+        {
+            p_Dtsec->structFor1588.enErrExeption = TRUE;
+            WRITE_UINT32(p_DtsecMemMap->tmr_pemask, PEMASK_TSRE);
+        }
+        else
+        {
+            p_Dtsec->structFor1588.enErrExeption = FALSE;
+            WRITE_UINT32(p_DtsecMemMap->tmr_pemask, 0);
+        }
+    }
+
+    return E_OK;
 }
 
 /* ........................................................................... */
@@ -1308,7 +1488,6 @@ static t_Error DtsecDumpRegs(t_Handle h_Dtsec)
             DUMP_VAR(p_Dtsec->p_MemMap, macaddr[i].exact_match1);
             DUMP_VAR(p_Dtsec->p_MemMap, macaddr[i].exact_match2);
         }
-
     }
 
     return E_OK;
@@ -1336,12 +1515,13 @@ static void InitFmMacControllerDriver(t_FmMacControllerDriver *p_FmMacController
     p_FmMacControllerDriver->f_FM_MAC_ConfigPadAndCrc           = DtsecConfigPadAndCrc;
     p_FmMacControllerDriver->f_FM_MAC_ConfigHalfDuplex          = DtsecConfigHalfDuplex;
     p_FmMacControllerDriver->f_FM_MAC_ConfigHugeFrames          = DtsecConfigHugeFrames;
+    p_FmMacControllerDriver->f_FM_MAC_ConfigException           = DtsecConfigException;
 
     p_FmMacControllerDriver->f_FM_MAC_Enable                    = DtsecEnable;
     p_FmMacControllerDriver->f_FM_MAC_Disable                   = DtsecDisable;
     p_FmMacControllerDriver->f_FM_MAC_Restart                   = DtsecRestart;
 
-    p_FmMacControllerDriver->f_FM_MAC_SetExceptions             = DtsecSetExcpetions;
+    p_FmMacControllerDriver->f_FM_MAC_SetException              = DtsecSetExcpetion;
 
     p_FmMacControllerDriver->f_FM_MAC_SetPromiscuous            = DtsecSetPromiscuous;
     p_FmMacControllerDriver->f_FM_MAC_AdjustLink                = DtsecAdjustLink;
@@ -1410,6 +1590,10 @@ t_Handle  DTSEC_Config(t_FmMacParams *p_FmMacParam)
     p_Dtsec->p_MiiMemMap  = CAST_UINT64_TO_POINTER_TYPE(t_MiiAccessMemMap, (baseAddr + DTSEC_TO_MII_OFFSET));
     p_Dtsec->enetMode = p_FmMacParam->enetMode;
     p_Dtsec->macId    = p_FmMacParam->macId;
+    p_Dtsec->exceptions = DEFAULT_exceptions;
+    p_Dtsec->f_Exceptions = p_FmMacParam->f_Exceptions;
+    p_Dtsec->mdioIrq = p_FmMacParam->mdioIrq;
+    p_Dtsec->f_Events = p_FmMacParam->f_Events;
 
     return p_Dtsec;
 }
