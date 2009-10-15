@@ -295,11 +295,17 @@ static int __devinit __cold mac_probe(struct of_device *_of_dev, const struct of
 
 	/* Get the rest of the PHY information */
 	mac_dev->phy_node = of_parse_phandle(mac_node, "phy-handle", 0);
-	if (unlikely(mac_dev->phy_node == NULL)) {
-		cpu_dev_err(dev, "%s:%hu:%s(): of_parse_phandle() failed\n",
-			    __file__, __LINE__, __func__);
-		_errno = -EINVAL;
-		goto _return_dev_set_drvdata;
+	if (mac_dev->phy_node == NULL) {
+		int sz;
+		const u32 *phy_id = of_get_property(mac_node, "fixed-link",
+							&sz);
+		if (!phy_id || sz < sizeof(*phy_id)) {
+			cpu_dev_err(dev, "No PHY (or fixed link) found\n");
+			_errno = -EINVAL;
+			goto _return_dev_set_drvdata;
+		}
+
+		sprintf(mac_dev->fixed_bus_id, PHY_ID_FMT, "0", phy_id[0]);
 	}
 
 	mac_dev->tbi_node = of_parse_phandle(mac_node, "tbi-handle", 0);

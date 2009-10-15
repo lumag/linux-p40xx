@@ -116,7 +116,8 @@ static int __devinit __cold init(struct mac_device *mac_dev)
 	param.baseAddr =  (typeof(param.baseAddr))(uintptr_t)devm_ioremap(
 		mac_dev->dev, mac_dev->res->start, 0x2000);
 	param.enetMode	= macdev2enetinterface(mac_dev);
-	memcpy(&param.addr, mac_dev->addr, min(sizeof(param.addr), sizeof(mac_dev->addr)));
+	memcpy(&param.addr, mac_dev->addr, min(sizeof(param.addr),
+		sizeof(mac_dev->addr)));
 	param.macId			= mac_dev->cell_index;
 	param.h_Fm 			= (t_Handle)mac_dev->fm;
 	param.mdioIrq		= NO_IRQ;
@@ -126,8 +127,9 @@ static int __devinit __cold init(struct mac_device *mac_dev)
 
 	priv->mac = FM_MAC_Config(&param);
 	if (unlikely(priv->mac == NULL)) {
-		cpu_dev_err(mac_dev->dev, "%s:%hu:%s(): FM_MAC_Config() failed\n",
-			    __file__, __LINE__, __func__);
+		cpu_dev_err(mac_dev->dev,
+				"%s:%hu:%s(): FM_MAC_Config() failed\n",
+				__file__, __LINE__, __func__);
 		_errno = -EINVAL;
 		goto _return;
 	}
@@ -135,8 +137,9 @@ static int __devinit __cold init(struct mac_device *mac_dev)
 	err = FM_MAC_ConfigPadAndCrc(priv->mac, true);
 	_errno = -GET_ERROR_TYPE(err);
 	if (unlikely(_errno < 0)) {
-		cpu_dev_err(mac_dev->dev, "%s:%hu:%s(): FM_MAC_ConfigPadAndCrc() = 0x%08x\n",
-			    __file__, __LINE__, __func__, err);
+		cpu_dev_err(mac_dev->dev,
+			"%s:%hu:%s(): FM_MAC_ConfigPadAndCrc() = 0x%08x\n",
+			__file__, __LINE__, __func__, err);
 		goto _return_fm_mac_free;
 	}
 
@@ -144,8 +147,9 @@ static int __devinit __cold init(struct mac_device *mac_dev)
 		err = FM_MAC_ConfigHalfDuplex(priv->mac, mac_dev->half_duplex);
 		_errno = -GET_ERROR_TYPE(err);
 		if (unlikely(_errno < 0)) {
-			cpu_dev_err(mac_dev->dev, "%s:%hu:%s(): FM_MAC_ConfigHalfDuplex() = 0x%08x\n",
-				    __file__, __LINE__, __func__, err);
+			cpu_dev_err(mac_dev->dev,
+				"%s:%hu: FM_MAC_ConfigHalfDuplex() = 0x%08x\n",
+				__file__, __LINE__, err);
 			goto _return_fm_mac_free;
 		}
 	}
@@ -162,21 +166,23 @@ static int __devinit __cold init(struct mac_device *mac_dev)
 	err = FM_MAC_Init(priv->mac);
 	_errno = -GET_ERROR_TYPE(err);
 	if (unlikely(_errno < 0)) {
-		cpu_dev_err(mac_dev->dev, "%s:%hu:%s(): FM_MAC_Init() = 0x%08x\n",
-			    __file__, __LINE__, __func__, err);
+		cpu_dev_err(mac_dev->dev,
+			"%s:%hu:%s(): FM_MAC_Init() = 0x%08x\n",
+			__file__, __LINE__, __func__, err);
 		goto _return_fm_mac_free;
 	}
 
 	err = FM_MAC_GetVesrion(priv->mac, &version);
 	_errno = -GET_ERROR_TYPE(err);
 	if (unlikely(_errno < 0)) {
-		cpu_dev_err(mac_dev->dev, "%s:%hu:%s(): FM_MAC_GetVesrion() = 0x%08x\n",
-			    __file__, __LINE__, __func__, err);
+		cpu_dev_err(mac_dev->dev,
+			"%s:%hu:%s(): FM_MAC_GetVesrion() = 0x%08x\n",
+			__file__, __LINE__, __func__, err);
 		goto _return_fm_mac_free;
 	}
 	cpu_dev_info(mac_dev->dev, "FMan %s version: 0x%08x\n",
-				 ((macdev2enetinterface(mac_dev) != e_ENET_MODE_XGMII_10000) ? "dTSEC" : "XGEC"),
-				 version);
+		((macdev2enetinterface(mac_dev) != e_ENET_MODE_XGMII_10000) ?
+			"dTSEC" : "XGEC"), version);
 
 	goto _return;
 
@@ -184,8 +190,9 @@ static int __devinit __cold init(struct mac_device *mac_dev)
 _return_fm_mac_free:
 	err = FM_MAC_Free(priv->mac);
 	if (unlikely(-GET_ERROR_TYPE(err) < 0))
-		cpu_dev_err(mac_dev->dev, "%s:%hu:%s(): FM_MAC_Free() = 0x%08x\n",
-			    __file__, __LINE__, __func__, err);
+		cpu_dev_err(mac_dev->dev,
+				"%s:%hu:%s(): FM_MAC_Free() = 0x%08x\n",
+				__file__, __LINE__, __func__, err);
 _return:
 	return _errno;
 }
@@ -288,15 +295,18 @@ static int dtsec_init_phy(struct net_device *net_dev)
 	mac_dev = priv->mac_dev;
 
 	if (!mac_dev->phy_node)
-		return -ENODEV;
-
-	phy_dev = of_phy_connect(net_dev, mac_dev->phy_node,
-			&adjust_link, 0, mac_dev->phy_if);
+		phy_dev = phy_connect(net_dev, mac_dev->fixed_bus_id,
+				&adjust_link, 0, mac_dev->phy_if);
+	else
+		phy_dev = of_phy_connect(net_dev, mac_dev->phy_node,
+				&adjust_link, 0, mac_dev->phy_if);
 	if (!phy_dev) {
 		cpu_netdev_err(net_dev,
 				"%s:%hu:%s(): Could not attach to PHY %s\n",
 				__file__, __LINE__, __func__,
-				priv->mac_dev->phy_node->full_name);
+				mac_dev->phy_node ?
+					mac_dev->phy_node->full_name :
+					mac_dev->fixed_bus_id);
 		return -ENODEV;
 	}
 
@@ -316,16 +326,18 @@ static int xgmac_init_phy(struct net_device *net_dev)
 	struct phy_device *phy_dev;
 
 	if (!mac_dev->phy_node)
-		return -ENODEV;
-
-	phy_dev = of_phy_attach(net_dev, mac_dev->phy_node, 0,
-			mac_dev->phy_if);
-
+		phy_dev = phy_attach(net_dev, mac_dev->fixed_bus_id, 0,
+				mac_dev->phy_if);
+	else
+		phy_dev = of_phy_attach(net_dev, mac_dev->phy_node, 0,
+				mac_dev->phy_if);
 	if (!phy_dev) {
 		cpu_netdev_err(net_dev,
 				"%s:%hu:%s(): Could not attach to PHY %s\n",
 				__file__, __LINE__, __func__,
-				priv->mac_dev->phy_node->full_name);
+				mac_dev->phy_node ?
+					mac_dev->phy_node->full_name :
+					mac_dev->fixed_bus_id);
 		return -ENODEV;
 	}
 
