@@ -329,8 +329,7 @@ _dpa_bp_alloc(struct net_device *net_dev, struct list_head *list,
 		cpu_dev_err(net_dev->dev.parent,
 				"%s:%hu:%s(): bman_new_pool() failed\n",
 				__file__, __LINE__, __func__);
-		_errno = -ENOMEM;
-		goto _return_bm_pool_free;
+		return -ENODEV;
 	}
 
 	/* paddr is only set for pools that are shared between partitions */
@@ -376,9 +375,6 @@ _dpa_bp_alloc(struct net_device *net_dev, struct list_head *list,
 
 _return_bman_free_pool:
 	bman_free_pool(dpa_bp->pool);
-_return_bm_pool_free:
-	if (dpa_bp->bpid == 0)
-		bm_pool_free(bp_params.bpid);
 
 	return _errno;
 }
@@ -442,7 +438,6 @@ _dpa_bp_free(struct device *dev, struct dpa_bp *dpa_bp)
 	bpid = dpa_pool2bpid(dpa_bp);
 	bman_free_pool(dpa_bp->pool);
 	list_del(&dpa_bp->list);
-	bm_pool_free(bpid);
 }
 
 static void __cold __attribute__((nonnull))
