@@ -28,7 +28,8 @@ void of_register_i2c_devices(struct i2c_adapter *adap,
 		const u32 *addr;
 		int len;
 
-		if (of_modalias_node(node, info.type, sizeof(info.type)) < 0)
+		if (of_modalias_node(node, info.type, sizeof(info.type),
+			(const void **)&info.platform_data) < 0)
 			continue;
 
 		addr = of_get_property(node, "reg", &len);

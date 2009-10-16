@@ -467,6 +467,7 @@ EXPORT_SYMBOL(of_find_matching_node);
 struct of_modalias_table {
 	char *of_device;
 	char *modalias;
+	const void *(*binder)(struct device_node *node);
 };
 static struct of_modalias_table of_modalias_table[] = {
 	{ "fsl,mcu-mpc8349emitx", "mcu-mpc8349emitx" },
@@ -478,6 +479,7 @@ static struct of_modalias_table of_modalias_table[] = {
  * @node:	pointer to a device tree node
  * @modalias:	Pointer to buffer that modalias value will be copied into
  * @len:	Length of modalias value
+ * @platform_data: pointer to device's platform specific data
  *
  * Based on the value of the compatible property, this routine will determine
  * an appropriate modalias value for a particular device tree node.  Two
@@ -489,7 +491,8 @@ static struct of_modalias_table of_modalias_table[] = {
  *
  * This routine returns 0 on success
  */
-int of_modalias_node(struct device_node *node, char *modalias, int len)
+int of_modalias_node(struct device_node *node, char *modalias, int len,
+	const void **platform_data)
 {
 	int i, cplen;
 	const char *compatible;
@@ -501,6 +504,10 @@ int of_modalias_node(struct device_node *node, char *modalias, int len)
 		if (!of_device_is_compatible(node, compatible))
 			continue;
 		strlcpy(modalias, of_modalias_table[i].modalias, len);
+
+		if (platform_data && of_modalias_table[i].binder)
+			*platform_data = of_modalias_table[i].binder(node);
+
 		return 0;
 	}
 

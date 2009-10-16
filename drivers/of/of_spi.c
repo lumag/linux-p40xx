@@ -39,7 +39,7 @@ void of_register_spi_devices(struct spi_master *master, struct device_node *np)
 
 		/* Select device driver */
 		if (of_modalias_node(nc, spi->modalias,
-				     sizeof(spi->modalias)) < 0) {
+				     sizeof(spi->modalias), NULL) < 0) {
 			dev_err(&master->dev, "cannot find modalias for %s\n",
 				nc->full_name);
 			spi_dev_put(spi);
