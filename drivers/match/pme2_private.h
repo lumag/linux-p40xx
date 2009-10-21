@@ -33,7 +33,6 @@
 #include "pme2_sys.h"
 #include <linux/fsl_pme.h>
 
-#define PME2_DEBUG
 
 #ifdef PME2_DEBUG
 #define PMEPRINFO(fmt, args...) pr_info("PME2: %s: " fmt, __func__, ## args)

@@ -227,7 +227,7 @@ config FSL_PME2_SCAN
 
 config FSL_PME2_SCAN_DEBUG
         bool "Debug Statements"
-        default y
+        default n
         depends on FSL_PME2_SCAN
         ---help---
           The PME2_SCAN driver can optionally trace with more verbosity

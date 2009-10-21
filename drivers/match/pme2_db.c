@@ -80,7 +80,6 @@ static void ctrl_cb(struct pme_ctx *ctx, const struct qm_fd *fd,
 		struct pme_ctx_ctrl_token *token)
 {
 	struct ctrl_op *ctrl = (struct ctrl_op *)token;
-	pr_info("pme2_test_high: ctrl_cb() invoked, fd;!\n");
 	ctrl->cmd_status = pme_fd_res_status(fd);
 	ctrl->res_flag = pme_fd_res_flags(fd);
 	complete(&ctrl->cb_done);
