@@ -1774,7 +1774,7 @@ dpa_bp_probe(struct of_device *_of_dev, size_t *count)
 		dev_node = of_find_node_by_phandle(phandle_prop[i]);
 		if (unlikely(dev_node == NULL)) {
 			cpu_dev_err(dev,
-				"%s:%hu:%s(): of_find_node_by_phandle failed\n",
+			      "%s:%hu:%s(): of_find_node_by_phandle() failed\n",
 				__file__, __LINE__, __func__);
 			return ERR_PTR(-EFAULT);
 		}
@@ -1832,19 +1832,12 @@ dpa_mac_probe(struct of_device *_of_dev)
 	struct of_device	*of_dev;
 	struct mac_device	*mac_dev;
 
-	phandle_prop = (typeof(phandle_prop))of_get_property(_of_dev->node,
-				"fsl,fman-mac", &lenp);
-	if (phandle_prop == NULL)
-		return NULL;
-
-	BUG_ON(lenp != sizeof(phandle));
-
 	dpa_dev = &_of_dev->dev;
 
-	mac_node = of_find_node_by_phandle(*phandle_prop);
+	mac_node = of_parse_phandle(_of_dev->node, "fsl,fman-mac", 0);
 	if (unlikely(mac_node == NULL)) {
 		cpu_dev_err(dpa_dev,
-			"%s:%hu:%s(): of_find_node_by_phandle() failed\n",
+			"%s:%hu:%s(): of_parse_phandle() failed\n",
 			__file__, __LINE__, __func__);
 		return ERR_PTR(-EFAULT);
 	}
@@ -2321,22 +2314,11 @@ dpa_probe(struct of_device *_of_dev)
 
 	/* QM */
 
-	phandle_prop = (typeof(phandle_prop))of_get_property(dpa_node,
-				"fsl,qman-channel", &lenp);
-	if (unlikely(phandle_prop == NULL)) {
-		if (netif_msg_probe(priv))
-			cpu_dev_err(dev, "%s:%hu:%s(): of_get_property(%s, fsl,qman-channel) failed\n",
-				    __file__, __LINE__, __func__, dpa_node->full_name);
-		_errno = -EINVAL;
-		goto _return_dpa_bp_free;
-	}
-	BUG_ON(lenp != sizeof(phandle));
-
-	dev_node = of_find_node_by_phandle(*phandle_prop);
+	dev_node = of_parse_phandle(dpa_node, "fsl,qman-channel", 0);
 	if (unlikely(dev_node == NULL)) {
 		if (netif_msg_probe(priv))
 			cpu_dev_err(dev,
-				"%s:%hu:%s: of_find_node_by_phandle() failed\n",
+				"%s:%hu:%s: of_parse_phandle() failed\n",
 				__file__, __LINE__, __func__);
 		_errno = -EFAULT;
 		goto _return_dpa_bp_free;
