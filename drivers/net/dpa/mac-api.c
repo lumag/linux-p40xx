@@ -299,14 +299,14 @@ static int dtsec_init_phy(struct net_device *net_dev)
 	else
 		phy_dev = of_phy_connect(net_dev, mac_dev->phy_node,
 				&adjust_link, 0, mac_dev->phy_if);
-	if (!phy_dev) {
+	if (unlikely(phy_dev == NULL) || IS_ERR(phy_dev)) {
 		cpu_netdev_err(net_dev,
-				"%s:%hu:%s(): Could not attach to PHY %s\n",
+				"%s:%hu:%s(): Could not connect to PHY %s\n",
 				__file__, __LINE__, __func__,
 				mac_dev->phy_node ?
 					mac_dev->phy_node->full_name :
 					mac_dev->fixed_bus_id);
-		return -ENODEV;
+		return phy_dev == NULL ? -ENODEV : PTR_ERR(phy_dev);
 	}
 
 	/* Remove any features not supported by the controller */
@@ -330,14 +330,14 @@ static int xgmac_init_phy(struct net_device *net_dev)
 	else
 		phy_dev = of_phy_attach(net_dev, mac_dev->phy_node, 0,
 				mac_dev->phy_if);
-	if (!phy_dev) {
+	if (unlikely(phy_dev == NULL) || IS_ERR(phy_dev)) {
 		cpu_netdev_err(net_dev,
 				"%s:%hu:%s(): Could not attach to PHY %s\n",
 				__file__, __LINE__, __func__,
 				mac_dev->phy_node ?
 					mac_dev->phy_node->full_name :
 					mac_dev->fixed_bus_id);
-		return -ENODEV;
+		return phy_dev == NULL ? -ENODEV : PTR_ERR(phy_dev);
 	}
 
 	phy_dev->supported &= priv->mac_dev->if_support;
