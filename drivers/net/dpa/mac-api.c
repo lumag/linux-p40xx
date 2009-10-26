@@ -258,7 +258,6 @@ static int __cold change_promisc(struct mac_device *mac_dev)
 	return _errno;
 }
 
-#ifndef CONFIG_P4080_SIM
 static void adjust_link(struct net_device *net_dev)
 {
 	struct dpa_priv_s *priv = netdev_priv(net_dev);
@@ -348,18 +347,6 @@ static int xgmac_init_phy(struct net_device *net_dev)
 
 	return 0;
 }
-
-#else
-static int dtsec_init_phy(struct net_device *net_dev)
-{
-	return 0;
-}
-
-static int xgmac_init_phy(struct net_device *net_dev)
-{
-	return 0;
-}
-#endif /* !CONFIG_P4080_SIM */
 
 static int __cold uninit(struct mac_device *mac_dev)
 {
