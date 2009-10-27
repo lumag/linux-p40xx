@@ -583,6 +583,10 @@ int pme_ctx_ctrl_update_flow(struct pme_ctx *ctx, u32 flags,
 
 	BUG_ON(ctx->flags & PME_CTX_FLAG_DIRECT);
 	token->base_token.cmd_type = pme_cmd_flow_write;
+	memset(&fd, 0, sizeof(fd));
+	token->internal_flow_ptr = pme_hw_flow_new();
+	if (!token->internal_flow_ptr)
+		return -ENOMEM;
 
 	if (flags & PME_CTX_OP_RESETRESLEN) {
 		if (ctx->hw_residue) {
@@ -594,12 +598,12 @@ int pme_ctx_ctrl_update_flow(struct pme_ctx *ctx, u32 flags,
 	/* allocate residue memory if it is being added */
 	if ((flags & PME_CMD_FCW_RES) && params->ren && !ctx->hw_residue) {
 		ctx->hw_residue = pme_hw_residue_new();
-		if (!ctx->hw_residue)
+		if (!ctx->hw_residue) {
+			pme_hw_flow_free(token->internal_flow_ptr);
 			return -ENOMEM;
+		}
 	}
 	/* enqueue the FCW command to PME */
-	memset(&fd, 0, sizeof(fd));
-	token->internal_flow_ptr = pme_hw_flow_new();
 	memcpy(token->internal_flow_ptr, params, sizeof(struct pme_flow));
 	pme_fd_cmd_fcw(&fd, flags & PME_CMD_FCW_ALL,
 			(struct pme_flow *)token->internal_flow_ptr,
@@ -708,6 +712,8 @@ static inline struct pme_ctx_token *pop_matching_token(struct pme_ctx *ctx,
 		}
 	}
 	token = NULL;
+	pr_err("PME2 Could not find matching token!\n");
+	BUG_ON(1);
 found:
 	spin_unlock_irq(&ctx->lock);
 	return token;
@@ -723,6 +729,8 @@ static inline void cb_helper(struct qman_portal *portal, struct pme_ctx *ctx,
 	if (error)
 		do_flags(ctx, 0, 0, PME_CTX_FLAG_DEAD, 0);
 	token = pop_matching_token(ctx, fd);
+	if (unlikely(!token))
+		goto done;
 	if (likely(token->cmd_type == pme_cmd_scan))
 		ctx->cb(ctx, fd, token);
 	else if (token->cmd_type == pme_cmd_pmtcc)
@@ -744,6 +752,7 @@ static inline void cb_helper(struct qman_portal *portal, struct pme_ctx *ctx,
 		}
 		ctrl_token->cb(ctx, fd, ctrl_token);
 	}
+done:
 	/* Consume the frame */
 	if (ctx->flags & PME_CTX_FLAG_EXCLUSIVE)
 		release_exclusive(ctx);

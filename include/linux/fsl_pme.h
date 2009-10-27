@@ -698,6 +698,7 @@ enum pme_attr {
 /* Get/set driver attributes */
 int pme_attr_set(enum pme_attr attr, u32 val);
 int pme_attr_get(enum pme_attr attr, u32 *val);
+int pme_stat_get(enum pme_attr stat, u64 *value, int reset);
 #endif /* defined(CONFIG_FSL_PME2_CTRL) */
 
 #endif /* __KERNEL__ */

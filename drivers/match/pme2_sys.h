@@ -42,5 +42,4 @@
 #include <linux/fsl_pme.h>
 int pme2_create_sysfs_dev_files(struct of_device *ofdev);
 void pme2_remove_sysfs_dev_files(struct of_device *ofdev);
-int pme_stat_get(enum pme_attr *stat, u64 *value, int reset);
 void accumulator_update_interval(u32 interval);
