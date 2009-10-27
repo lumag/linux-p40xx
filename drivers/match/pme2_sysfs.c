@@ -77,7 +77,7 @@ static ssize_t pme_stat_show(struct device *dev,
 	u64 data = 0;
 	int ret = 0;
 
-	ret = pme_stat_get(&attr, &data, 0);
+	ret = pme_stat_get(attr, &data, 0);
 	if (!ret)
 		return snprintf(buf, PAGE_SIZE, "%llu\n", data);
 	else
@@ -99,7 +99,7 @@ static ssize_t pme_stat_store(struct device *dev,
 		pr_err("pme: invalid input %s\n", buf);
 		return -EINVAL;
 	}
-	ret = pme_stat_get(&attr, &data, 1);
+	ret = pme_stat_get(attr, &data, 1);
 	return count;
 }
 

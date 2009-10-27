@@ -893,8 +893,6 @@ int pme_attr_get(enum pme_attr attr, u32 *val)
 	case pme_attr_sre_pscl:
 		/* bits 22..31 */
 		attr_val = pme_in(global_pme, SFRCC);
-		/* clear unwanted bits in val*/
-		attr_val &= 0x000000FF;
 		break;
 
 	case pme_attr_sre_max_block_num:
@@ -1196,33 +1194,28 @@ static enum pme_attr stat_list[] = {
 static u64 pme_stats[sizeof(stat_list)/sizeof(enum pme_attr)];
 static DEFINE_SPINLOCK(stat_lock);
 
-int pme_stat_get(enum pme_attr *stat, u64 *value, int reset)
+int pme_stat_get(enum pme_attr stat, u64 *value, int reset)
 {
 	int i, ret = 0;
 	int value_set = 0;
 	u32 val;
 
 	spin_lock_irq(&stat_lock);
-	if (stat == NULL || value == NULL) {
-		pr_err("pme: Invalid stat request %d\n", *stat);
+	for (i = 0; i < sizeof(stat_list)/sizeof(enum pme_attr); i++) {
+		if (stat_list[i] == stat) {
+			ret = pme_attr_get(stat_list[i], &val);
+			/* Do I need to check ret */
+			pme_stats[i] += val;
+			*value = pme_stats[i];
+			value_set = 1;
+			if (reset)
+				pme_stats[i] = 0;
+			break;
+		}
+	}
+	if (!value_set) {
+		pr_err("pme: Invalid stat request %d\n", stat);
 		ret = -EINVAL;
-	} else {
-		for (i = 0; i < sizeof(stat_list)/sizeof(enum pme_attr); i++) {
-			if (stat_list[i] == *stat) {
-				ret = pme_attr_get(stat_list[i], &val);
-				/* Do I need to check ret */
-				pme_stats[i] += val;
-				*value = pme_stats[i];
-				value_set = 1;
-				if (reset)
-					pme_stats[i] = 0;
-				break;
-			}
-		}
-		if (!value_set) {
-			pr_err("pme: Invalid stat request %d\n", *stat);
-			ret = -EINVAL;
-		}
 	}
 	spin_unlock_irq(&stat_lock);
 	return ret;
