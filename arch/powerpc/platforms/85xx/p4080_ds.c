@@ -15,6 +15,7 @@
 #include <linux/kdev_t.h>
 #include <linux/delay.h>
 #include <linux/interrupt.h>
+#include <linux/phy.h>
 
 #include <asm/system.h>
 #include <asm/time.h>
@@ -95,6 +96,16 @@ static void __init mpc85xx_ds_setup_arch(void)
 
 	printk(KERN_INFO "P4080 DS board from Freescale Semiconductor\n");
 }
+
+int vsc824x_add_skew(struct phy_device *phydev);
+#define PHY_ID_VSC8244                  0x000fc6c0
+static int __init board_fixups(void)
+{
+	phy_register_fixup_for_uid(PHY_ID_VSC8244, 0xfffff, vsc824x_add_skew);
+
+	return 0;
+}
+machine_device_initcall(p4080_ds, board_fixups);
 
 static const struct of_device_id of_device_ids[] __devinitconst = {
 	{
