@@ -1552,6 +1552,7 @@ static int __hot dpa_tx(struct sk_buff *skb, struct net_device *net_dev)
 	struct qm_fd		 fd;
 	struct dpa_bp		*dpa_bp = NULL;
 	struct bm_buffer	*bmb = NULL;
+	unsigned int	headroom;
 
 	priv = (typeof(priv))netdev_priv(net_dev);
 	dev = net_dev->dev.parent;
@@ -1564,10 +1565,27 @@ static int __hot dpa_tx(struct sk_buff *skb, struct net_device *net_dev)
 
 	memset(&fd, 0, sizeof(fd));
 	fd.format	= qm_fd_contig;
-	fd.offset	= DPA_BP_HEAD;
+
+	headroom = skb_headroom(skb);
+
+	if (headroom < sizeof(skb)) {
+		struct sk_buff *skb_new;
+
+		skb_new = skb_realloc_headroom(skb, DPA_BP_HEAD);
+		if (!skb_new) {
+			net_dev->stats.tx_errors++;
+			kfree_skb(skb);
+			return NETDEV_TX_OK;
+		}
+		kfree_skb(skb);
+		skb = skb_new;
+		headroom = DPA_BP_HEAD;
+	}
+
+	fd.offset	= headroom;
 
 	if (priv->mac_dev) {
-		*((typeof(&skb))skb_push(skb, DPA_BP_HEAD)) = skb;
+		*((typeof(&skb))skb_push(skb, headroom)) = skb;
 
 		fd.addr_lo = dma_map_single(dev, skb->data, skb_headlen(skb),
 				DMA_TO_DEVICE);
@@ -1579,7 +1597,7 @@ static int __hot dpa_tx(struct sk_buff *skb, struct net_device *net_dev)
 			goto _return_dev_kfree_skb;
 		}
 
-		fd.length20	= skb_headlen(skb) - DPA_BP_HEAD;
+		fd.length20	= skb_headlen(skb) - headroom;
 	} else {
 		dpa_bp = dpa_size2pool(&priv->dpa_bp_list, skb_headlen(skb));
 		BUG_ON(IS_ERR(dpa_bp));
