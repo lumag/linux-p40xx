@@ -1884,12 +1884,18 @@ dpa_mac_probe(struct of_device *_of_dev)
 	struct of_device	*of_dev;
 	struct mac_device	*mac_dev;
 
+	phandle_prop = of_get_property(_of_dev->node, "fsl,fman-mac", &lenp);
+	if (phandle_prop == NULL)
+		return NULL;
+
+	BUG_ON(lenp != sizeof(phandle));
+
 	dpa_dev = &_of_dev->dev;
 
-	mac_node = of_parse_phandle(_of_dev->node, "fsl,fman-mac", 0);
+	mac_node = of_find_node_by_phandle(*phandle_prop);
 	if (unlikely(mac_node == NULL)) {
 		cpu_dev_err(dpa_dev,
-			"%s:%hu:%s(): of_parse_phandle() failed\n",
+			    "%s:%hu:%s(): of_find_node_by_phandle() failed\n",
 			__file__, __LINE__, __func__);
 		return ERR_PTR(-EFAULT);
 	}
@@ -2277,7 +2283,6 @@ dpa_probe(struct of_device *_of_dev)
 	struct fm_port_non_rx_params	 tx_port_param;
 	struct fm_port_pcd_param	 rx_port_pcd_param;
 	size_t				 count;
-	const phandle			*phandle_prop;
 	const uint32_t			*uint32_prop;
 	const uint8_t			*mac_addr;
 	struct qman_fq			*ingress_fq;
@@ -2370,7 +2375,7 @@ dpa_probe(struct of_device *_of_dev)
 	if (unlikely(dev_node == NULL)) {
 		if (netif_msg_probe(priv))
 			cpu_dev_err(dev,
-				"%s:%hu:%s: of_parse_phandle() failed\n",
+		       "%s:%hu:%s: of_parse_phandle(fsl,qman-channel) failed\n",
 				__file__, __LINE__, __func__);
 		_errno = -EFAULT;
 		goto _return_dpa_bp_free;
