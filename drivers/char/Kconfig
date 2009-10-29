@@ -663,6 +663,7 @@ config HVC_FREESCALE
 	bool "Freescale Hypervisor Console support"
 	depends on FSL_HYPERVISOR
 	select HVC_DRIVER
+	select HVC_IRQ
 	help
 	  Enable the Freescale Hypervisor console.
 

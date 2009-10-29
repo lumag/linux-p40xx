@@ -59,13 +59,15 @@ static int hvc_fsl_put_chars(uint32_t handle, const char *buffer, int count)
 {
 	int rest;
 	unsigned int nlen;
-	int32_t ret;
+	unsigned int ret;
 
 	for (rest = count; rest > 0; rest -= nlen) {
 		nlen = min(16, rest);
 		ret = fh_byte_channel_send(handle, nlen, buffer);
-		if (ret)
+		if (ret == EAGAIN)
 			break;
+		if (ret)
+			return -ret;
 		buffer += nlen;
 	}
 
@@ -77,6 +79,9 @@ static int hvc_fsl_put_chars(uint32_t handle, const char *buffer, int count)
 static struct hv_ops hvc_fsl_get_put_ops = {
 	.get_chars = hvc_fsl_get_chars,
 	.put_chars = hvc_fsl_put_chars,
+	.notifier_add = notifier_add_irq,
+	.notifier_del = notifier_del_irq,
+	.notifier_hangup = notifier_hangup_irq,
 };
 
 /**

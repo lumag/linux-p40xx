@@ -3,6 +3,7 @@
  * Copyright (C) 2001 Paul Mackerras <paulus@au.ibm.com>, IBM
  * Copyright (C) 2004 Benjamin Herrenschmidt <benh@kernel.crashing.org>, IBM Corp.
  * Copyright (C) 2004 IBM Corporation
+ * Copyright 2009 Freescale Semiconductor, Inc.
  *
  * Additional Author(s):
  *  Ryan S. Arnold <rsa@us.ibm.com>
@@ -140,6 +141,7 @@ static void hvc_console_print(struct console *co, const char *b,
 	char c[N_OUTBUF] __ALIGNED__;
 	unsigned i = 0, n = 0;
 	int r, donecr = 0, index = co->index;
+	unsigned int timeout = 1000000; /* Keep trying for up to one second */
 
 	/* Console access attempt outside of acceptable console range. */
 	if (index >= MAX_NR_HVC_CONSOLES)
@@ -151,6 +153,10 @@ static void hvc_console_print(struct console *co, const char *b,
 
 	while (count > 0 || i > 0) {
 		if (count > 0 && i < sizeof(c)) {
+			/* If the local buffer (c) is not full, then copy some
+			 * bytes from the input buffer to it. We stop when the
+			 * local buffer is full. \n is converted to \r\n.
+			 */
 			if (b[n] == '\n' && !donecr) {
 				c[i++] = '\r';
 				donecr = 1;
@@ -161,14 +167,25 @@ static void hvc_console_print(struct console *co, const char *b,
 			}
 		} else {
 			r = cons_ops[index]->put_chars(vtermnos[index], c, i);
-			if (r <= 0) {
+			if (r < 0) {
 				/* throw away chars on error */
 				i = 0;
 			} else if (r > 0) {
 				i -= r;
 				if (i > 0)
 					memmove(c, c+r, i);
+			} else {
+				/* If r == 0, then the client driver didn't do
+				 * anything, so wait 1us and try again.  If we
+				 * time out, then just exit.
+				 */
+				if (!--timeout)
+					return;
+				udelay(1);
+				continue;
 			}
+			/* Reset the timeout */
+			timeout = 1000000;
 		}
 	}
 }
