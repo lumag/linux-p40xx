@@ -306,7 +306,7 @@ skpinv:	addi	r6,r6,1				/* Increment */
 	SET_IVOR(4,  ExternalInput);
 	SET_IVOR(5,  Alignment);
 	SET_IVOR(6,  Program);
-	SET_IVOR(7,  FloatingPointUnavailable);
+	SET_IVOR(7,  FloatingPointUnavailableErrata);
 	SET_IVOR(8,  SystemCall);
 	SET_IVOR(9,  AuxillaryProcessorUnavailable);
 	SET_IVOR(10, Decrementer);
@@ -510,7 +510,7 @@ interrupt_base:
 
 	/* Floating Point Unavailable Interrupt */
 #ifdef CONFIG_PPC_FPU
-	FP_UNAVAILABLE_EXCEPTION
+	EXCEPTION(0x0800, FloatingPointUnavailableErrata, program_check_exception, EXC_XFER_EE)
 #else
 #ifdef CONFIG_E200
 	/* E200 treats 'normal' floating point instructions as FP Unavail exception */
