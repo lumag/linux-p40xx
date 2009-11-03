@@ -536,7 +536,6 @@ typedef enum e_FmIntrType {
 /* FM erratas */
 #define FM_OP_PARTITION_ERRATA
 #ifndef SIMULATOR
-#define FM_ENET_SGMII_1000_ERRATA
 #define FM_ENET_PAUSE_FRM_ERRATA
 #define FM_MURAM_ERR_IRQ_ERRATA
 #define FM_PORT_SYNC_ERRATA
