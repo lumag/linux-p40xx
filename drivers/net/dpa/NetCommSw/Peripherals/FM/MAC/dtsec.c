@@ -429,10 +429,6 @@ static t_Error DtsecInit(t_Handle h_Dtsec)
             tmpReg32 |= ECNTRL_RPM;
        if((p_Dtsec->enetMode == e_ENET_MODE_RGMII_100) || (p_Dtsec->enetMode == e_ENET_MODE_SGMII_100))
             tmpReg32 |= ECNTRL_R100M;
-#ifdef FM_ENET_SGMII_1000_ERRATA
-       if(p_Dtsec->enetMode == e_ENET_MODE_SGMII_1000)
-            tmpReg32 |= ECNTRL_R100M;
-#endif /* FM_ENET_SGMII_1000_ERRATA */
     }
 
     if (p_DtsecDriverParam->autoZeroCounters)
@@ -568,10 +564,6 @@ static t_Error DtsecInit(t_Handle h_Dtsec)
         (p_Dtsec->enetMode == e_ENET_MODE_SGMII_10) ||
         (p_Dtsec->enetMode == e_ENET_MODE_SGMII_100))
             tmpReg32 |= MACCFG2_NIBBLE_MODE;
-#ifdef FM_ENET_SGMII_1000_ERRATA
-    else if(p_Dtsec->enetMode == e_ENET_MODE_SGMII_1000)
-            tmpReg32 |= MACCFG2_NIBBLE_MODE;
-#endif /* FM_ENET_SGMII_1000_ERRATA */
     else if((p_Dtsec->enetMode == e_ENET_MODE_RGMII_1000) ||
         (p_Dtsec->enetMode == e_ENET_MODE_SGMII_1000)||
         (p_Dtsec->enetMode == e_ENET_MODE_GMII_1000))
