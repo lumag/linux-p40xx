@@ -248,9 +248,10 @@ static int fsl_local_config_read(struct rio_mport *mport,
 				int index, u32 offset, int len, u32 *data)
 {
 	struct rio_priv *priv = mport->priv;
-	pr_debug("fsl_local_config_read: index %d offset %8.8x\n", index,
+	pr_debug("fsl_local_config_read: index %d offset %8.8x ", index,
 		 offset);
 	*data = in_be32(priv->regs_win + offset);
+	pr_debug("value %x\n", *data);
 
 	return 0;
 }
@@ -299,7 +300,8 @@ fsl_rio_config_read(struct rio_mport *mport, int index, u16 destid,
 	u8 *data;
 
 	pr_debug
-	    ("fsl_rio_config_read: index %d destid %d hopcount %d offset %8.8x len %d\n",
+	    ("fsl_rio_config_read: index %d destid %d hopcount %d offset %8.8x"
+	     " len %d ",
 	     index, destid, hopcount, offset, len);
 	out_be32(&priv->maint_atmu_regs->rowtar,
 		 (destid << 22) | (hopcount << 12) | ((offset & ~0x3) >> 9));
@@ -316,6 +318,7 @@ fsl_rio_config_read(struct rio_mport *mport, int index, u16 destid,
 		*val = in_be32((u32 *) data);
 		break;
 	}
+	pr_debug("value %x\n", *val);
 
 	return 0;
 }
@@ -339,9 +342,9 @@ fsl_rio_config_write(struct rio_mport *mport, int index, u16 destid,
 {
 	struct rio_priv *priv = mport->priv;
 	u8 *data;
-	pr_debug
-	    ("fsl_rio_config_write: index %d destid %d hopcount %d offset %8.8x len %d val %8.8x\n",
-	     index, destid, hopcount, offset, len, val);
+	pr_debug("fsl_rio_config_write: index %d destid %d hopcount %d "
+			"offset %8.8x len %d val %8.8x\n",
+			index, destid, hopcount, offset, len, val);
 	out_be32(&priv->maint_atmu_regs->rowtar,
 		 (destid << 22) | (hopcount << 12) | ((offset & ~0x3) >> 9));
 
@@ -564,9 +567,9 @@ rio_hw_add_outb_message(struct rio_mport *mport, struct rio_dev *rdev, int mbox,
 					+ priv->msg_tx_ring.tx_slot;
 	int ret = 0;
 
-	pr_debug
-	    ("RIO: rio_hw_add_outb_message(): destid %4.4x mbox %d buffer %8.8x len %8.8x\n",
-	     rdev->destid, mbox, (int)buffer, len);
+	pr_debug("RIO: rio_hw_add_outb_message(): destid %4.4x mbox %d "
+			"buffer %8.8x len %8.8x\n",
+			rdev->destid, mbox, (int)buffer, len);
 
 	if ((len < 8) || (len > RIO_MAX_MSG_SIZE)) {
 		ret = -EINVAL;
@@ -672,7 +675,8 @@ fsl_rio_tx_handler(int irq, void *dev_instance)
  * and enables the outbound message unit. Returns %0 on success and
  * %-EINVAL or %-ENOMEM on failure.
  */
-int rio_open_outb_mbox(struct rio_mport *mport, void *dev_id, int mbox, int entries)
+int rio_open_outb_mbox(struct rio_mport *mport, void *dev_id, int mbox,
+		int entries)
 {
 	int i, j, rc = 0;
 	struct rio_priv *priv = mport->priv;
@@ -842,7 +846,8 @@ fsl_rio_rx_handler(int irq, void *dev_instance)
  * and enables the inbound message unit. Returns %0 on success
  * and %-EINVAL or %-ENOMEM on failure.
  */
-int rio_open_inb_mbox(struct rio_mport *mport, void *dev_id, int mbox, int entries)
+int rio_open_inb_mbox(struct rio_mport *mport, void *dev_id, int mbox,
+		int entries)
 {
 	int i, rc = 0;
 	struct rio_priv *priv = mport->priv;
@@ -987,6 +992,8 @@ void *rio_hw_get_inb_message(struct rio_mport *mport, int mbox)
 						- priv->msg_rx_ring.phys);
 	buf_idx = (phys_buf - priv->msg_rx_ring.phys) / RIO_MAX_MSG_SIZE;
 	buf = priv->msg_rx_ring.virt_buffer[buf_idx];
+	pr_debug("RIO: rio_hw_get_inb_message(): from msg_rx_ring slot %d\n",
+			buf_idx);
 
 	if (!buf) {
 		printk(KERN_ERR
@@ -1046,8 +1053,8 @@ fsl_rio_dbell_handler(int irq, void *dev_instance)
 		struct rio_dbell *dbell;
 		int found = 0;
 
-		pr_debug
-		    ("RIO: processing doorbell, sid %2.2x tid %2.2x info %4.4x\n",
+		pr_debug("RIO: processing doorbell, sid %2.2x tid %2.2x "
+				"info %4.4x\n",
 		     DBELL_SID(dmsg), DBELL_TID(dmsg), DBELL_INF(dmsg));
 
 		list_for_each_entry(dbell, &port->dbells, node) {
@@ -1058,11 +1065,11 @@ fsl_rio_dbell_handler(int irq, void *dev_instance)
 			}
 		}
 		if (found) {
-			dbell->dinb(port, dbell->dev_id, DBELL_SID(dmsg), DBELL_TID(dmsg),
-				    DBELL_INF(dmsg));
+			dbell->dinb(port, dbell->dev_id, DBELL_SID(dmsg),
+					DBELL_TID(dmsg), DBELL_INF(dmsg));
 		} else {
-			pr_debug
-			    ("RIO: spurious doorbell, sid %2.2x tid %2.2x info %4.4x\n",
+			pr_debug("RIO: spurious doorbell, sid %2.2x tid %2.2x "
+					"info %4.4x\n",
 			     DBELL_SID(dmsg), DBELL_TID(dmsg), DBELL_INF(dmsg));
 		}
 		setbits32(&priv->msg_regs->dmr, DOORBELL_DMR_DI);
