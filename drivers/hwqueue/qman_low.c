@@ -52,6 +52,7 @@
 #define REG_MR_ITR		(void *)0x0088
 #define REG_CFG			(void *)0x0100
 #define REG_ISR			(void *)0x0e00
+#define REG_ITPR		(void *)0x0e14
 
 /* Cache-enabled register offsets */
 #define CL_EQCR			(void *)0x0000
@@ -1080,6 +1081,12 @@ void qm_isr_finish(struct qm_portal *portal)
 	__qm_portal_unbind(portal, QM_BIND_ISR);
 }
 EXPORT_SYMBOL(qm_isr_finish);
+
+void qm_isr_set_iperiod(struct qm_portal *portal, u16 iperiod)
+{
+	qm_out(ITPR, iperiod);
+}
+EXPORT_SYMBOL(qm_isr_set_iperiod);
 
 u32 __qm_isr_read(struct qm_portal *portal, enum qm_isr_reg n)
 {
