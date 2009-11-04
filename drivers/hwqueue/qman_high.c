@@ -251,6 +251,10 @@ struct qman_portal *qman_create_portal(struct qm_portal *__p, u32 flags,
 		pr_err("Qman ISR initialisation failed\n");
 		goto fail_isr;
 	}
+	/* static interrupt-gating controls */
+	qm_dqrr_set_ithresh(__p, 12);
+	qm_mr_set_ithresh(__p, 4);
+	qm_isr_set_iperiod(__p, 100);
 	portal->p = __p;
 	if (!cgrs)
 		portal->cgrs = NULL;
@@ -576,7 +580,9 @@ static inline void __poll_portal_fast(struct qman_portal *p,
 	struct qman_fq *fq;
 	enum qman_cb_dqrr_result res;
 	int prefetch = !(p->options & QMAN_PORTAL_FLAG_RSTASH);
+	int limit = 0;
 
+loop:
 	if (qm_dqrr_pvb_update(lowp) && prefetch)
 		qm_dqrr_pvb_prefetch(lowp);
 	dq = qm_dqrr_current(lowp);
@@ -624,6 +630,8 @@ static inline void __poll_portal_fast(struct qman_portal *p,
 	/* Move forward */
 	qm_dqrr_next(lowp);
 #endif
+	if (++limit < CONFIG_FSL_QMAN_POLL_LIMIT)
+		goto loop;
 done:
 	if (prefetch)
 		qm_dqrr_pvb_prefetch(lowp);

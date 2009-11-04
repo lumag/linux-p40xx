@@ -505,6 +505,7 @@ struct qm_mc_result *qm_mc_result(struct qm_portal *portal);
 /* Create/destroy */
 int qm_isr_init(struct qm_portal *portal);
 void qm_isr_finish(struct qm_portal *portal);
+void qm_isr_set_iperiod(struct qm_portal *portal, u16 iperiod);
 
 /* Used by all portal interrupt registers except 'inhibit' */
 #define QM_PIRQ_CSCI	0x00100000	/* Congestion State Change */
