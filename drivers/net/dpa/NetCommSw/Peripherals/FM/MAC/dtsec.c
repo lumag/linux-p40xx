@@ -851,6 +851,29 @@ static t_Error DtsecConfigException(t_Handle h_Dtsec, e_FmMacExceptions exceptio
 /*                      dTSEC Run Time API functions                         */
 /*****************************************************************************/
 
+/* .......................................................................... */
+
+static t_Error DtsecRestart(t_Handle h_Dtsec, e_CommMode mode)
+{
+    t_Dtsec *p_Dtsec = (t_Dtsec *)h_Dtsec;
+    t_DtsecMemMap *p_MemMap ;
+    SANITY_CHECK_RETURN_ERROR(p_Dtsec, E_INVALID_HANDLE);
+    SANITY_CHECK_RETURN_ERROR(p_Dtsec->p_MemMap, E_INVALID_HANDLE);
+
+    p_MemMap= (t_DtsecMemMap*)(p_Dtsec->p_MemMap);
+    if(mode & e_COMM_MODE_TX)
+        /* clear the graceful receive stop bit */
+        WRITE_UINT32(p_MemMap->tctrl,
+                      GET_UINT32(p_MemMap->tctrl) & ~TCTRL_GTS);
+
+    if(mode & e_COMM_MODE_RX)
+        /* clear the graceful receive stop bit */
+        WRITE_UINT32(p_MemMap->rctrl,
+                      GET_UINT32(p_MemMap->rctrl) & ~RCTRL_GRS);
+
+    return E_OK;
+}
+
 /* .............................................................................. */
 
 static t_Error DtsecEnable(t_Handle h_Dtsec,  e_CommMode mode)
@@ -885,6 +908,8 @@ static t_Error DtsecEnable(t_Handle h_Dtsec,  e_CommMode mode)
     }
 
     WRITE_UINT32(p_MemMap->maccfg1, tmpReg32);
+
+	DtsecRestart(h_Dtsec, mode);
 
     return E_OK;
 }
@@ -924,29 +949,6 @@ static t_Error DtsecDisable (t_Handle h_Dtsec, e_CommMode mode)
     }
 
     WRITE_UINT32(p_MemMap->maccfg1, tmpReg32);
-
-    return E_OK;
-}
-
-/* .............................................................................. */
-
-static t_Error DtsecRestart(t_Handle h_Dtsec, e_CommMode mode)
-{
-    t_Dtsec *p_Dtsec = (t_Dtsec *)h_Dtsec;
-    t_DtsecMemMap *p_MemMap ;
-    SANITY_CHECK_RETURN_ERROR(p_Dtsec, E_INVALID_HANDLE);
-    SANITY_CHECK_RETURN_ERROR(p_Dtsec->p_MemMap, E_INVALID_HANDLE);
-
-    p_MemMap= (t_DtsecMemMap*)(p_Dtsec->p_MemMap);
-    if(mode & e_COMM_MODE_TX)
-        /* clear the graceful receive stop bit */
-        WRITE_UINT32(p_MemMap->tctrl,
-                      GET_UINT32(p_MemMap->tctrl) & ~TCTRL_GTS);
-
-    if(mode & e_COMM_MODE_RX)
-        /* clear the graceful receive stop bit */
-        WRITE_UINT32(p_MemMap->rctrl,
-                      GET_UINT32(p_MemMap->rctrl) & ~RCTRL_GRS);
 
     return E_OK;
 }
