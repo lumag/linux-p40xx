@@ -161,6 +161,7 @@ static int rionet_rx_clean(struct net_device *ndev)
 		if (!rnet->rx_skb[i])
 			continue;
 
+		pr_debug("RIONET: rionet_rx_clean slot %d\n", i);
 		if (!(data = rio_get_inb_message(rnet->mport, RIONET_MAILBOX)))
 			break;
 
@@ -567,6 +568,7 @@ static int rionet_open(struct net_device *ndev)
 	struct rionet_peer *peer, *tmp;
 	u32 pwdcsr;
 	struct rionet_private *rnet = netdev_priv(ndev);
+	unsigned long flags;
 
 	if (netif_msg_ifup(rnet))
 		printk(KERN_INFO "%s: open\n", DRV_NAME);
@@ -638,7 +640,9 @@ static int rionet_open(struct net_device *ndev)
 	for (i = 0; i < RIONET_RX_RING_SIZE; i++)
 		rnet->rx_skb[i] = NULL;
 	rnet->rx_slot = 0;
+	spin_lock_irqsave(&rnet->lock, flags);
 	rionet_rx_fill(ndev, 0);
+	spin_unlock_irqrestore(&rnet->lock, flags);
 
 	rnet->tx_slot = 0;
 	rnet->tx_cnt = 0;
