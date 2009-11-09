@@ -57,13 +57,6 @@ config SOCRATES
 	help
 	  This option enables support for the Socrates board.
 
-config P4080_SIM
-	bool "Freescale P4080 SIM"
-	select DEFAULT_UIMAGE
-	select HAS_RAPIDIO
-	help
-	  This option enables support for the P4080 SIM board
-
 config P4080_DS
 	bool "Freescale P4080 DS"
 	select DEFAULT_UIMAGE
