@@ -73,6 +73,10 @@ config P4080_HV
 	help
 	  This option enables support for the P4080 Hypervisor Platform
 
+config P4080_ERRATUM_CPU8
+	bool "Work around P4080 rev 1 erratum CPU8"
+	default y if P4080_DS || P4080_HV
+
 config FSL_HYPERVISOR
 	bool
 	help
