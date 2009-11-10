@@ -1302,7 +1302,7 @@ static void __cold dpa_change_rx_flags(struct net_device *net_dev, int flags)
 static void dpa_rx_skb_add_page(struct sk_buff *skb, struct page *page,
 				u32 offset, u32 size)
 {
-	skb_fill_page_desc(skb, 0, page, offset, size);
+	skb_fill_page_desc(skb, skb_shinfo(skb)->nr_frags, page, offset, size);
 
 	skb->len	+= size;
 	skb->data_len	+= size;
