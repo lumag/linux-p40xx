@@ -28,6 +28,10 @@ config FSL_QMAN_HAVE_POLL
 	bool
 	default n
 
+config FSL_QMAN_POLL_LIMIT
+	int
+	default 32
+
 config FSL_QMAN_PORTAL_DISABLEAUTO
 	bool "disable auto-initialisation of cpu-affine portals"
 	depends on FSL_QMAN_PORTAL
@@ -63,10 +67,6 @@ config FSL_QMAN_FQRANGE
 	  This allocator does not use Bman or any other h/w resource, it
 	  provides a s/w allocator implementation that supports allocating
 	  and deallocating FQID ranges, with control over alignment.
-
-config FSL_QMAN_POLL_LIMIT
-	int
-	default 32
 
 config FSL_QMAN_CONFIG
 	bool "Qman device management"
@@ -142,6 +142,27 @@ config FSL_QMAN_TEST_HIGH_BUG_VDQCR
 	---help---
 	  Certain (current) versions of the cycle-accurate model don't support
 	  VDQCR.
+
+# H/w settings that can be hard-coded for now.
+
+# Corenet initiator settings. Stash request queues are 4-deep to match cores'
+# ability to snart. Stash priority is 3, other priorities are 2.
+config FSL_QMAN_CI_SCHED_CFG_SRCCIV
+	int
+	depends on FSL_QMAN_CONFIG
+	default 4
+config FSL_QMAN_CI_SCHED_CFG_SRQ_W
+	int
+	depends on FSL_QMAN_CONFIG
+	default 3
+config FSL_QMAN_CI_SCHED_CFG_RW_W
+	int
+	depends on FSL_QMAN_CONFIG
+	default 2
+config FSL_QMAN_CI_SCHED_CFG_BMAN_W
+	int
+	depends on FSL_QMAN_CONFIG
+	default 2
 
 endif # FSL_QMAN
 

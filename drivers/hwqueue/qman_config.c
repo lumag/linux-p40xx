@@ -280,15 +280,6 @@ static void qm_set_corenet_bar(struct qman *qm, u16 eba, u32 ba)
 	qm_out(QCSP_BAR, ba);
 }
 
-static void qm_set_corenet_initiator(struct qman *qm, int write_srcciv,
-				u8 srcciv, u8 srq_w, u8 rw_w, u8 bman_w)
-{
-	qm_out(CI_SCHED_CFG, (write_srcciv ? 0x80000000 : 0x0) |
-		((srcciv & 0xf) << 24) |
-		((srq_w & 0x7) << 8) | ((rw_w & 0x7) << 4) |
-		(bman_w & 0x7));
-}
-
 static u8 qm_get_corenet_sourceid(struct qman *qm)
 {
 	return qm_in(SRCIDR);
@@ -305,6 +296,16 @@ static void qm_set_congestion_config(struct qman *qm, u16 pres)
 }
 
 #endif
+
+static void qm_set_corenet_initiator(struct qman *qm)
+{
+	qm_out(CI_SCHED_CFG,
+		0x80000000 | /* write srcciv enable */
+		(CONFIG_FSL_QMAN_CI_SCHED_CFG_SRCCIV << 24) |
+		(CONFIG_FSL_QMAN_CI_SCHED_CFG_SRQ_W << 8) |
+		(CONFIG_FSL_QMAN_CI_SCHED_CFG_RW_W << 4) |
+		CONFIG_FSL_QMAN_CI_SCHED_CFG_BMAN_W);
+}
 
 static void qm_get_version(struct qman *qm, u16 *id, u8 *major, u8 *minor)
 {
@@ -471,6 +472,8 @@ static int __init fsl_qman_init(struct device_node *node)
 	/* thresholds */
 	qm_set_pfdr_threshold(qm, 32, 32);
 	qm_set_sfdr_threshold(qm, 128);
+	/* corenet initiator settings */
+	qm_set_corenet_initiator(qm);
 	/* Workaround for bug 3594: "PAMU Address translation exception during
 	 * qman dqrr stashing". */
 	if (sizeof(dma_addr_t) <= sizeof(u32))
