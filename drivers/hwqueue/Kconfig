@@ -170,6 +170,12 @@ config FSL_QMAN_BUG_FASTTRACK
 	depends on FSL_QMAN_CONFIG
 	default y
 
+# Workaround for rev1 h/w bug with respect to class-scheduling weights.
+config FSL_QMAN_BUG_CSW
+	bool
+	depends on FSL_QMAN_CONFIG
+	default y
+
 endif # FSL_QMAN
 
 endmenu
