@@ -184,6 +184,17 @@ static void __init setup_pci_pcsrbar(struct pci_controller *hose)
 	immr_base = get_immrbase();
 	early_write_config_dword(hose, 0, 0, PCI_BASE_ADDRESS_0, immr_base);
 #endif
+	/*
+	 * Under the hypervisor the MSIs depend on Inbound ATMUs instead of
+	 * PEXCSRBAR, but we still need PEXCSRBAR to be programmed to prevent
+	 * address translations for any PCIe DMA's to/from arbitary addresses
+	 * which PEXCSRBAR/BAR0 is programmed to. Set PEXCSRBAR to end of
+	 * address space, which should be safe enough
+	 */
+	if (machine_is(p4080_hv)) {
+		early_write_config_dword(hose, 0, 0, PCI_BASE_ADDRESS_0,
+						0xFF000000);
+	}
 }
 
 void fsl_pcibios_fixup_bus(struct pci_bus *bus)
