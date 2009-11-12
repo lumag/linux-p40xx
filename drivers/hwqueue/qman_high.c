@@ -44,6 +44,8 @@
 #define EQCR_THRESH	1	/* reread h/w CI when running out of space */
 #define EQCR_ITHRESH	4	/* if EQCR congests, interrupt threshold */
 #define RECOVER_MSLEEP	100	/* DQRR and MR need to be empty for 0.1s */
+#define IRQNAME		"QMan portal %d"
+#define MAX_IRQNAME	16	/* big enough for "QMan portal %d" */
 
 /* Lock/unlock frame queues, subject to the "LOCKED" flag. This is about
  * inter-processor locking only. Note, FQLOCK() is always called either under a
@@ -117,6 +119,7 @@ struct qman_portal {
 	/* This is needed for providing a non-NULL device to dma_map_***() */
 	struct platform_device *pdev;
 	struct qman_rbtree retire_table;
+	char irqname[MAX_IRQNAME];
 };
 
 /* This gives a FQID->FQ lookup to cover the fact that we can't directly demux
@@ -296,8 +299,8 @@ struct qman_portal *qman_create_portal(struct qm_portal *__p, u32 flags,
 		QM_PIRQ_MRI | (cgrs ? QM_PIRQ_CSCI : 0));
 	qm_isr_status_clear(portal->p, 0xffffffff);
 #ifdef CONFIG_FSL_QMAN_HAVE_IRQ
-	if (request_irq(config->irq, portal_isr, 0, "Qman portal 0",
-					portal)) {
+	snprintf(portal->irqname, MAX_IRQNAME, IRQNAME, config->cpu);
+	if (request_irq(config->irq, portal_isr, 0, portal->irqname, portal)) {
 		pr_err("request_irq() failed\n");
 		goto fail_irq;
 	}
