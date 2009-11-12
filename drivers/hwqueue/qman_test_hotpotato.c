@@ -139,7 +139,7 @@ static dma_addr_t frame_dma;
 /* the main function waits on this */
 static DECLARE_WAIT_QUEUE_HEAD(queue);
 
-#define HP_PER_CPU 	16
+#define HP_PER_CPU 	2
 #define HP_LOOPS	8
 /* 80 bytes, like a small ethernet frame, and bleeds into a second cacheline */
 #define HP_NUM_WORDS	80
@@ -269,6 +269,7 @@ static void destroy_per_cpu_handlers(void *ignore)
 			panic("qman_oos_fq(rx) failed");
 		qman_destroy_fq(&handler->rx, 0);
 		qman_destroy_fq(&handler->tx, 0);
+		qm_fq_free(handler->fqid_rx);
 		list_del(&handler->node);
 		kmem_cache_free(hp_handler_slab, handler);
 	}
