@@ -369,6 +369,17 @@ int __init fsl_add_bridge(struct device_node *dev, int is_primary)
 	if (!machine_is(p4080_hv))
 		/* Setup PEX window registers */
 		setup_pci_atmu(hose, &rsrc);
+	/*
+	 * Under the hypervisor the MSIs depend on Inbound ATMUs instead of
+	 * PEXCSRBAR, but we still need PEXCSRBAR to be programmed to prevent
+	 * address translations for any PCIe DMA's to/from arbitary addresses
+	 * which PEXCSRBAR/BAR0 is programmed to. Set PEXCSRBAR to end of
+	 * address space, which should be safe enough
+	 */
+	else
+		early_write_config_dword(hose, 0, 0, PCI_BASE_ADDRESS_0,
+						0xFF000000);
+
 
 	return 0;
 }
