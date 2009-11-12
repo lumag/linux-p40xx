@@ -164,6 +164,12 @@ config FSL_QMAN_CI_SCHED_CFG_BMAN_W
 	depends on FSL_QMAN_CONFIG
 	default 2
 
+# Workaround for rev1 h/w bug with respect to "fast-track", disable it.
+config FSL_QMAN_BUG_FASTTRACK
+	bool
+	depends on FSL_QMAN_CONFIG
+	default y
+
 endif # FSL_QMAN
 
 endmenu
