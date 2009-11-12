@@ -92,7 +92,9 @@ enum qm_wq_class {
 	qm_wq_fman0 = 2,
 	qm_wq_fman1 = 3,
 	qm_wq_caam = 4,
-	qm_wq_pme = 5
+	qm_wq_pme = 5,
+	qm_wq_first = qm_wq_portal,
+	qm_wq_last = qm_wq_pme
 };
 
 /* Follows FQD_[BARE|BAR|AR] and PFDR_[BARE|BAR|AR] */
@@ -211,16 +213,6 @@ static void qm_get_pfdr_free_pool(struct qman *qm, u32 *head, u32 *tail)
 	*tail = qm_in(PFDR_FP_TAIL);
 }
 
-static void qm_set_wq_scheduling(struct qman *qm, enum qm_wq_class wq_class,
-			u8 cs_elev, u8 csw2, u8 csw3, u8 csw4, u8 csw5,
-			u8 csw6, u8 csw7)
-{
-	qm_out(WQ_CS_CFG(wq_class), ((cs_elev & 0xff) << 24) |
-		((csw2 & 0x7) << 20) | ((csw3 & 0x7) << 16) |
-		((csw4 & 0x7) << 12) | ((csw5 & 0x7) << 8) |
-		((csw6 & 0x7) << 4) | (csw7 & 0x7));
-}
-
 static void qm_set_default_wq(struct qman *qm, u16 wqid)
 {
 	qm_out(WQ_DEF_ENC_WQID, wqid);
@@ -297,6 +289,29 @@ static void qm_set_congestion_config(struct qman *qm, u16 pres)
 }
 
 #endif
+
+static void qm_set_wq_scheduling(struct qman *qm, enum qm_wq_class wq_class,
+			u8 cs_elev, u8 csw2, u8 csw3, u8 csw4, u8 csw5,
+			u8 csw6, u8 csw7)
+{
+#ifdef CONFIG_FSL_QMAN_BUG_CSW
+#define csw(x) \
+do { \
+	if (++x == 8) \
+		x = 7; \
+} while (0)
+	csw(csw2);
+	csw(csw3);
+	csw(csw4);
+	csw(csw5);
+	csw(csw6);
+	csw(csw7);
+#endif
+	qm_out(WQ_CS_CFG(wq_class), ((cs_elev & 0xff) << 24) |
+		((csw2 & 0x7) << 20) | ((csw3 & 0x7) << 16) |
+		((csw4 & 0x7) << 12) | ((csw5 & 0x7) << 8) |
+		((csw6 & 0x7) << 4) | (csw7 & 0x7));
+}
 
 static void qm_set_hid(struct qman *qm)
 {
@@ -486,6 +501,9 @@ static int __init fsl_qman_init(struct device_node *node)
 	qm_set_corenet_initiator(qm);
 	/* HID settings */
 	qm_set_hid(qm);
+	/* Set scheduling weights to defaults */
+	for (ret = qm_wq_first; ret <= qm_wq_last; ret++)
+		qm_set_wq_scheduling(qm, ret, 0, 0, 0, 0, 0, 0, 0);
 	/* Workaround for bug 3594: "PAMU Address translation exception during
 	 * qman dqrr stashing". */
 	if (sizeof(dma_addr_t) <= sizeof(u32))
