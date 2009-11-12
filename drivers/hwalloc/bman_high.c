@@ -40,6 +40,8 @@
 /* Compilation constants */
 #define RCR_THRESH	2	/* reread h/w CI when running out of space */
 #define RCR_ITHRESH	4	/* if RCR congests, interrupt threshold */
+#define IRQNAME		"BMan portal %d"
+#define MAX_IRQNAME	16	/* big enough for "BMan portal %d" */
 
 /**************/
 /* Portal API */
@@ -62,6 +64,7 @@ struct bman_portal {
 	 * BTW, with 64 entries in the hash table and 64 buffer pools to track,
 	 * you'll never guess the hash-function ... */
 	struct bman_pool *cb[64];
+	char irqname[MAX_IRQNAME];
 };
 
 /* GOTCHA: this object type refers to a pool, it isn't *the* pool. There may be
@@ -185,7 +188,8 @@ struct bman_portal *bman_create_portal(struct bm_portal *__p,
 	bm_isr_enable_write(portal->p, BM_PIRQ_RCRI | BM_PIRQ_BSCN);
 	bm_isr_status_clear(portal->p, 0xffffffff);
 #ifdef CONFIG_FSL_BMAN_HAVE_IRQ
-	if (request_irq(config->irq, portal_isr, 0, "Bman portal 0", portal)) {
+	snprintf(portal->irqname, MAX_IRQNAME, IRQNAME, config->cpu);
+	if (request_irq(config->irq, portal_isr, 0, portal->irqname, portal)) {
 		pr_err("request_irq() failed\n");
 		goto fail_irq;
 	}
