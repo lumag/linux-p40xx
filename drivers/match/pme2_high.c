@@ -596,12 +596,17 @@ int pme_ctx_ctrl_update_flow(struct pme_ctx *ctx, u32 flags,
 			flags &= ~PME_CMD_FCW_RES;
 	}
 	/* allocate residue memory if it is being added */
-	if ((flags & PME_CMD_FCW_RES) && params->ren && !ctx->hw_residue) {
-		ctx->hw_residue = pme_hw_residue_new();
+	if ((flags & PME_CMD_FCW_RES) && params->ren) {
+		spin_lock_irq(&ctx->lock);
 		if (!ctx->hw_residue) {
-			pme_hw_flow_free(token->internal_flow_ptr);
-			return -ENOMEM;
+			ctx->hw_residue = pme_hw_residue_new();
+			if (!ctx->hw_residue) {
+				spin_unlock_irq(&ctx->lock);
+				pme_hw_flow_free(token->internal_flow_ptr);
+				return -ENOMEM;
+			}
 		}
+		spin_unlock_irq(&ctx->lock);
 	}
 	/* enqueue the FCW command to PME */
 	memcpy(token->internal_flow_ptr, params, sizeof(struct pme_flow));
