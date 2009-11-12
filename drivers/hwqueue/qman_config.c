@@ -61,6 +61,7 @@
 #define REG_CM_CFG		0x0800
 #define REG_MCR			0x0b00
 #define REG_MCP(n)		(0x0b04 + ((n) * 0x04))
+#define REG_HID_CFG		0x0bf0
 #define REG_IP_REV_1		0x0bf8
 #define REG_IP_REV_2		0x0bfc
 #define REG_FQD_BARE		0x0c00
@@ -297,6 +298,15 @@ static void qm_set_congestion_config(struct qman *qm, u16 pres)
 
 #endif
 
+static void qm_set_hid(struct qman *qm)
+{
+#ifdef CONFIG_FSL_QMAN_BUG_FASTTRACK
+	qm_out(HID_CFG, 3);
+#else
+	qm_out(HID_CFG, 0);
+#endif
+}
+
 static void qm_set_corenet_initiator(struct qman *qm)
 {
 	qm_out(CI_SCHED_CFG,
@@ -474,6 +484,8 @@ static int __init fsl_qman_init(struct device_node *node)
 	qm_set_sfdr_threshold(qm, 128);
 	/* corenet initiator settings */
 	qm_set_corenet_initiator(qm);
+	/* HID settings */
+	qm_set_hid(qm);
 	/* Workaround for bug 3594: "PAMU Address translation exception during
 	 * qman dqrr stashing". */
 	if (sizeof(dma_addr_t) <= sizeof(u32))
