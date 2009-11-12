@@ -581,6 +581,13 @@ int pme_ctx_scan(struct pme_ctx *ctx, u32 flags, struct qm_fd *fd, u32 args,
 int pme_ctx_pmtcc(struct pme_ctx *ctx, u32 flags, struct qm_fd *fd,
 		struct pme_ctx_token *token);
 
+/* This is extends pme_ctx_scan() to provide ORP support. 'orp_fq' represents
+ * the FQD that is used as the ORP and 'seqnum' is the sequence number to use
+ * for order restoration, these are usually the FQ the frame was dequeued from
+ * and the sequence number of that dequeued frame (respectively). */
+int pme_ctx_scan_orp(struct pme_ctx *ctx, u32 flags, struct qm_fd *fd, u32 args,
+	       struct pme_ctx_token *token, struct qman_fq *orp_fq, u16 seqnum);
+
 /* Precondition: must be PME_CTX_FLAG_EXCLUSIVE */
 int pme_ctx_exclusive_inc(struct pme_ctx *ctx, u32 flags);
 void pme_ctx_exclusive_dec(struct pme_ctx *ctx);
