@@ -223,6 +223,7 @@ define_machine(p4080_ds) {
 	.calibrate_decr		= generic_calibrate_decr,
 	.progress		= udbg_progress,
 	.init_early		= p4080_init_early,
+	.idle_loop		= wait_idle,
 };
 
 machine_arch_initcall(p4080_ds, swiotlb_setup_bus_notifier);
