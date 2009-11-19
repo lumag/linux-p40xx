@@ -223,4 +223,5 @@ define_machine(p4080_hv) {
 	.calibrate_decr		= generic_calibrate_decr,
 	.progress		= udbg_progress,
 	.init_early		= p4080_init_early,
+	.idle_loop		= wait_idle,
 };
