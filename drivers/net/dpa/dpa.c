@@ -1760,7 +1760,7 @@ static int __cold dpa_start(struct net_device *net_dev)
 			goto _return;
 		}
 
-		for (i = 0; i < ARRAY_SIZE(mac_dev->port_dev); i++)
+		for_each_port_device(i, mac_dev->port_dev)
 			fm_port_enable(mac_dev->port_dev[i]);
 
 		_errno = priv->mac_dev->start(mac_dev);
@@ -1779,7 +1779,7 @@ static int __cold dpa_start(struct net_device *net_dev)
 	goto _return;
 
 _return_port_dev_stop:
-	for (i = 0; i < ARRAY_SIZE(mac_dev->port_dev); i++)
+	for_each_port_device(i, mac_dev->port_dev)
 		fm_port_disable(mac_dev->port_dev[i]);
 _return:
 	if (netif_msg_ifup(priv))
@@ -1814,7 +1814,7 @@ static int __cold dpa_stop(struct net_device *net_dev)
 				_errno = __errno;
 		}
 
-		for (i = 0; i < ARRAY_SIZE(mac_dev->port_dev); i++)
+		for_each_port_device(i, mac_dev->port_dev)
 			fm_port_disable(mac_dev->port_dev[i]);
 
 		if (mac_dev->phy_dev)
@@ -2244,7 +2244,7 @@ dpa_init_probe(struct of_device *_of_dev)
 
 	fm_set_tx_port_params(mac_dev->port_dev[TX], &tx_port_param);
 
-	for (i = 0; i < ARRAY_SIZE(mac_dev->port_dev); i++)
+	for_each_port_device(i, mac_dev->port_dev)
 		fm_port_enable(mac_dev->port_dev[i]);
 
 	_errno = 0;
