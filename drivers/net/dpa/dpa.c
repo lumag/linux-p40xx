@@ -1596,6 +1596,9 @@ _continue:
 		list_add_tail(&dpa_fd->list, &percpu_priv->free_list);
 		local_irq_enable();
 	}
+
+	if (netif_msg_rx_status(priv))
+		cpu_netdev_dbg(net_dev, "%s:%s() ->\n", __file__, __func__);
 }
 
 static int __hot dpa_tx(struct sk_buff *skb, struct net_device *net_dev)
