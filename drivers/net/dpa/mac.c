@@ -244,7 +244,7 @@ static int __devinit __cold mac_probe(struct of_device *_of_dev, const struct of
 	}
 	BUG_ON(lenp != sizeof(phandle) * ARRAY_SIZE(mac_dev->port_dev));
 
-	for (i = 0; i < ARRAY_SIZE(mac_dev->port_dev); i++) {
+	for_each_port_device(i, mac_dev->port_dev) {
 		/* Find the port node */
 		dev_node = of_find_node_by_phandle(phandle_prop[i]);
 		if (unlikely(dev_node == NULL)) {
@@ -334,16 +334,16 @@ _return:
 
 static int __devexit __cold mac_remove(struct of_device *of_dev)
 {
-	int		i, _errno;
-	struct device	*dev;
-	struct mac_device *mac_dev;
+	int			 i, _errno;
+	struct device		*dev;
+	struct mac_device	*mac_dev;
 
 	dev = &of_dev->dev;
 	mac_dev = (struct mac_device *)dev_get_drvdata(dev);
 
 	cpu_dev_dbg(dev, "-> %s:%s()\n", __file__, __func__);
 
-	for (i = 0; i < ARRAY_SIZE(mac_dev->port_dev); i++)
+	for_each_port_device(i, mac_dev->port_dev)
 		fm_port_unbind(mac_dev->port_dev[i]);
 
 	fm_unbind(mac_dev->fm_dev);

@@ -72,6 +72,9 @@ struct mac_device {
 	int (*uninit)(struct mac_device *mac_dev);
 };
 
+#define for_each_port_device(i, port_dev)	\
+	for (i = 0; i < ARRAY_SIZE(port_dev); i++)
+
 static inline void * __attribute((nonnull)) macdev_priv(const struct mac_device *mac_dev)
 {
 	return (void *)mac_dev + sizeof(*mac_dev);
