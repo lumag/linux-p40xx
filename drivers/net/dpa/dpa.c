@@ -1359,9 +1359,9 @@ static int dpa_process_sg(struct net_device *net_dev, struct sk_buff *skb,
 			bpid = sgt[i].bpid;
 			dpa_bp = dpa_bpid2pool(bpid);
 			if (IS_ERR(dpa_bp)) {
-				cpu_netdev_err(net_dev,
-					"Could not find pool for bpid %d\n",
-					bpid);
+				cpu_netdev_err(net_dev, "%s:%hu:%s(): "
+					   "Could not find pool for BPID %hu\n",
+					   __file__, __LINE__, __func__, bpid);
 				err = -EINVAL;
 				goto err_bpid2pool_failed;
 			}
@@ -1380,7 +1380,9 @@ static int dpa_process_sg(struct net_device *net_dev, struct sk_buff *skb,
 	if (!__pskb_pull_tail(skb,
 				ETH_HLEN + NN_RESERVED_SPACE(net_dev) +
 				TT_RESERVED_SPACE(net_dev))) {
-		cpu_netdev_err(net_dev, "__pskb_pull_tail() failed\n");
+		cpu_netdev_err(net_dev, "%s:%hu:%s(): "
+			       "__pskb_pull_tail() failed\n",
+			       __file__, __LINE__, __func__);
 
 		net_dev->stats.rx_dropped++;
 
@@ -1421,7 +1423,9 @@ static int dpa_process_one(struct net_device *net_dev, struct sk_buff *skb,
 		if (!__pskb_pull_tail(skb, ETH_HLEN +
 					NN_RESERVED_SPACE(net_dev) +
 					TT_RESERVED_SPACE(net_dev))) {
-			cpu_netdev_err(net_dev, "__pskb_pull_tail() failed\n");
+			cpu_netdev_err(net_dev, "%s:%hu:%s(): "
+				       "__pskb_pull_tail() failed\n",
+				       __file__, __LINE__, __func__);
 			net_dev->stats.rx_dropped++;
 			return -1;
 		}
@@ -1517,7 +1521,9 @@ static void __hot dpa_rx(struct work_struct *fd_work)
 
 		if (dpa_fd->fd.format == qm_fd_sg && !dpa_bp->kernel_pool) {
 			net_dev->stats.rx_dropped++;
-			cpu_netdev_err(net_dev, "Dropping SG frame\n");
+			cpu_netdev_err(net_dev, "%s:%hu:%s(): "
+				       "Dropping a SG frame\n",
+				       __file__, __LINE__, __func__);
 			goto _continue_dpa_fd_release;
 		}
 
@@ -1533,9 +1539,9 @@ static void __hot dpa_rx(struct work_struct *fd_work)
 					NET_IP_ALIGN + size, GFP_DPA);
 		if (unlikely(skb == NULL)) {
 			if (netif_msg_rx_err(priv))
-				cpu_netdev_err(net_dev,
-					"%s:%hu: netdev_alloc_skb failed\n",
-					__file__, __LINE__);
+				cpu_netdev_err(net_dev, "%s:%hu:%s(): "
+					       "__netdev_alloc_skb() failed\n",
+					       __file__, __LINE__, __func__);
 
 			net_dev->stats.rx_dropped++;
 
@@ -2134,7 +2140,7 @@ dpa_init_probe(struct of_device *_of_dev)
 	size_t				 count;
 	struct device_node		*dpa_node;
 	const uint32_t			*uint32_prop;
-	uint32_t	ingress_fqids[ARRAY_SIZE(fsl_qman_frame_queues)][2];
+	uint32_t	    ingress_fqids[ARRAY_SIZE(fsl_qman_frame_queues)][2];
 
 	dev = &_of_dev->dev;
 
@@ -2152,9 +2158,9 @@ dpa_init_probe(struct of_device *_of_dev)
 		_errno = PTR_ERR(mac_dev);
 		goto _return;
 	} else if(mac_dev == NULL) {
-		cpu_dev_err(dev,
-			"%s:%hu:%s(): Missing the %s/fsl,fman-mac property\n",
-			__file__, __LINE__, __func__, dpa_node->full_name);
+		cpu_dev_err(dev, "%s:%hu:%s(): "
+			    "Missing the %s/fsl,fman-mac property\n",
+			    __file__, __LINE__, __func__, dpa_node->full_name);
 		_errno = -EINVAL;
 		goto _return;
 	}
@@ -2166,9 +2172,9 @@ dpa_init_probe(struct of_device *_of_dev)
 		_errno = PTR_ERR(dpa_bp);
 		goto _return;
 	} else if (unlikely(dpa_bp == NULL)) {
-		cpu_dev_err(dev,
-			"%s:%hu: Missing %s/fsl,bman-buffer-pools property\n",
-			__file__, __LINE__, dpa_node->full_name);
+		cpu_dev_err(dev, "%s:%hu:%s(): "
+			    "Missing %s/fsl,bman-buffer-pools property\n",
+			    __file__, __LINE__, __func__, dpa_node->full_name);
 		_errno = -EINVAL;
 		goto _return;
 	}
@@ -2191,7 +2197,7 @@ dpa_init_probe(struct of_device *_of_dev)
 		uint32_prop = (typeof(uint32_prop))of_get_property(dpa_node,
 				fsl_qman_frame_queues[i], &lenp);
 		if (unlikely(uint32_prop == NULL)) {
-			cpu_dev_info(dev,
+			cpu_dev_err(dev,
 				"%s:%hu:%s(): of_get_property(%s, %s) failed\n",
 				__file__, __LINE__, __func__,
 				dpa_node->full_name, fsl_qman_frame_queues[i]);
@@ -2244,8 +2250,10 @@ static const uint32_t *dpa_get_fqids(struct device_node *dpa_node,
 
 	fqids = of_get_property(dpa_node, match, num);
 	if (unlikely(!fqids)) {
-		printk(KERN_ERR "%s: of_get_property(%s) failed\n",
-				dpa_node->full_name, match);
+		cpu_pr_err(KBUILD_MODNAME ": %s:%hu:%s(): "
+			   "of_get_property(%s, %s) failed\n",
+			   __file__, __LINE__, __func__,
+			   dpa_node->full_name, match);
 
 		*num = 0;
 		return NULL;
@@ -2399,9 +2407,7 @@ dpa_probe(struct of_device *_of_dev)
 		goto _return_free_netdev;
 	} else if (dpa_bp == NULL) {
 		if (netif_msg_probe(priv))
-			cpu_dev_info(dev,
-				"%s:%hu:%s(): Using private BM buffer pools\n",
-				__file__, __LINE__, __func__);
+			cpu_dev_info(dev, "Using private BM buffer pools\n");
 
 		count = ARRAY_SIZE(dpa_bp_size);
 		dpa_bp = devm_kzalloc(dev, count * sizeof(*dpa_bp), GFP_KERNEL);
@@ -2504,11 +2510,7 @@ dpa_probe(struct of_device *_of_dev)
 
 	if(priv->mac_dev == NULL) {
 		if (netif_msg_probe(priv))
-			cpu_dev_info(dev,
-				"%s:%hu: Missing the %s/fsl,fman-mac property. "
-					  "This is a MAC-less interface\n",
-					  __file__, __LINE__,
-					  dpa_node->full_name);
+			cpu_dev_info(dev, "This is a MAC-less interface\n");
 
 		/* Get the MAC address */
 		mac_addr = of_get_mac_address(dpa_node);
@@ -2527,10 +2529,11 @@ dpa_probe(struct of_device *_of_dev)
 		/* QM */
 
 		/* For now, stick to the idea that we have to have
-		 * static declarations on macless devices */
+		 * static declarations on MAC-less devices */
 		if (!tx_fqids || !rx_fqids) {
-			cpu_dev_err(dev,
-				"macless devices require fq declarations\n");
+			cpu_dev_err(dev, "%s:%hu:%s(): "
+				"MAC-less interfaces require FQ declarations\n",
+				__file__, __LINE__, __func__);
 			_errno = -EINVAL;
 			goto _return_free_percpu;
 		}
@@ -2571,8 +2574,8 @@ dpa_probe(struct of_device *_of_dev)
 
 
 				cpu_dev_dbg(dev,
-					"%s:%s(): ingress_fqs[%d][%d] = %u\n",
-					__file__, __func__, i, j,
+					"%s:%s(): ingress_fqs[%d] = %u\n",
+					__file__, __func__, j,
 					qman_fq_fqid(ingress_fq));
 			}
 		}
@@ -2714,8 +2717,8 @@ dpa_probe(struct of_device *_of_dev)
 				}
 
 				cpu_dev_dbg(dev,
-					"%s:%s(): ingress_fqs[%d][%d] = %u\n",
-					__file__, __func__, i, j,
+					"%s:%s(): ingress_fqs[%d] = %u\n",
+					__file__, __func__, j,
 					qman_fq_fqid(ingress_fq));
 			}
 		}
