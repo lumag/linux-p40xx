@@ -2364,8 +2364,9 @@ dpa_probe(struct of_device *_of_dev)
 	const uint8_t			*mac_addr;
 	struct qman_fq			*ingress_fq;
 	uint32_t		ingress_fqids[ARRAY_SIZE(ingress_fqs)][2];
-	const uint32_t		default_tx_fqids[6] = {0, 1, 0, 1, 0, 8};
-	const uint32_t		default_rx_fqids[6] = {0, 1, 0, 1, 0, 8};
+	const uint32_t		default_tx_fqids[] =
+				  {0, 1, 0, 1, 0, ARRAY_SIZE(priv->egress_fqs)};
+	const uint32_t		default_rx_fqids[] = {0, 1, 0, 1};
 	const uint32_t		*tx_fqids;
 	const uint32_t		*rx_fqids;
 	int			num_tx_fqids, num_tx_fqs;
@@ -2560,7 +2561,9 @@ dpa_probe(struct of_device *_of_dev)
 				 * of the frame queue by statically
 				 * assigning the fqid
 				 */
-				int wq = fqid ? fqid % 8 : 7;
+				int wq = fqid ?
+					fqid % net_dev->num_tx_queues :
+					net_dev->num_tx_queues - 1;
 
 				dpa_fq->fq_base = ingress_fqs[RX][1];
 				dpa_fq->net_dev	= net_dev;
@@ -2582,8 +2585,7 @@ dpa_probe(struct of_device *_of_dev)
 			}
 		}
 
-		/* Right now, we maintain the requirement that we have 8 */
-		BUG_ON(num_tx_fqs != 8);
+		BUG_ON(num_tx_fqs != net_dev->num_tx_queues);
 
 		/* FIXME: Horribly leaky */
 		dpa_fq = devm_kzalloc(dev, sizeof(*dpa_fq) * num_tx_fqs,
@@ -2704,7 +2706,9 @@ dpa_probe(struct of_device *_of_dev)
 				uint32_t fqid =
 					rx_fqids[2 * i] ?
 					rx_fqids[2 * i] + j : 0;
-				int wq = fqid ? fqid % 8 : 7;
+				int wq = fqid ?
+					fqid % net_dev->num_tx_queues :
+					net_dev->num_tx_queues - 1;
 
 				dpa_fq->fq_base = ingress_fqs[RX][1];
 				dpa_fq->net_dev	= net_dev;
@@ -2725,10 +2729,9 @@ dpa_probe(struct of_device *_of_dev)
 			}
 		}
 
-		/* We only support 8 for now */
-		BUG_ON(tx_fqids[5] != 8);
+		BUG_ON(tx_fqids[5] != net_dev->num_tx_queues);
 
-		for (i = 0; i < ARRAY_SIZE(priv->egress_fqs); i++, dpa_fq++) {
+		for (i = 0; i < net_dev->num_tx_queues; i++, dpa_fq++) {
 			uint32_t fqid = tx_fqids[4] ? tx_fqids[4] + i : 0;
 
 			dpa_fq->fq_base	= _egress_fqs;
