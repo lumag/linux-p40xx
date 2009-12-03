@@ -233,7 +233,7 @@ _finish_2:
 	kfree(mem);
 	/* Disable */
 	ret = pme_ctx_disable(&ctx.base_ctx,
-		PME_CTX_OP_WAIT | PME_CTX_OP_WAIT_INT);
+		PME_CTX_OP_WAIT | PME_CTX_OP_WAIT_INT, NULL);
 	BUG_ON(ret);
 _finish_1:
 	pme_ctx_finish(&ctx.base_ctx);

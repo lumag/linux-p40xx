@@ -64,13 +64,17 @@
  * 	DISABLED implies DISABLING (and enable will clear both)
  */
 
+/* Internal-only ctx flags, mustn't conflict with exported ones */
 #define PME_CTX_FLAG_DEAD        0x80000000
 #define PME_CTX_FLAG_DISABLING   0x40000000
 #define PME_CTX_FLAG_DISABLED    0x20000000
 #define PME_CTX_FLAG_ENABLING    0x10000000
-#define PME_CTX_FLAG_RECONFIG    0x01000000
+#define PME_CTX_FLAG_RECONFIG    0x08000000
+#define PME_CTX_FLAG_PRIVATE     0xf8000000 /* mask of them all */
 
-#define PME_CTX_FLAG_PRIVATE     0xff000000
+/* Internal-only cmd flags, musn't conflict with exported ones */
+#define PME_CTX_OP_INSIDE_DISABLE 0x80000000
+#define PME_CTX_OP_PRIVATE	  0x80000000 /* mask of them all */
 
 struct pme_nostash {
 	struct qman_fq fqin;
@@ -175,8 +179,7 @@ static int park(struct qman_fq *fq, struct qm_mcc_initfq *initfq)
 	BUG_ON(ret);
 	ret = qman_oos_fq(fq);
 	BUG_ON(ret);
-	initfq->we_mask = QM_INITFQ_WE_DESTWQ | QM_INITFQ_WE_CONTEXTA |
-			QM_INITFQ_WE_CONTEXTA;
+	initfq->we_mask = QM_INITFQ_WE_MASK;
 	ret = qman_init_fq(fq, 0, initfq);
 	BUG_ON(ret);
 	return 0;
@@ -253,6 +256,8 @@ int pme_ctx_init(struct pme_ctx *ctx, u32 flags, u32 bpid, u8 qosin,
 	atomic_set(&ctx->refs, 0);
 	ctx->flags = (flags & ~PME_CTX_FLAG_PRIVATE) | PME_CTX_FLAG_DISABLED |
 			PME_CTX_FLAG_DISABLING;
+	if (ctx->flags & PME_CTX_FLAG_PMTCC)
+		ctx->flags |= PME_CTX_FLAG_DIRECT | PME_CTX_FLAG_EXCLUSIVE;
 	spin_lock_init(&ctx->lock);
 	init_waitqueue_head(&ctx->queue);
 	INIT_LIST_HEAD(&ctx->tokens);
@@ -363,29 +368,64 @@ int pme_ctx_is_dead(struct pme_ctx *ctx)
 }
 EXPORT_SYMBOL(pme_ctx_is_dead);
 
-int pme_ctx_disable(struct pme_ctx *ctx, u32 flags)
+/* predeclare this here because pme_ctx_disable() may invoke it in "privileged
+ * mode". The code is down with the other ctrl commands, where it belongs. */
+static inline int __update_flow(struct pme_ctx *ctx, u32 flags,
+		struct pme_flow *params, struct pme_ctx_ctrl_token *token,
+		int is_disabling);
+
+/* This gets invoked by pme_ctx_disable() if it runs to completion, otherwise
+ * it's called from cb_helper. */
+static inline void __disable_done(struct pme_ctx *ctx)
 {
 	struct qm_mcc_initfq initfq;
+	int ret = 0;
+	if (!(ctx->flags & PME_CTX_FLAG_EXCLUSIVE)) {
+		/* Park fqin (exclusive is always parked) */
+		ret = park(&ctx->us_data->fqin, &initfq);
+		/* All the conditions for park() to succeed should be met. If
+		 * this fails, there's a bug (s/w or h/w). */
+		if (ret)
+			pr_crit("pme2: park() should never fail! (%d)\n", ret);
+	}
+	do_flags(ctx, 0, 0, PME_CTX_FLAG_DISABLED, 0);
+}
+
+int pme_ctx_disable(struct pme_ctx *ctx, u32 flags,
+		struct pme_ctx_ctrl_token *token)
+{
 	int ret;
 
-	ret = do_flags(ctx, 0, PME_CTX_FLAG_DISABLING, PME_CTX_FLAG_DISABLING,
-			0);
+	/* We must not (already) be DISABLING */
+	ret = do_flags(ctx, 0, PME_CTX_FLAG_DISABLING,
+			PME_CTX_FLAG_DISABLING, 0);
 	if (ret)
 		return ret;
 	/* Make sure the pipeline is empty */
 	atomic_dec(&ctx->refs);
 	ret = empty_pipeline(ctx, flags);
-	if (!ret && !(ctx->flags & PME_CTX_FLAG_EXCLUSIVE))
-		/* Park fqin (exclusive is always parked) */
-		ret = park(&ctx->us_data->fqin, &initfq);
-	if (ret) {
-		atomic_inc(&ctx->refs);
-		do_flags(ctx, 0, 0, 0, PME_CTX_FLAG_DISABLING);
-		wake_up(&ctx->queue);
-		return ret;
+	if (ret)
+		goto err;
+	/* We're idle, but is the flow context flushed from PME onboard cache?
+	 * If it's not flushed when the system deallocates it, that 32 bytes
+	 * could be in use later when PME decides to flush a write to it. Need
+	 * to make it coherent again... */
+	if (!(ctx->flags & PME_CTX_FLAG_DIRECT)) {
+		/* Pass on wait flags (if any) but cancel any flow-context field
+		 * writes (this is not the pme_ctx_ctrl_update_flow() API). */
+		ret = __update_flow(ctx, flags & ~PME_CMD_FCW_ALL, NULL,
+					token, 1);
+		if (ret)
+			goto err;
+		return 1;
 	}
-	do_flags(ctx, 0, 0, PME_CTX_FLAG_DISABLED, 0);
+	__disable_done(ctx);
 	return 0;
+err:
+	atomic_inc(&ctx->refs);
+	do_flags(ctx, 0, 0, 0, PME_CTX_FLAG_DISABLING);
+	wake_up(&ctx->queue);
+	return ret;
 }
 EXPORT_SYMBOL(pme_ctx_disable);
 
@@ -505,34 +545,30 @@ static inline void release_work(struct pme_ctx *ctx)
 		wake_up(&ctx->queue);
 }
 
-static int __try_work(struct pme_ctx *ctx)
+#define BLOCK_NORMAL_WORK (PME_CTX_FLAG_DEAD | PME_CTX_FLAG_DISABLING)
+static int try_work(struct pme_ctx *ctx, u32 flags)
 {
 	atomic_inc(&ctx->refs);
-	if (unlikely(ctx->flags & (PME_CTX_FLAG_DEAD |
-			PME_CTX_FLAG_DISABLING))) {
+	if (unlikely(!(flags & PME_CTX_OP_INSIDE_DISABLE) &&
+			(ctx->flags & BLOCK_NORMAL_WORK))) {
 		release_work(ctx);
-		if (ctx->flags & (PME_CTX_FLAG_DEAD | PME_CTX_FLAG_DISABLING))
-			return -EIO;
-		return -EAGAIN;
+		return -EIO;
 	}
 	return 0;
 }
-/* Exact same comment as for try_ctrl() */
-#define try_work(ret, ctx) \
-	(!(ret = __try_work(ctx)) || (ctx->flags & (PME_CTX_FLAG_DEAD | \
-					PME_CTX_FLAG_DISABLING)))
+
 static int get_work(struct pme_ctx *ctx, u32 flags)
 {
-	int ret;
+	int ret = 0;
 	if (flags & PME_CTX_OP_WAIT) {
 		if (flags & PME_CTX_OP_WAIT_INT) {
 			ret = -EINTR;
 			wait_event_interruptible(ctx->queue,
-					try_work(ret, ctx));
+					!(ret = try_work(ctx, flags)));
 		} else
-			wait_event(ctx->queue, try_work(ret, ctx));
+			wait_event(ctx->queue, !try_work(ctx, flags));
 	} else
-		ret = __try_work(ctx);
+		ret = try_work(ctx, flags);
 	return ret;
 }
 
@@ -572,14 +608,21 @@ static inline int do_work(struct pme_ctx *ctx, u32 flags, struct qm_fd *fd,
 	return ret;
 }
 
-int pme_ctx_ctrl_update_flow(struct pme_ctx *ctx, u32 flags,
-		struct pme_flow *params,  struct pme_ctx_ctrl_token *token)
+static inline int __update_flow(struct pme_ctx *ctx, u32 flags,
+		struct pme_flow *params, struct pme_ctx_ctrl_token *token,
+		int is_disabling)
 {
 	struct qm_fd fd;
+	int ret;
 
 	BUG_ON(ctx->flags & PME_CTX_FLAG_DIRECT);
 	token->base_token.cmd_type = pme_cmd_flow_write;
 
+	flags &= ~PME_CTX_OP_PRIVATE;
+	/* The callback will want to know this */
+	token->base_token.is_disable_flush = is_disabling ? 1 : 0;
+	flags |= (is_disabling ? PME_CTX_OP_INSIDE_DISABLE : 0);
+	spin_lock_irq(&ctx->lock);
 	if (flags & PME_CTX_OP_RESETRESLEN) {
 		if (ctx->hw_residue) {
 			params->ren = 1;
@@ -590,17 +633,29 @@ int pme_ctx_ctrl_update_flow(struct pme_ctx *ctx, u32 flags,
 	/* allocate residue memory if it is being added */
 	if ((flags & PME_CMD_FCW_RES) && params->ren && !ctx->hw_residue) {
 		ctx->hw_residue = pme_hw_residue_new();
-		if (!ctx->hw_residue)
+		if (!ctx->hw_residue) {
+			spin_unlock_irq(&ctx->lock);
 			return -ENOMEM;
+		}
 	}
+	spin_unlock_irq(&ctx->lock);
 	/* enqueue the FCW command to PME */
 	memset(&fd, 0, sizeof(fd));
 	token->internal_flow_ptr = pme_hw_flow_new();
-	memcpy(token->internal_flow_ptr, params, sizeof(struct pme_flow));
+	if (params)
+		memcpy(token->internal_flow_ptr, params,
+			sizeof(struct pme_flow));
 	pme_fd_cmd_fcw(&fd, flags & PME_CMD_FCW_ALL,
 			(struct pme_flow *)token->internal_flow_ptr,
 			ctx->hw_residue);
-	return do_work(ctx, flags, &fd, &token->base_token, NULL, 0);
+	ret = do_work(ctx, flags, &fd, &token->base_token, NULL, 0);
+	return ret;
+}
+
+int pme_ctx_ctrl_update_flow(struct pme_ctx *ctx, u32 flags,
+		struct pme_flow *params,  struct pme_ctx_ctrl_token *token)
+{
+	return __update_flow(ctx, flags, params, token, 0);
 }
 EXPORT_SYMBOL(pme_ctx_ctrl_update_flow);
 
@@ -635,12 +690,18 @@ int pme_ctx_ctrl_nop(struct pme_ctx *ctx, u32 flags,
 }
 EXPORT_SYMBOL(pme_ctx_ctrl_nop);
 
-int pme_ctx_scan(struct pme_ctx *ctx, u32 flags, struct qm_fd *fd, u32 args,
-		struct pme_ctx_token *token)
+static inline void __prep_scan(struct pme_ctx *ctx, struct qm_fd *fd, u32 args,
+				struct pme_ctx_token *token)
 {
 	BUG_ON(ctx->flags & PME_CTX_FLAG_PMTCC);
 	token->cmd_type = pme_cmd_scan;
 	pme_fd_cmd_scan(fd, args);
+}
+
+int pme_ctx_scan(struct pme_ctx *ctx, u32 flags, struct qm_fd *fd, u32 args,
+		struct pme_ctx_token *token)
+{
+	__prep_scan(ctx, fd, args, token);
 	return do_work(ctx, flags, fd, token, NULL, 0);
 }
 EXPORT_SYMBOL(pme_ctx_scan);
@@ -648,8 +709,7 @@ EXPORT_SYMBOL(pme_ctx_scan);
 int pme_ctx_scan_orp(struct pme_ctx *ctx, u32 flags, struct qm_fd *fd, u32 args,
 		struct pme_ctx_token *token, struct qman_fq *orp_fq, u16 seqnum)
 {
-	BUG_ON(ctx->flags & PME_CTX_FLAG_PMTCC);
-	pme_fd_cmd_scan(fd, args);
+	__prep_scan(ctx, fd, args, token);
 	return do_work(ctx, flags, fd, token, orp_fq, seqnum);
 }
 EXPORT_SYMBOL(pme_ctx_scan_orp);
@@ -725,6 +785,7 @@ static inline void cb_helper(struct qman_portal *portal, struct pme_ctx *ctx,
 {
 	struct pme_ctx_token *token;
 	struct pme_ctx_ctrl_token *ctrl_token;
+
 	/* Resist the urge to use "unlikely" - 'error' is a constant param to an
 	 * inline fn, so the compiler can collapse this completely. */
 	if (error)
@@ -741,6 +802,9 @@ static inline void cb_helper(struct qman_portal *portal, struct pme_ctx *ctx,
 		if (token->cmd_type == pme_cmd_flow_write) {
 			/* Release the allocated flow context */
 			pme_hw_flow_free(ctrl_token->internal_flow_ptr);
+			/* Is this pme_ctx_disable() completion? */
+			if (token->is_disable_flush)
+				__disable_done(ctx);
 		} else if (token->cmd_type == pme_cmd_flow_read) {
 			/* Copy read result */
 			memcpy(ctrl_token->usr_flow_ptr,

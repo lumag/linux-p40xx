@@ -430,7 +430,7 @@ static int fsl_pme2_db_close(struct inode *node, struct file *fp)
 	}
 
 	/* Disable context. */
-	ret = pme_ctx_disable(&db->ctx, PME_CTX_OP_WAIT);
+	ret = pme_ctx_disable(&db->ctx, PME_CTX_OP_WAIT, NULL);
 	if (ret)
 		PMEPRCRIT("Error disabling ctx %d\n", ret);
 	pme_ctx_finish(&db->ctx);
