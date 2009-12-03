@@ -446,8 +446,24 @@ void bman_free_pool(struct bman_pool *pool)
 	if (pool->params.flags & BMAN_POOL_FLAG_DEPLETION)
 		depletion_unlink(pool);
 #ifdef CONFIG_FSL_BMAN_CONFIG
-	if (pool->params.flags & BMAN_POOL_FLAG_DYNAMIC_BPID)
+	if (pool->params.flags & BMAN_POOL_FLAG_DYNAMIC_BPID) {
+		/* When releasing a BPID to the dynamic allocator, that pool
+		 * must be *empty*. This code makes it so by dropping everything
+		 * into the bit-bucket. This ignores whether or not it was a
+		 * mistake (or a leak) on the caller's part not to drain the
+		 * pool beforehand. */
+		struct bm_buffer bufs[8];
+		int ret = 0;
+		do {
+			/* Acquire is all-or-nothing, so we drain in 8s, then in
+			 * 1s for the remainder. */
+			if (ret != 1)
+				ret = bman_acquire(pool, bufs, 8, 0);
+			if (ret < 8)
+				ret = bman_acquire(pool, bufs, 1, 0);
+		} while (ret > 0);
 		bm_pool_free(pool->params.bpid);
+	}
 #endif
 	kfree(pool);
 }
