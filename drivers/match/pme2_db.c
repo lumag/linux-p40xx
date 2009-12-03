@@ -54,6 +54,7 @@ struct cmd_token {
 	struct qm_fd rx_fd;
 	/* Completion interface */
 	struct completion cb_done;
+	u8 ern;
 };
 
 /* PME Compound Frame Index */
@@ -69,11 +70,21 @@ static void db_cb(struct pme_ctx *ctx, const struct qm_fd *fd,
 	complete(&token->cb_done);
 }
 
+static void db_ern_cb(struct pme_ctx *ctx, const struct qm_mr_entry *mr,
+		struct pme_ctx_token *ctx_token)
+{
+	struct cmd_token *token = (struct cmd_token *)ctx_token;
+	token->ern = 1;
+	token->rx_fd = mr->ern.fd;
+	complete(&token->cb_done);
+}
+
 struct ctrl_op {
 	struct pme_ctx_ctrl_token ctx_ctr;
 	struct completion cb_done;
 	enum pme_status cmd_status;
 	u8 res_flag;
+	u8 ern;
 };
 
 static void ctrl_cb(struct pme_ctx *ctx, const struct qm_fd *fd,
@@ -82,6 +93,14 @@ static void ctrl_cb(struct pme_ctx *ctx, const struct qm_fd *fd,
 	struct ctrl_op *ctrl = (struct ctrl_op *)token;
 	ctrl->cmd_status = pme_fd_res_status(fd);
 	ctrl->res_flag = pme_fd_res_flags(fd);
+	complete(&ctrl->cb_done);
+}
+
+static void ctrl_ern_cb(struct pme_ctx *ctx, const struct qm_mr_entry *mr,
+		struct pme_ctx_ctrl_token *token)
+{
+	struct ctrl_op *ctrl = (struct ctrl_op *)token;
+	ctrl->ern = 1;
 	complete(&ctrl->cb_done);
 }
 
@@ -149,7 +168,6 @@ static int execute_cmd(struct file *fp, struct db_session *db,
 		PMEPRERR("Err alloc %d byte \n", kernel_op.input.size);
 		return -ENOMEM;
 	}
-	PMEPRINFO("kmalloc tx %p\n", tx_data);
 
 	if (copy_from_user(tx_data,
 			(void __user *)kernel_op.input.data,
@@ -158,7 +176,6 @@ static int execute_cmd(struct file *fp, struct db_session *db,
 		ret = -EFAULT;
 		goto free_tx_data;
 	}
-	PMEPRINFO("Copied contiguous user data\n");
 
 	/* Setup input frame */
 	tx_comp[INPUT_FRM].final = 1;
@@ -179,8 +196,6 @@ static int execute_cmd(struct file *fp, struct db_session *db,
 			ret = -ENOMEM;
 			goto unmap_input_frame;
 		}
-		PMEPRINFO("kmalloc rx %p, size %d\n", rx_data,
-				kernel_op.output.size);
 		/* Setup output frame */
 		tx_comp[OUTPUT_FRM].length = kernel_op.output.size;
 		dma_addr = pme_map(rx_data);
@@ -211,7 +226,6 @@ static int execute_cmd(struct file *fp, struct db_session *db,
 		}
 		set_fd_addr(&tx_fd, dma_addr);
 	}
-	PMEPRINFO("About to call pme_ctx_pmtcc\n");
 	ret = pme_ctx_pmtcc(&db->ctx, PME_CTX_OP_WAIT, &tx_fd,
 				(struct pme_ctx_token *)&token);
 	if (unlikely(ret)) {
@@ -221,6 +235,11 @@ static int execute_cmd(struct file *fp, struct db_session *db,
 	PMEPRINFO("Wait for completion\n");
 	/* Wait for the command to complete */
 	wait_for_completion(&token.cb_done);
+
+	if (token.ern) {
+		ret = -EIO;
+		goto unmap_frame;
+	}
 
 	PMEPRINFO("pme2_db: process_completed_token\n");
 	PMEPRINFO("pme2_db: received %d frame type\n", token.rx_fd.format);
@@ -276,19 +295,18 @@ static int execute_nop(struct file *fp, struct db_session *db)
 {
 	int ret = 0;
 	struct ctrl_op ctx_ctrl =  {
-		.ctx_ctr.cb = ctrl_cb
+		.ctx_ctr.cb = ctrl_cb,
+		.ctx_ctr.ern_cb = ctrl_ern_cb
 	};
 	init_completion(&ctx_ctrl.cb_done);
 
 	ret = pme_ctx_ctrl_nop(&db->ctx, PME_CTX_OP_WAIT|PME_CTX_OP_WAIT_INT,
 			&ctx_ctrl.ctx_ctr);
-	wait_for_completion(&ctx_ctrl.cb_done);
-	/* pme_ctx_ctrl_nop() can be interrupted waiting for the response
-	 * of the NOP. In this scenario, 0 is returned. The only way to
-	 * determine that is was interrupted is to check for signal_pending()
-	 */
-	if (!ret && signal_pending(current))
-		ret = -ERESTARTSYS;
+	if (!ret)
+		wait_for_completion(&ctx_ctrl.cb_done);
+
+	if (ctx_ctrl.ern)
+		ret = -EIO;
 	return ret;
 }
 
@@ -372,6 +390,7 @@ static int fsl_pme2_db_open(struct inode *node, struct file *fp)
 		return -ENOMEM;
 	fp->private_data = db;
 	db->ctx.cb = db_cb;
+	db->ctx.ern_cb = db_ern_cb;
 
 	ret = pme_ctx_init(&db->ctx,
 			PME_CTX_FLAG_EXCLUSIVE |
