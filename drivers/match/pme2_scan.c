@@ -580,18 +580,21 @@ static int fsl_pme2_scan_open(struct inode *node, struct file *fp)
 	/* Update flow to set sane defaults in the flow context */
 	ret = pme_ctx_ctrl_update_flow(&session->ctx,
 		PME_CTX_OP_WAIT | PME_CMD_FCW_ALL, &flow, &ctx_ctrl.ctx_ctr);
-	if (ret) {
-		PMEPRINFO("error updating flow ctx %d\n", ret);
-		pme_ctx_disable(&session->ctx, PME_CTX_OP_WAIT);
-		pme_ctx_finish(&session->ctx);
-		goto exit;
+	if (!ret) {
+		wait_for_completion(&ctx_ctrl.cb_done);
+		if (ctx_ctrl.ern || ctx_ctrl.cmd_status || ctx_ctrl.res_flag)
+			ret = -EFAULT;
 	}
-	wait_for_completion(&ctx_ctrl.cb_done);
-	if (ctx_ctrl.ern || ctx_ctrl.cmd_status || ctx_ctrl.res_flag) {
+	if (ret) {
+		int my_ret;
 		PMEPRINFO("error updating flow ctx %d\n", ret);
-		pme_ctx_disable(&session->ctx, PME_CTX_OP_WAIT);
+		my_ret = pme_ctx_disable(&session->ctx, PME_CTX_OP_WAIT,
+					&ctx_ctrl.ctx_ctr);
+		if (my_ret > 0)
+			wait_for_completion(&ctx_ctrl.cb_done);
+		else if (my_ret < 0)
+			PMEPRINFO("error disabling ctx %d\n", ret);
 		pme_ctx_finish(&session->ctx);
-		ret = -EFAULT;
 		goto exit;
 	}
 	/* Set up the structures used for asynchronous requests */
@@ -605,20 +608,31 @@ exit:
 
 static int fsl_pme2_scan_close(struct inode *node, struct file *fp)
 {
+	struct ctrl_op ctx_ctrl =  {
+		.ctx_ctr.cb = ctrl_cb,
+		.ctx_ctr.ern_cb = ctrl_ern_cb,
+		.cmd_status = 0,
+		.res_flag = 0,
+		.ern = 0
+	};
 	int ret = 0;
 	struct scan_session *session = fp->private_data;
 
+	init_completion(&ctx_ctrl.cb_done);
 	/* Before disabling check to see if it's already disabled. This can
 	 * happen if a pme serious error has occurred for instance.*/
 	if (!pme_ctx_is_disabled(&session->ctx)) {
-		ret = pme_ctx_disable(&session->ctx,
-				PME_CTX_OP_WAIT | PME_CTX_OP_WAIT_INT);
-		if (ret) {
+		ret = pme_ctx_disable(&session->ctx, PME_CTX_OP_WAIT,
+					&ctx_ctrl.ctx_ctr);
+		if (ret > 0) {
+			wait_for_completion(&ctx_ctrl.cb_done);
+			if (ctx_ctrl.ern)
+				PMEPRCRIT("Unexpected ERN\n");
+		} else if (ret < 0) {
 			pr_err("pme2_scan: Error disabling ctx %d\n", ret);
 			return ret;
 		}
 	}
-
 	pme_ctx_finish(&session->ctx);
 	kfree(session);
 	PMEPRINFO("pme2_scan: Finish pme_session close\n");

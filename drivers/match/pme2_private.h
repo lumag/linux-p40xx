@@ -120,6 +120,21 @@ union pme_cmd {
 	} __packed scan;
 };
 
+/* The exported macro forms a "scan_args" u32 from 3 inputs, these private
+ * inlines do the inverse, if you need to crack one apart. */
+static inline u8 scan_args_get_flags(u32 args)
+{
+	return args >> 24;
+}
+static inline u8 scan_args_get_set(u32 args)
+{
+	return (args >> 16) & 0xff;
+}
+static inline u16 scan_args_get_subset(u32 args)
+{
+	return args & 0xffff;
+}
+
 /* Hook from pme2_high to pme2_low */
 struct qman_fq *slabfq_alloc(void);
 void slabfq_free(struct qman_fq *fq);

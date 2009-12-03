@@ -417,7 +417,8 @@ struct pme_nostash;
 struct pme_ctx_token {
 	u32 blob[4];
 	struct list_head node;
-	enum pme_cmd_type cmd_type;
+	enum pme_cmd_type cmd_type:8;
+	u8 is_disable_flush;
 };
 
 struct pme_ctx_ctrl_token {
@@ -529,13 +530,18 @@ int pme_ctx_init(struct pme_ctx *ctx, u32 flags, u32 bpid, u8 qosin,
 /* Cleanup allocated resources */
 void pme_ctx_finish(struct pme_ctx *ctx);
 
-/* disable a context, on return the ctx is fully disabled (quiesced) and returns
- * zero, or it returns an error and remains enabled. flags can be:
- * PME_CTX_OP_WAIT and/or PME_CTX_OP_WAIT_INT */
-int pme_ctx_disable(struct pme_ctx *ctx, u32 flags);
-
 /* enable a context */
 int pme_ctx_enable(struct pme_ctx *ctx);
+
+/* disable a context
+ * If it returns zero, the context is disabled.
+ * If it returns +1, the context is disabling and the token's completion
+ * callback will be invoked when disabling is complete.
+ * Returns -EBUSY on error, in which case the context remains enabled.
+ * If the PME_CTX_OP_WAIT flag is specified, it should only fail if
+ * PME_CTX_OP_WAIT_INT is also specified and a signal is pending. */
+int pme_ctx_disable(struct pme_ctx *ctx, u32 flags,
+		struct pme_ctx_ctrl_token *token);
 
 /* query whether a context is disabled. Returns > 0 if the ctx is disabled. */
 int pme_ctx_is_disabled(struct pme_ctx *ctx);
