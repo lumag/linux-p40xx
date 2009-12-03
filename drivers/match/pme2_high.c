@@ -72,6 +72,11 @@
 
 #define PME_CTX_FLAG_PRIVATE     0xff000000
 
+struct pme_nostash {
+	struct qman_fq fqin;
+	struct pme_ctx *parent;
+};
+
 /* This wrapper simplifies conditional (and locked) read-modify-writes to
  * 'flags'. Inlining should allow the compiler to optimise it based on the
  * parameters, eg. if 'must_be_set'/'must_not_be_set' are zero it will
@@ -102,11 +107,11 @@ static void cb_dc_ern(struct qman_portal *, struct qman_fq *,
 static void cb_fqs(struct qman_portal *, struct qman_fq *,
 				const struct qm_mr_entry *);
 static const struct qman_fq_cb pme_fq_base_in = {
-	.fqs = cb_fqs
+	.fqs = cb_fqs,
+	.ern = cb_ern
 };
 static const struct qman_fq_cb pme_fq_base_out = {
 	.dqrr = cb_dqrr,
-	.ern = cb_ern,
 	.dc_ern = cb_dc_ern,
 	.fqs = cb_fqs
 };
@@ -241,7 +246,7 @@ int pme_ctx_init(struct pme_ctx *ctx, u32 flags, u32 bpid, u8 qosin,
 			u8 qosout, enum qm_channel dest,
 			const struct qm_fqd_stashing *stashing)
 {
-	u32 fqid_rx, fqid_tx;
+	u32 fqid_rx = 0, fqid_tx = 0;
 	int rxinit = 0, ret = -ENOMEM, fqin_inited = 0;
 
 	ctx->fq.cb = pme_fq_base_out;
@@ -251,20 +256,22 @@ int pme_ctx_init(struct pme_ctx *ctx, u32 flags, u32 bpid, u8 qosin,
 	spin_lock_init(&ctx->lock);
 	init_waitqueue_head(&ctx->queue);
 	INIT_LIST_HEAD(&ctx->tokens);
-	ctx->seq_num = 0;
-	ctx->fqin = NULL;
 	ctx->hw_flow = NULL;
 	ctx->hw_residue = NULL;
 
+	ctx->us_data = kzalloc(sizeof(struct pme_nostash), GFP_KERNEL);
+	if (!ctx->us_data)
+		goto err;
+	ctx->us_data->parent = ctx;
 	fqid_rx = qm_fq_new();
 	fqid_tx = qm_fq_new();
-	ctx->fqin = slabfq_alloc();
-	if (!fqid_rx || !fqid_tx || !ctx->fqin)
+	if (!fqid_rx || !fqid_tx || !ctx->us_data)
 		goto err;
-	ctx->fqin->cb = pme_fq_base_in;
+	ctx->us_data->fqin.cb = pme_fq_base_in;
 	if (qman_create_fq(fqid_rx, QMAN_FQ_FLAG_TO_DCPORTAL |
 			((flags & PME_CTX_FLAG_LOCKED) ?
-				QMAN_FQ_FLAG_LOCKED : 0), ctx->fqin))
+				QMAN_FQ_FLAG_LOCKED : 0),
+				&ctx->us_data->fqin))
 		goto err;
 	fqin_inited = 1;
 	if (qman_create_fq(fqid_tx, QMAN_FQ_FLAG_NO_ENQUEUE |
@@ -285,7 +292,7 @@ int pme_ctx_init(struct pme_ctx *ctx, u32 flags, u32 bpid, u8 qosin,
 	ret = reconfigure_rx(ctx, 0, qosout, dest, stashing);
 	if (ret) {
 		/* Need to OOS the FQ before it gets free'd */
-		ret = qman_oos_fq(ctx->fqin);
+		ret = qman_oos_fq(&ctx->us_data->fqin);
 		BUG_ON(ret);
 		goto err;
 	}
@@ -297,10 +304,10 @@ err:
 		qm_fq_free(fqid_tx);
 	if (ctx->hw_flow)
 		pme_hw_flow_free(ctx->hw_flow);
-	if (ctx->fqin) {
+	if (ctx->us_data) {
 		if (fqin_inited)
-			qman_destroy_fq(ctx->fqin, 0);
-		slabfq_free(ctx->fqin);
+			qman_destroy_fq(&ctx->us_data->fqin, 0);
+		kfree(ctx->us_data);
 	}
 	if (rxinit)
 		qman_destroy_fq(&ctx->fq, 0);
@@ -319,24 +326,24 @@ void pme_ctx_finish(struct pme_ctx *ctx)
 	BUG_ON(ret);
 	/* Rx/Tx are empty (coz ctx is disabled) so retirement should be
 	 * immediate */
-	ret = qman_retire_fq(ctx->fqin, &flags);
+	ret = qman_retire_fq(&ctx->us_data->fqin, &flags);
 	BUG_ON(ret);
 	BUG_ON(flags & QMAN_FQ_STATE_BLOCKOOS);
 	ret = qman_retire_fq(&ctx->fq, &flags);
 	BUG_ON(ret);
 	BUG_ON(flags & QMAN_FQ_STATE_BLOCKOOS);
 	/* OOS and free (don't kfree fq, it's a static ctx member) */
-	ret = qman_oos_fq(ctx->fqin);
+	ret = qman_oos_fq(&ctx->us_data->fqin);
 	BUG_ON(ret);
 	ret = qman_oos_fq(&ctx->fq);
 	BUG_ON(ret);
-	fqid_rx = qman_fq_fqid(ctx->fqin);
+	fqid_rx = qman_fq_fqid(&ctx->us_data->fqin);
 	fqid_tx = qman_fq_fqid(&ctx->fq);
-	qman_destroy_fq(ctx->fqin, 0);
+	qman_destroy_fq(&ctx->us_data->fqin, 0);
 	qman_destroy_fq(&ctx->fq, 0);
 	qm_fq_free(fqid_rx);
 	qm_fq_free(fqid_tx);
-	slabfq_free(ctx->fqin); /* the fq was dynamically allocated */
+	kfree(ctx->us_data);
 	if (ctx->hw_flow)
 		pme_hw_flow_free(ctx->hw_flow);
 	if (ctx->hw_residue)
@@ -370,15 +377,13 @@ int pme_ctx_disable(struct pme_ctx *ctx, u32 flags)
 	ret = empty_pipeline(ctx, flags);
 	if (!ret && !(ctx->flags & PME_CTX_FLAG_EXCLUSIVE))
 		/* Park fqin (exclusive is always parked) */
-		ret = park(ctx->fqin, &initfq);
+		ret = park(&ctx->us_data->fqin, &initfq);
 	if (ret) {
 		atomic_inc(&ctx->refs);
 		do_flags(ctx, 0, 0, 0, PME_CTX_FLAG_DISABLING);
 		wake_up(&ctx->queue);
 		return ret;
 	}
-	/* Our ORP got reset too, so reset the sequence number */
-	ctx->seq_num = 0;
 	do_flags(ctx, 0, 0, PME_CTX_FLAG_DISABLED, 0);
 	return 0;
 }
@@ -394,7 +399,8 @@ int pme_ctx_enable(struct pme_ctx *ctx)
 	if (ret)
 		return ret;
 	if (!(ctx->flags & PME_CTX_FLAG_EXCLUSIVE)) {
-		ret = qman_init_fq(ctx->fqin, QMAN_INITFQ_FLAG_SCHED, NULL);
+		ret = qman_init_fq(&ctx->us_data->fqin,
+				QMAN_INITFQ_FLAG_SCHED, NULL);
 		if (ret) {
 			do_flags(ctx, 0, 0, 0, PME_CTX_FLAG_ENABLING);
 			return ret;
@@ -419,19 +425,7 @@ int pme_ctx_reconfigure_tx(struct pme_ctx *ctx, u32 bpid, u8 qosin)
 		return ret;
 	memset(&initfq,0,sizeof(initfq));
 	pme_initfq(&initfq, ctx->hw_flow, qosin, bpid, qman_fq_fqid(&ctx->fq));
-	if (!(ctx->flags & PME_CTX_FLAG_NO_ORP)) {
-		initfq.we_mask |= QM_INITFQ_WE_FQCTRL | QM_INITFQ_WE_ORPC;
-		/* ORPRWS==1 means the ORP window is max 64 frames. Given that
-		 * the out-of-order problem is (usually?) limited to spraying
-		 * over different EQCRs from different cores, it shouldn't be
-		 * possible to get more than this far behind (8 full EQCRs is 56
-		 * frames). */
-		initfq.fqd.orprws = 1;
-		initfq.fqd.oa = 0;
-		initfq.fqd.olws = 0;
-		initfq.fqd.fq_ctrl |= QM_FQCTRL_ORP;
-	}
-	ret = qman_init_fq(ctx->fqin, 0, &initfq);
+	ret = qman_init_fq(&ctx->us_data->fqin, 0, &initfq);
 	do_flags(ctx, 0, 0, 0, PME_CTX_FLAG_RECONFIG);
 	return ret;
 }
@@ -468,7 +462,7 @@ static int __try_exclusive(struct pme_ctx *ctx)
 			ret = -EBUSY;
 	} else {
 		/* it's not currently held */
-		ret = pme2_exclusive_set(ctx->fqin);
+		ret = pme2_exclusive_set(&ctx->us_data->fqin);
 		if (!ret)
 			exclusive_ctx = ctx;
 	}
@@ -560,19 +554,17 @@ static inline int do_work(struct pme_ctx *ctx, u32 flags, struct qm_fd *fd,
 
 	spin_lock_irq(&ctx->lock);
 	list_add_tail(&token->node, &ctx->tokens);
-	if (!orp_fq) {
-		seqnum = ctx->seq_num++;
-		ctx->seq_num &= QM_EQCR_SEQNUM_SEQMASK; /* rollover at 2^14 */
-		orp_fq = ctx->fqin;
-	}
 	spin_unlock_irq(&ctx->lock);
 
-	if (ctx->flags & PME_CTX_FLAG_NO_ORP)
-		ret = qman_enqueue(ctx->fqin, fd, ctrl2eq(flags));
+	if (!orp_fq)
+		ret = qman_enqueue(&ctx->us_data->fqin, fd, ctrl2eq(flags));
 	else
-		ret = qman_enqueue_orp(ctx->fqin, fd, ctrl2eq(flags),
+		ret = qman_enqueue_orp(&ctx->us_data->fqin, fd, ctrl2eq(flags),
 					orp_fq, seqnum);
 	if (ret) {
+		spin_lock_irq(&ctx->lock);
+		list_del(&token->node);
+		spin_unlock_irq(&ctx->lock);
 		if (ctx->flags & PME_CTX_FLAG_EXCLUSIVE)
 			release_exclusive(ctx);
 		release_work(ctx);
@@ -722,7 +714,7 @@ static inline struct pme_ctx_token *pop_matching_token(struct pme_ctx *ctx,
 	}
 	token = NULL;
 	pr_err("PME2 Could not find matching token!\n");
-	BUG_ON(1);
+	BUG();
 found:
 	spin_unlock_irq(&ctx->lock);
 	return token;
@@ -793,9 +785,44 @@ static enum qman_cb_dqrr_result cb_dqrr(struct qman_portal *portal,
 static void cb_ern(struct qman_portal *portal, struct qman_fq *fq,
 				const struct qm_mr_entry *mr)
 {
-	/* Give this the same handling as the error case through cb_dqrr(). */
-	struct pme_ctx *ctx = (struct pme_ctx *)fq;
-	cb_helper(portal, ctx, &mr->ern.fd, 1);
+	struct pme_ctx *ctx;
+	struct pme_nostash *data;
+	struct pme_ctx_token *token;
+
+	data = container_of(fq, struct pme_nostash, fqin);
+	ctx = data->parent;
+
+	token = pop_matching_token(ctx, &mr->ern.fd);
+	if (likely(token->cmd_type == pme_cmd_scan)) {
+		BUG_ON(!ctx->ern_cb);
+		ctx->ern_cb(ctx, mr, token);
+	} else if (token->cmd_type == pme_cmd_pmtcc) {
+		BUG_ON(!ctx->ern_cb);
+		ctx->ern_cb(ctx, mr, token);
+	} else {
+		struct pme_ctx_ctrl_token *ctrl_token;
+		/* outcast ctx and call supplied callback */
+		ctrl_token = container_of(token, struct pme_ctx_ctrl_token,
+					base_token);
+		if (token->cmd_type == pme_cmd_flow_write) {
+			/* Release the allocated flow context */
+			pme_hw_flow_free(ctrl_token->internal_flow_ptr);
+		} else if (token->cmd_type == pme_cmd_flow_read) {
+			/* Copy read result */
+			memcpy(ctrl_token->usr_flow_ptr,
+				ctrl_token->internal_flow_ptr,
+				sizeof(struct pme_flow));
+			/* Release the allocated flow context */
+			pme_hw_flow_free(ctrl_token->internal_flow_ptr);
+		}
+		BUG_ON(!ctrl_token->ern_cb);
+		ctrl_token->ern_cb(ctx, mr, ctrl_token);
+	}
+	/* Consume the frame */
+	if (ctx->flags & PME_CTX_FLAG_EXCLUSIVE)
+		release_exclusive(ctx);
+	if (atomic_dec_and_test(&ctx->refs))
+		wake_up(&ctx->queue);
 }
 
 static void cb_dc_ern(struct qman_portal *portal, struct qman_fq *fq,

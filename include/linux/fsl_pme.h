@@ -405,7 +405,9 @@ enum pme_cmd_type {
 /* high-level functions */
 /************************/
 
+/* predeclaration of a private structure" */
 struct pme_ctx;
+struct pme_nostash;
 
 /* Calls to pme_ctx_scan() and pme_ctx_pmtcc() provide these, and they are
  * provided back in the completion callback. You can embed this within a larger
@@ -421,6 +423,8 @@ struct pme_ctx_token {
 struct pme_ctx_ctrl_token {
 	void (*cb)(struct pme_ctx *, const struct qm_fd *,
 			struct pme_ctx_ctrl_token *);
+	void (*ern_cb)(struct pme_ctx *, const struct qm_mr_entry *,
+			struct pme_ctx_ctrl_token *);
 	/* don't touch the rest */
 	struct pme_hw_flow *internal_flow_ptr;
 	struct pme_flow *usr_flow_ptr;
@@ -430,6 +434,11 @@ struct pme_ctx_ctrl_token {
 /* Scan results invoke a user-provided callback of this type */
 typedef void (*pme_scan_cb)(struct pme_ctx *, const struct qm_fd *,
 				struct pme_ctx_token *);
+/* Enqueue rejections may happen before order-restoration or after (eg. if due
+ * to congestion or tail-drop). Use * 'rc' code of the 'mr_entry' to
+ * determine. */
+typedef void (*pme_scan_ern_cb)(struct pme_ctx *, const struct qm_mr_entry *,
+				struct pme_ctx_token *);
 
 /* PME "association" - ie. connects two frame-queues, with or without a PME flow
  * (if not, direct action mode), and manages mux/demux of scans and flow-context
@@ -438,8 +447,11 @@ typedef void (*pme_scan_cb)(struct pme_ctx *, const struct qm_fd *,
  * structure as the first field in your own context structure. */
 struct pme_ctx {
 	struct qman_fq fq;
-	/* IMPORTANT: Set (only) this prior to calling pme_ctx_init(); */
+	/* IMPORTANT: Set (only) these two fields prior to calling *
+	 * pme_ctx_init(). 'ern_cb' can be NULL if you know you will not
+	 * receive enqueue rejections. */
 	pme_scan_cb cb;
+	pme_scan_ern_cb ern_cb;
 	/* These fields should not be manipulated directly. Also the structure
 	 * may change and/or grow, so avoid making any alignment or size
 	 * assumptions. */
@@ -448,15 +460,14 @@ struct pme_ctx {
 	spinlock_t lock;
 	wait_queue_head_t queue;
 	struct list_head tokens;
-	u32 seq_num;
 	/* TODO: the following "slow-path" values should be bundled into a
 	 * secondary structure so that sizeof(struct pme_ctx) is minimised (for
 	 * stashing of caller-side fast-path state). */
-	struct qman_fq *fqin;
 	struct pme_hw_flow *hw_flow;
 	struct pme_hw_residue *hw_residue;
 	struct qm_fqd_stashing stashing;
 	struct qm_fd update_fd;
+	struct pme_nostash *us_data;
 };
 
 /* Flags for pme_ctx_init() */
@@ -464,9 +475,6 @@ struct pme_ctx {
 #define PME_CTX_FLAG_EXCLUSIVE   0x00000002 /* unscheduled, exclusive mode */
 #define PME_CTX_FLAG_PMTCC       0x00000004 /* PMTCC rather than scanning */
 #define PME_CTX_FLAG_DIRECT      0x00000008 /* Direct Action mode (not Flow) */
-#define PME_CTX_FLAG_NO_ORP      0x00000010 /* Using this flags implies there
-					     * is no risk of enqueue misordering
-					     */
 #define PME_CTX_FLAG_LOCAL       0x00000020 /* Ignore dest, use cpu portal */
 
 /* Flags for operations */
@@ -543,27 +551,14 @@ int pme_ctx_reconfigure_tx(struct pme_ctx *ctx, u32 bpid, u8 qosin);
 int pme_ctx_reconfigure_rx(struct pme_ctx *ctx, u8 qosout,
 		enum qm_channel dest, const struct qm_fqd_stashing *stashing);
 
-/* Precondition: pme_ctx must be enabled */
-/* NB: _update() and _nop() only return failure if their PME commands weren't
- * sent. If PME_CTX_OP_WAIT_INT was specified and a signal was received while
- * waiting for the response, it may return prematurely with success. The caller
- * can use signal_pending() to deal with any corresponding issues, if required.
- * If WAIT isn't used, or if WAIT_INT is specified and a signal may have
- * returned prematurely before the PME replied to the control command, then
- * pme_ctx_in_ctrl() should be used to determine when the command is complete.
- * NB: as the return value indicates whether the command was issued (and not
- * what the device did in reaction to the command), device errors caused by
- * pme_ctx_ctrl_***() APIs should be detected by calling pme_ctx_is_dead() after
- * the operation completes.
+/* Precondition: pme_ctx must be enabled
+ * if PME_CTX_OP_WAIT is specified, it'll wait (if it has to) to start the ctrl
+ * command but never waits for it to complete. The callback serves that purpose.
  * NB: 'params' may be modified by this call. For instance if
  * PME_CTX_OP_RESETRESLEN was specified and residue is enabled, then the
  * params->ren will be set to 1 (in order not to disabled residue).
  * NB: _update() will overwrite the 'params->rptr_[hi/low]' fields since the
  * residue resource is managed by this layer.
- * NB: _read_flow() is a blocking/sleeping and uninterruptible API, so it must
- * not be called in atomic context and will not break due to signals.
- * PME_CTX_OP_WAIT flag will be assumed set and PME_CTX_OP_WAIT_INT will be
- * assumed cleared, irrespective of what is specified in 'flags'.
  */
 int pme_ctx_ctrl_update_flow(struct pme_ctx *ctx, u32 flags,
 		struct pme_flow *params, struct pme_ctx_ctrl_token *token);

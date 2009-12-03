@@ -100,6 +100,7 @@ struct pmtcc_ctx {
 	struct pme_ctx base_ctx;
 	struct qm_fd result_fd;
 	struct completion done;
+	u8 ern;
 };
 
 static void pmtcc_cb(struct pme_ctx *ctx, const struct qm_fd *fd,
@@ -110,10 +111,22 @@ static void pmtcc_cb(struct pme_ctx *ctx, const struct qm_fd *fd,
 	complete(&my_ctx->done);
 }
 
+static void pmtcc_ern_cb(struct pme_ctx *ctx, const struct qm_mr_entry *mr,
+		struct pme_ctx_token *ctx_token)
+{
+	struct pmtcc_ctx *my_ctx = (struct pmtcc_ctx *)ctx;
+	my_ctx->result_fd = mr->ern.fd;
+	my_ctx->ern = 1;
+	complete(&my_ctx->done);
+}
+
+
 void pme2_sample_db(void)
 {
 	struct pmtcc_ctx ctx = {
 		.base_ctx.cb = pmtcc_cb,
+		.base_ctx.ern_cb = pmtcc_ern_cb,
+		.ern = 0
 	};
 	struct qm_fd fd;
 	struct qm_sg_entry sg_table[2];
@@ -130,10 +143,17 @@ void pme2_sample_db(void)
 		PME_CTX_FLAG_EXCLUSIVE |
 		PME_CTX_FLAG_PMTCC |
 		PME_CTX_FLAG_LOCAL, 0, 4, 4, 0, NULL);
-	BUG_ON(ret);
+	if (ret) {
+		pr_err("sample_db: can't init ctx\n");
+		return;
+	}
+
 	/* enable the context */
 	ret = pme_ctx_enable(&ctx.base_ctx);
-	BUG_ON(ret);
+	if (ret) {
+		pr_err("sample_db: can't enable ctx\n");
+		goto _finish_1;
+	}
 
 	/* Write the database */
 	memset(&fd, 0, sizeof(struct qm_fd));
@@ -146,21 +166,23 @@ void pme2_sample_db(void)
 	ret = pme_ctx_pmtcc(&ctx.base_ctx, PME_CTX_OP_WAIT, &fd, &token);
 	if (ret == -ENODEV) {
 		pr_err("sample_db: not the control plane, bailing\n");
-		ret = pme_ctx_disable(&ctx.base_ctx,
-			PME_CTX_OP_WAIT | PME_CTX_OP_WAIT_INT);
-		BUG_ON(ret);
-		pme_ctx_finish(&ctx.base_ctx);
-		return;
+		goto _finish_2;
 	}
-	BUG_ON(ret);
+	if (ret) {
+		pr_err("sample_db: error with pmtcc\n");
+		goto _finish_2;
+	}
 	wait_for_completion(&ctx.done);
-	kfree(mem);
+	if (ctx.ern) {
+		pr_err("sample_db: Rx ERN from pmtcc\n");
+		goto _finish_2;
+	}
 	status = pme_fd_res_status(&ctx.result_fd);
 	if (status) {
 		pr_info("sample_db: PMTCC write status failed %d\n", status);
-		BUG_ON(1);
+		goto _finish_2;
 	}
-
+	kfree(mem);
 	/* Read back the database */
 	init_completion(&ctx.done);
 	memset(&fd, 0, sizeof(struct qm_fd));
@@ -178,18 +200,24 @@ void pme2_sample_db(void)
 	fd.format = qm_fd_compound;
 	fd.addr_lo = pme_map(sg_table);
 	ret = pme_ctx_pmtcc(&ctx.base_ctx, PME_CTX_OP_WAIT, &fd, &token);
-	BUG_ON(ret);
+	if (ret) {
+		pr_err("sample_db: error with pmtcc\n");
+		goto _finish_3;
+	}
 	wait_for_completion(&ctx.done);
-
+	if (ctx.ern) {
+		pr_err("sample_db: Rx ERN from pmtcc\n");
+		goto _finish_3;
+	}
 	status = pme_fd_res_status(&ctx.result_fd);
 	if (status) {
-		pr_info("sample_db: PMTCC read status failed %d\n", status);
-		BUG_ON(1);
+		pr_err("sample_db: PMTCC read status failed %d\n", status);
+		goto _finish_3;
 	}
 	if (pme_fd_res_flags(&ctx.result_fd)) {
 		pr_err("sample_db: flags result set %x\n",
 			pme_fd_res_flags(&ctx.result_fd));
-		BUG_ON(1);
+		goto _finish_3;
 	}
 	if (memcmp(db_read_expected_result, mem_result,	28) != 0) {
 		pr_err("sample_db: DB read result not expected\n");
@@ -198,14 +226,16 @@ void pme2_sample_db(void)
 				sizeof(db_read_expected_result));
 		pr_info("Received\n");
 		hexdump(mem_result, 28);
-		BUG_ON(1);
 	}
+_finish_3:
 	kfree(mem_result);
+_finish_2:
 	kfree(mem);
 	/* Disable */
 	ret = pme_ctx_disable(&ctx.base_ctx,
 		PME_CTX_OP_WAIT | PME_CTX_OP_WAIT_INT);
 	BUG_ON(ret);
+_finish_1:
 	pme_ctx_finish(&ctx.base_ctx);
 	pr_info("sample_db: pme2 sample DB initialised\n");
 }

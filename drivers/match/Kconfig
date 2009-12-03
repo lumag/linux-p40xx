@@ -237,7 +237,7 @@ config FSL_PME2_STAT_ACCUMULATOR_UPDATE_INTERVAL
 	int "Configure the pme2 statistics update interval in milliseconds"
 	depends on FSL_PME2_CTRL
 	range 0 10000
-	default 4000
+	default 3400
 	help
 	  The pme accumulator reads the current device statistics and add it
 	  to a running counter. The frequency of these updates may be

@@ -78,6 +78,7 @@ struct cmd_token {
 	/* List management for completed async requests */
 	struct list_head completed_list;
 	u8 done;
+	u8 ern;
 };
 
 struct ctrl_op {
@@ -85,6 +86,7 @@ struct ctrl_op {
 	struct completion cb_done;
 	enum pme_status cmd_status;
 	u8 res_flag;
+	u8 ern;
 };
 
 static void ctrl_cb(struct pme_ctx *ctx, const struct qm_fd *fd,
@@ -93,6 +95,14 @@ static void ctrl_cb(struct pme_ctx *ctx, const struct qm_fd *fd,
 	struct ctrl_op *ctrl = (struct ctrl_op *)token;
 	ctrl->cmd_status = pme_fd_res_status(fd);
 	ctrl->res_flag = pme_fd_res_flags(fd);
+	complete(&ctrl->cb_done);
+}
+
+static void ctrl_ern_cb(struct pme_ctx *ctx, const struct qm_mr_entry *mr,
+		struct pme_ctx_ctrl_token *token)
+{
+	struct ctrl_op *ctrl = (struct ctrl_op *)token;
+	ctrl->ern = 1;
 	complete(&ctrl->cb_done);
 }
 
@@ -131,6 +141,28 @@ static void scan_cb(struct pme_ctx *ctx, const struct qm_fd *fd,
 	return;
 }
 
+static void scan_ern_cb(struct pme_ctx *ctx, const struct qm_mr_entry *mr,
+		struct pme_ctx_token *ctx_token)
+{
+	struct cmd_token *token = (struct cmd_token *)ctx_token;
+	struct scan_session *session = (struct scan_session *)ctx;
+
+	token->ern = 1;
+	token->rx_fd = mr->ern.fd;
+	/* If this is a asynchronous command, queue the token */
+	if (!token->synchronous) {
+		spin_lock(&session->completed_commands_lock);
+		list_add_tail(&token->completed_list,
+			      &session->completed_commands);
+		session->completed_count++;
+		spin_unlock(&session->completed_commands_lock);
+	}
+	/* Wake up the thread that's waiting for us */
+	token->done = 1;
+	wake_up(token->queue);
+	return;
+}
+
 static int process_completed_token(struct file *fp,
 				struct cmd_token *token_p,
 				struct pme_scan_result *user_result)
@@ -139,21 +171,22 @@ static int process_completed_token(struct file *fp,
 	struct pme_scan_result local_result;
 	u32 src_sz, dst_sz;
 
-#ifdef CONFIG_FSL_PME2_SCAN_DEBUG
-	pr_info("pme2_scan: process_completed_token\n");
-	pr_info("pme2_scan: received %d frame type\n", token_p->rx_fd.format);
-#endif
+	PMEPRINFO("pme2_scan: process_completed_token \n");
+
 	memset(&local_result, 0, sizeof(local_result));
+	if (token_p->ern) {
+		PMEPRINFO("pme2_scan: ern in scan\n");
+		ret = -EIO;
+		goto done;
+	}
 	local_result.output.data = token_p->kernel_op.output.data;
 
 	if (token_p->rx_fd.format == qm_fd_compound) {
 		/* Need to copy  output */
 		src_sz = token_p->tx_comp[OUTPUT_FRM].length;
 		dst_sz = token_p->kernel_op.output.size;
-#ifdef CONFIG_FSL_PME2_SCAN_DEBUG
-		pr_info("pme2_scan: pme gen %u data, have space for %u\n",
+		PMEPRINFO("pme2_scan: pme gen %u data, have space for %u\n",
 				src_sz, dst_sz);
-#endif
 		local_result.output.size = min(dst_sz, src_sz);
 		/* Doesn't make sense we generated more than available space
 		 * should have got truncation.
@@ -172,18 +205,16 @@ static int process_completed_token(struct file *fp,
 
 	local_result.flags |= pme_fd_res_flags(&token_p->rx_fd);
 	local_result.status |= pme_fd_res_status(&token_p->rx_fd);
+done:
 	local_result.opaque = token_p->kernel_op.opaque;
-#ifdef CONFIG_FSL_PME2_SCAN_DEBUG
-	pr_info("pme2_scan: process_completed_token, cpy to user\n");
-#endif
+	PMEPRINFO("pme2_scan: process_completed_token, cpy to user\n");
+
 	/* Update the used values */
 	if (copy_to_user(user_result, &local_result, sizeof(local_result))) {
 		ret = -EFAULT;
 		cleanup_token(token_p);
 	}
-#ifdef CONFIG_FSL_PME2_SCAN_DEBUG
-	pr_info("pme2_scan: process_completed_token, free token\n");
-#endif
+	PMEPRINFO("pme2_scan: process_completed_token, free token\n");
 	cleanup_token(token_p);
 	return ret;
 }
@@ -196,8 +227,10 @@ static int getscan_cmd(struct file *fp, struct scan_session *session,
 	struct pme_scan_params local_scan_params;
 	struct ctrl_op ctx_ctrl =  {
 		.ctx_ctr.cb = ctrl_cb,
+		.ctx_ctr.ern_cb = ctrl_ern_cb,
 		.cmd_status = 0,
-		.res_flag = 0
+		.res_flag = 0,
+		.ern = 0
 	};
 	init_completion(&ctx_ctrl.cb_done);
 
@@ -212,13 +245,13 @@ static int getscan_cmd(struct file *fp, struct scan_session *session,
 	ret = pme_ctx_ctrl_read_flow(&session->ctx, WAIT_AND_INTERRUPTABLE,
 			&params, &ctx_ctrl.ctx_ctr);
 	if (ret) {
-		pr_info("pme2_scan: read flow error %d\n", ret);
+		PMEPRINFO("read flow error %d\n", ret);
 		goto done;
 	}
 	wait_for_completion(&ctx_ctrl.cb_done);
 
-	if (ctx_ctrl.cmd_status || ctx_ctrl.res_flag) {
-		pr_info("pme2_scan: read flow error %d\n", ctx_ctrl.cmd_status);
+	if (ctx_ctrl.ern || ctx_ctrl.cmd_status || ctx_ctrl.res_flag) {
+		PMEPRINFO("read flow error %d\n", ctx_ctrl.cmd_status);
 		ret = -EFAULT;
 		goto done;
 	}
@@ -250,8 +283,10 @@ static int setscan_cmd(struct file *fp, struct scan_session *session,
 	u32 flag = WAIT_AND_INTERRUPTABLE;
 	struct ctrl_op ctx_ctrl =  {
 		.ctx_ctr.cb = ctrl_cb,
+		.ctx_ctr.ern_cb = ctrl_ern_cb,
 		.cmd_status = 0,
-		.res_flag = 0
+		.res_flag = 0,
+		.ern = 0
 	};
 	struct pme_flow params;
 	struct pme_scan_params local_params;
@@ -286,12 +321,12 @@ static int setscan_cmd(struct file *fp, struct scan_session *session,
 	ret = pme_ctx_ctrl_update_flow(&session->ctx, flag, &params,
 			&ctx_ctrl.ctx_ctr);
 	if (ret) {
-		pr_info("pme2_scan: update flow error %d\n", ret);
+		PMEPRINFO("update flow error %d\n", ret);
 		goto done;
 	}
 	wait_for_completion(&ctx_ctrl.cb_done);
-	if (ctx_ctrl.cmd_status || ctx_ctrl.res_flag) {
-		pr_info("pme2_scan: update flow err %d\n", ctx_ctrl.cmd_status);
+	if (ctx_ctrl.ern || ctx_ctrl.cmd_status || ctx_ctrl.res_flag) {
+		PMEPRINFO("update flow err %d\n", ctx_ctrl.cmd_status);
 		ret = -EFAULT;
 		goto done;
 	}
@@ -314,8 +349,10 @@ static int resetseq_cmd(struct file *fp, struct scan_session *session)
 	struct pme_flow params;
 	struct ctrl_op ctx_ctrl =  {
 		.ctx_ctr.cb = ctrl_cb,
+		.ctx_ctr.ern_cb = ctrl_ern_cb,
 		.cmd_status = 0,
-		.res_flag = 0
+		.res_flag = 0,
+		.ern = 0
 	};
 	init_completion(&ctx_ctrl.cb_done);
 	pme_sw_flow_init(&params);
@@ -335,8 +372,8 @@ static int resetseq_cmd(struct file *fp, struct scan_session *session)
 	if (!ret)
 		pr_info("pme2_scan: update flow error %d\n", ret);
 	wait_for_completion(&ctx_ctrl.cb_done);
-	if (ctx_ctrl.cmd_status || ctx_ctrl.res_flag) {
-		pr_info("pme2_scan: update flow err %d\n", ctx_ctrl.cmd_status);
+	if (ctx_ctrl.ern || ctx_ctrl.cmd_status || ctx_ctrl.res_flag) {
+		PMEPRINFO("update flow err %d\n", ctx_ctrl.cmd_status);
 		ret = -EFAULT;
 	}
 done:
@@ -349,8 +386,10 @@ static int resetresidue_cmd(struct file *fp, struct scan_session *session)
 	struct pme_flow params;
 	struct ctrl_op ctx_ctrl =  {
 		.ctx_ctr.cb = ctrl_cb,
+		.ctx_ctr.ern_cb = ctrl_ern_cb,
 		.cmd_status = 0,
-		.res_flag = 0
+		.res_flag = 0,
+		.ern = 0
 	};
 
 	init_completion(&ctx_ctrl.cb_done);
@@ -368,8 +407,8 @@ static int resetresidue_cmd(struct file *fp, struct scan_session *session)
 	if (!ret)
 		pr_info("pme2_scan: update flow error %d\n", ret);
 	wait_for_completion(&ctx_ctrl.cb_done);
-	if (ctx_ctrl.cmd_status || ctx_ctrl.res_flag) {
-		pr_info("pme2_scan: update flow err %d\n", ctx_ctrl.cmd_status);
+	if (ctx_ctrl.ern || ctx_ctrl.cmd_status || ctx_ctrl.res_flag) {
+		PMEPRINFO("update flow err %d\n", ctx_ctrl.cmd_status);
 		ret = -EFAULT;
 	}
 done:
@@ -403,10 +442,6 @@ static int process_scan_cmd(struct file *fp, struct scan_session *session,
 	if (copy_from_user(&token_p->kernel_op, user_cmd, sizeof(*user_cmd)))
 		return -EFAULT;
 	/* Copy the input */
-#ifdef CONFIG_FSL_PME2_SCAN_DEBUG
-	pr_info("Received User Space Contiguous mem \n");
-	pr_info("length = %d \n", token_p->kernel_op.input.size);
-#endif
 	token_p->synchronous = synchronous;
 	token_p->tx_size = token_p->kernel_op.input.size;
 	token_p->tx_data = kmalloc(token_p->kernel_op.input.size, GFP_KERNEL);
@@ -414,10 +449,6 @@ static int process_scan_cmd(struct file *fp, struct scan_session *session,
 		pr_err("pme2_scan: Err alloc %d byte", token_p->tx_size);
 		cleanup_token(token_p);
 		return -ENOMEM;
-	} else {
-#ifdef CONFIG_FSL_PME2_SCAN_DEBUG
-		pr_info("kmalloc tx %p\n", token_p->tx_data);
-#endif
 	}
 	if (copy_from_user(token_p->tx_data,
 			token_p->kernel_op.input.data,
@@ -426,9 +457,7 @@ static int process_scan_cmd(struct file *fp, struct scan_session *session,
 		cleanup_token(token_p);
 		return -EFAULT;
 	}
-#ifdef CONFIG_FSL_PME2_SCAN_DEBUG
-	pr_info("Copied contiguous user data\n");
-#endif
+	PMEPRINFO("Copied contiguous user data\n");
 
 	/* Setup input frame */
 	token_p->tx_comp[INPUT_FRM].final = 1;
@@ -438,20 +467,13 @@ static int process_scan_cmd(struct file *fp, struct scan_session *session,
 	/* setup output frame, if output is expected */
 	if (token_p->kernel_op.output.size) {
 		token_p->rx_size = token_p->kernel_op.output.size;
-	#ifdef CONFIG_FSL_PME2_SCAN_DEBUG
-		pr_info("pme2_scan: expect output %d\n", token_p->rx_size);
-	#endif
+		PMEPRINFO("pme2_scan: expect output %d\n", token_p->rx_size);
 		token_p->rx_data = kmalloc(token_p->rx_size, GFP_KERNEL);
 		if (!token_p->rx_data) {
 			pr_err("pme2_scan: Err alloc %d byte",
 					token_p->rx_size);
 			cleanup_token(token_p);
 			return -ENOMEM;
-		} else {
-#ifdef CONFIG_FSL_PME2_SCAN_DEBUG
-			pr_info("kmalloc rx %p, size %d\n", token_p->rx_data,
-					token_p->rx_size);
-#endif
 		}
 		/* Setup output frame */
 		token_p->tx_comp[OUTPUT_FRM].length = token_p->rx_size;
@@ -475,9 +497,7 @@ static int process_scan_cmd(struct file *fp, struct scan_session *session,
 		token_p->queue = &session->waiting_for_completion;
 	token_p->done = 0;
 
-#ifdef CONFIG_FSL_PME2_SCAN_DEBUG
-	pr_info("About to call pme_ctx_scan\n");
-#endif
+	PMEPRINFO("About to call pme_ctx_scan\n");
 	if (token_p->kernel_op.flags & PME_SCAN_CMD_STARTRESET)
 		scan_flags |= PME_CMD_SCAN_SR;
 	if (token_p->kernel_op.flags & PME_SCAN_CMD_END)
@@ -497,10 +517,7 @@ static int process_scan_cmd(struct file *fp, struct scan_session *session,
 		/* Don't wait.  The command is away */
 		return 0;
 
-#ifdef CONFIG_FSL_PME2_SCAN_DEBUG
-	pr_info("Wait for completion\n");
-#endif
-
+	PMEPRINFO("Wait for completion\n");
 	/* Wait for the command to complete */
 	/* TODO: Should this be wait_event_interruptible ?
 	 * If so, will need logic to indicate */
@@ -523,15 +540,15 @@ static int fsl_pme2_scan_open(struct inode *node, struct file *fp)
 	struct pme_flow flow;
 	struct ctrl_op ctx_ctrl =  {
 		.ctx_ctr.cb = ctrl_cb,
+		.ctx_ctr.ern_cb = ctrl_ern_cb,
 		.cmd_status = 0,
-		.res_flag = 0
+		.res_flag = 0,
+		.ern = 0
 	};
 
 	pme_sw_flow_init(&flow);
 	init_completion(&ctx_ctrl.cb_done);
-#ifdef CONFIG_FSL_PME2_SCAN_DEBUG
-	pr_info("pme2_scan: open %d\n", smp_processor_id());
-#endif
+	PMEPRINFO("pme2_scan: open %d\n", smp_processor_id());
 	fp->private_data = kzalloc(sizeof(*session), GFP_KERNEL);
 	if (!fp->private_data) {
 		return -ENOMEM;
@@ -542,11 +559,10 @@ static int fsl_pme2_scan_open(struct inode *node, struct file *fp)
 	INIT_LIST_HEAD(&session->completed_commands);
 	spin_lock_init(&session->completed_commands_lock);
 	spin_lock_init(&session->set_subset_lock);
-#ifdef CONFIG_FSL_PME2_SCAN_DEBUG
-	pr_info("kmalloc session %p\n", fp->private_data);
-#endif
+	PMEPRINFO("kmalloc session %p\n", fp->private_data);
 	session = fp->private_data;
 	session->ctx.cb = scan_cb;
+	session->ctx.ern_cb = scan_ern_cb;
 
 	/* qosin, qosout should be driver attributes */
 	ret = pme_ctx_init(&session->ctx, PME_CTX_FLAG_LOCAL, 0, 4, 4, 0, NULL);
@@ -557,32 +573,29 @@ static int fsl_pme2_scan_open(struct inode *node, struct file *fp)
 	/* enable the context */
 	ret = pme_ctx_enable(&session->ctx);
 	if (ret) {
-		pr_info("pme2_scan: error enabling ctx %d\n", ret);
+		PMEPRINFO("error enabling ctx %d\n", ret);
 		pme_ctx_finish(&session->ctx);
 		goto exit;
 	}
 	/* Update flow to set sane defaults in the flow context */
-	/* TODO: because we free 'flow' here, we need to be uninterruptible. */
 	ret = pme_ctx_ctrl_update_flow(&session->ctx,
 		PME_CTX_OP_WAIT | PME_CMD_FCW_ALL, &flow, &ctx_ctrl.ctx_ctr);
 	if (ret) {
-		pr_info("pme2_scan: error updating flow ctx %d\n", ret);
+		PMEPRINFO("error updating flow ctx %d\n", ret);
 		pme_ctx_disable(&session->ctx, PME_CTX_OP_WAIT);
 		pme_ctx_finish(&session->ctx);
 		goto exit;
 	}
 	wait_for_completion(&ctx_ctrl.cb_done);
-	if (ctx_ctrl.cmd_status || ctx_ctrl.res_flag) {
-		pr_info("pme2_scan: error updating flow ctx %d\n", ret);
+	if (ctx_ctrl.ern || ctx_ctrl.cmd_status || ctx_ctrl.res_flag) {
+		PMEPRINFO("error updating flow ctx %d\n", ret);
 		pme_ctx_disable(&session->ctx, PME_CTX_OP_WAIT);
 		pme_ctx_finish(&session->ctx);
 		ret = -EFAULT;
 		goto exit;
 	}
-#ifdef CONFIG_FSL_PME2_SCAN_DEBUG
 	/* Set up the structures used for asynchronous requests */
-	pr_info("pme2_scan: Finish pme_scan open %d \n", smp_processor_id());
-#endif
+	PMEPRINFO("pme2_scan: Finish pme_scan open %d \n", smp_processor_id());
 	return 0;
 exit:
 	kfree(fp->private_data);
@@ -608,9 +621,7 @@ static int fsl_pme2_scan_close(struct inode *node, struct file *fp)
 
 	pme_ctx_finish(&session->ctx);
 	kfree(session);
-#ifdef CONFIG_FSL_PME2_SCAN_DEBUG
-	pr_info("pme2_scan: Finish pme_session close\n");
-#endif
+	PMEPRINFO("pme2_scan: Finish pme_session close\n");
 	return 0;
 }
 
@@ -704,9 +715,7 @@ static int fsl_pme2_scan_ioctl(struct inode *inode, struct file *fp,
 		/* Copy the command to kernel space */
 		if (copy_from_user(&scan_cmds, (void *)arg, sizeof(scan_cmds)))
 			return -EFAULT;
-#ifdef CONFIG_FSL_PME2_SCAN_DEBUG
-		pr_info("pme2_scan: Received Wn for %d cmds \n", scan_cmds.num);
-#endif
+		PMEPRINFO("Received Wn for %d cmds \n", scan_cmds.num);
 		for (i = 0; i < scan_cmds.num; i++) {
 			ret = process_scan_cmd(fp, session, &scan_cmds.cmds[i],
 					NULL, 0);
@@ -734,9 +743,7 @@ static int fsl_pme2_scan_ioctl(struct inode *inode, struct file *fp,
 		/* Copy the command to kernel space */
 		if (copy_from_user(&results, (void *)arg, sizeof(results)))
 			return -EFAULT;
-#ifdef CONFIG_FSL_PME2_SCAN_DEBUG
-		pr_info("pme2_scan: Received Rn for %d res \n", results.num);
-#endif
+		PMEPRINFO("pme2_scan: Received Rn for %d res \n", results.num);
 		if (!results.num)
 			return 0;
 		do {
@@ -746,9 +753,7 @@ static int fsl_pme2_scan_ioctl(struct inode *inode, struct file *fp,
 			spin_lock(&session->completed_commands_lock);
 			if (!list_empty(&session->completed_commands)) {
 				/* Move to a different list */
-#ifdef CONFIG_FSL_PME2_SCAN_DEBUG
-				pr_info("pme2_scan: Pop response\n");
-#endif
+				PMEPRINFO("pme2_scan: Pop response\n");
 				completed_cmd = list_first_entry(
 						&session->completed_commands,
 						struct cmd_token,
@@ -766,13 +771,9 @@ static int fsl_pme2_scan_ioctl(struct inode *inode, struct file *fp,
 		} while (!ret && completed_cmd && (i != results.num));
 
 		if (i != results.num) {
-#ifdef CONFIG_FSL_PME2_SCAN_DEBUG
-			pr_info("pme2_scan: Only filled %d responses\n", i);
-#endif
+			PMEPRINFO("pme2_scan: Only filled %d responses\n", i);
 			results.num = i;
-#ifdef CONFIG_FSL_PME2_SCAN_DEBUG
-			pr_info("pme2_scan: results.num = %d\n", results.num);
-#endif
+			PMEPRINFO("pme2_scan: results.num = %d\n", results.num);
 			if (copy_to_user((void *)arg, &results,
 					sizeof(results))) {
 				pr_err("Error copying to user data \n");
