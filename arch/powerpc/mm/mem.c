@@ -10,6 +10,8 @@
  *  Derived from "arch/i386/mm/init.c"
  *    Copyright (C) 1991, 1992, 1993, 1994  Linus Torvalds
  *
+ * Copyright 2009 Freescale Semiconductor Inc.
+ *
  *  This program is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU General Public License
  *  as published by the Free Software Foundation; either version
@@ -95,16 +97,59 @@ int page_is_ram(unsigned long pfn)
 #endif
 }
 
+#ifdef CONFIG_OF_MMAP_CACHE_PROPERTY
+pgprot_t pgprot_from_dt(unsigned long pfn, pgprot_t vma_prot)
+{
+	struct device_node *np;
+	struct resource res;
+	unsigned long paddr = (pfn << PAGE_SHIFT);
+	int i;
+	const int *prop;
+
+	for_each_node_by_name(np, "mmap-region")
+		for (i = 0; of_address_to_resource(np, i, &res) == 0; i++)
+			if ((paddr >= res.start) && (paddr <= res.end)) {
+				unsigned long _prot;
+				prop = of_get_property(np, "cache-property",
+						NULL);
+
+				if (prop == NULL)
+					return vma_prot;
+
+				_prot = pgprot_val(vma_prot) & ~_PAGE_CACHE_CTL;
+
+				/* bit map of WIMG */
+				if (*prop & 0x8)
+					_prot |= _PAGE_WRITETHRU;
+				if (*prop & 0x4)
+					_prot |= _PAGE_NO_CACHE;
+				if (*prop & 0x2)
+					_prot |= _PAGE_COHERENT;
+				if (*prop & 0x1)
+					_prot |= _PAGE_GUARDED;
+
+				return __pgprot(_prot);
+			}
+
+	return vma_prot;
+}
+#endif
+
 pgprot_t phys_mem_access_prot(struct file *file, unsigned long pfn,
 			      unsigned long size, pgprot_t vma_prot)
 {
 	if (ppc_md.phys_mem_access_prot)
 		return ppc_md.phys_mem_access_prot(file, pfn, size, vma_prot);
 
-	if (!page_is_ram(pfn))
-		vma_prot = pgprot_noncached(vma_prot);
+	/* kernel managed memory is always mapped as cacheable */
+	if (page_is_ram(pfn))
+		return vma_prot;
 
-	return vma_prot;
+#ifdef CONFIG_OF_MMAP_CACHE_PROPERTY
+	return pgprot_from_dt(pfn, vma_prot);
+#else
+	return pgprot_noncached(vma_prot);
+#endif
 }
 EXPORT_SYMBOL(phys_mem_access_prot);
 
