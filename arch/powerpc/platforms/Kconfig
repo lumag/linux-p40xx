@@ -342,4 +342,11 @@ config XILINX_PCI
 	bool "Xilinx PCI host bridge support"
 	depends on PCI && XILINX_VIRTEX
 
+config OF_MMAP_CACHE_PROPERTY
+	bool "Support setting cache property of mmap through device tree"
+	default n
+	help
+	  Say Y here to support setting cache property of mmaped region via
+	  mmap-region device tree node.
+
 endmenu
