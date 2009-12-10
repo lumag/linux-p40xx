@@ -672,8 +672,10 @@ dpa_fd_release(const struct net_device *net_dev, const struct qm_fd *fd)
 			}
 		} while (!sgt[i-1].final);
 
-		if (_dpa_bp->kernel_pool)
+		if (_dpa_bp->kernel_pool) {
 			kunmap(page);
+			put_page(page);
+		}
 	}
 
 	if (!_dpa_bp->kernel_pool) {
@@ -1396,12 +1398,14 @@ static int dpa_process_sg(struct net_device *net_dev, struct sk_buff *skb,
 		goto err_pspb_pull_failed;
 	}
 	kunmap(page);
+	put_page(page);
 
 	return 0;
 
 err_pspb_pull_failed:
 err_bpid2pool_failed:
 	kunmap(page);
+	put_page(page);
 	/* Free all the buffers in the skb */
 	dev_kfree_skb(skb);
 	return err;
