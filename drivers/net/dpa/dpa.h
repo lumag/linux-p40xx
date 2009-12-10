@@ -37,6 +37,7 @@
 #include <linux/netdevice.h>
 #include <linux/list.h>		/* struct list_head */
 #include <linux/workqueue.h>	/* struct work_struct */
+#include <linux/skbuff.h>
 #ifdef CONFIG_DEBUG_FS
 #include <linux/dcache.h>	/* struct dentry */
 #endif
@@ -56,6 +57,9 @@ struct dpa_percpu_priv_s {
 	struct net_device	*net_dev;
 	struct work_struct	 fd_work;
 	struct list_head	fd_list;
+	struct list_head	tx_fd_list;
+	struct list_head	free_list;
+	struct sk_buff_head	rx_recycle;
 #ifdef CONFIG_DEBUG_FS
 	size_t			 count, total, max, hwi[2], swi;
 #endif
