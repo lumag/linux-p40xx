@@ -211,7 +211,7 @@ void pme2_test_scan(void)
 	}
 
 	/* Disable */
-	ret = pme_ctx_disable(&a_scan_ctx.base_ctx, PME_CTX_OP_WAIT);
+	ret = pme_ctx_disable(&a_scan_ctx.base_ctx, PME_CTX_OP_WAIT, NULL);
 	BUG_ON(ret);
 
 	/* Check with bman */
@@ -262,7 +262,7 @@ void pme2_test_scan(void)
 	release_buffer(sg_table[0].addr_lo);
 
 	/* Disable */
-	ret = pme_ctx_disable(&a_scan_ctx.base_ctx, PME_CTX_OP_WAIT);
+	ret = pme_ctx_disable(&a_scan_ctx.base_ctx, PME_CTX_OP_WAIT, NULL);
 	BUG_ON(ret);
 #endif
 	pme_ctx_finish(&a_scan_ctx.base_ctx);
@@ -381,8 +381,10 @@ void pme2_test_scan(void)
 	}
 
 	/* Disable */
-	ret = pme_ctx_disable(&a_scan_ctx.base_ctx, PME_CTX_OP_WAIT);
-	BUG_ON(ret);
+	ret = pme_ctx_disable(&a_scan_ctx.base_ctx, PME_CTX_OP_WAIT,
+				&ctx_ctrl.ctx_ctr);
+	BUG_ON(ret < 1);
+	wait_for_completion(&ctx_ctrl.cb_done);
 	pme_ctx_finish(&a_scan_ctx.base_ctx);
 
 	pr_info("st: Scan Test Passed\n");

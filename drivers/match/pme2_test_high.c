@@ -122,13 +122,12 @@ void pme2_test_high(void)
 		BUG_ON(1);
 	} else
 		pr_info("Default Flow Context Read OK\n");
-	/* start a non-blocking NOP */
+	/* start a NOP */
 	ret = pme_ctx_ctrl_nop(&ctx, 0, &ctx_ctrl.ctx_ctr);
 	pr_info("PME2: pme_ctx_ctrl_nop done\n");
 	wait_for_completion(&ctx_ctrl.cb_done);
 	POST_CTRL();
-	/* start a blocking update (implicitly blocks on NOP-completion) to add
-	 * residue to the context */
+	/* start an update to add residue to the context */
 	flow.ren = 1;
 	ret = pme_ctx_ctrl_update_flow(&ctx, PME_CTX_OP_WAIT | PME_CMD_FCW_RES,
 					&flow, &ctx_ctrl.ctx_ctr);
@@ -136,8 +135,9 @@ void pme2_test_high(void)
 	wait_for_completion(&ctx_ctrl.cb_done);
 	POST_CTRL();
 	/* start a blocking disable */
-	ret = pme_ctx_disable(&ctx, PME_CTX_OP_WAIT);
-	BUG_ON(ret);
+	ret = pme_ctx_disable(&ctx, PME_CTX_OP_WAIT, &ctx_ctrl.ctx_ctr);
+	BUG_ON(ret < 1);
+	wait_for_completion(&ctx_ctrl.cb_done);
 	/* do some reconfiguration */
 	ret = pme_ctx_reconfigure_tx(&ctx, 63, 7);
 	BUG_ON(ret);
@@ -164,8 +164,9 @@ void pme2_test_high(void)
 	wait_for_completion(&ctx_ctrl.cb_done);
 	POST_CTRL();
 	/* Disable, and done */
-	ret = pme_ctx_disable(&ctx, PME_CTX_OP_WAIT | PME_CTX_OP_WAIT_INT);
-	BUG_ON(ret);
+	ret = pme_ctx_disable(&ctx, PME_CTX_OP_WAIT, &ctx_ctrl.ctx_ctr);
+	BUG_ON(ret < 1);
+	wait_for_completion(&ctx_ctrl.cb_done);
 	pme_ctx_finish(&ctx);
 	pr_info("PME2: high-level test done\n");
 }
