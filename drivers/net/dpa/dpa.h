@@ -56,12 +56,11 @@ struct pcd_range {
 struct dpa_percpu_priv_s {
 	struct net_device	*net_dev;
 	struct work_struct	 fd_work;
-	struct list_head	fd_list;
-	struct list_head	tx_fd_list;
-	struct list_head	free_list;
-	struct sk_buff_head	rx_recycle;
+	struct list_head	 fd_list[2];
+	struct list_head	 free_list;
+	struct sk_buff_head	 rx_recycle;
 #ifdef CONFIG_DEBUG_FS
-	size_t			 count, total, max, hwi[2], swi;
+	size_t			 count[2], total[2], max[2], hwi[2], swi;
 #endif
 };
 
