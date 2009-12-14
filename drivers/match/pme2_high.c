@@ -614,8 +614,12 @@ static inline int __update_flow(struct pme_ctx *ctx, u32 flags,
 {
 	struct qm_fd fd;
 	int ret;
+	int hw_res_used = 0;
+	struct pme_hw_residue *hw_res = pme_hw_residue_new();
 
 	BUG_ON(ctx->flags & PME_CTX_FLAG_DIRECT);
+	if (!hw_res)
+		return -ENOMEM;
 	token->base_token.cmd_type = pme_cmd_flow_write;
 
 	flags &= ~PME_CTX_OP_PRIVATE;
@@ -632,13 +636,12 @@ static inline int __update_flow(struct pme_ctx *ctx, u32 flags,
 	}
 	/* allocate residue memory if it is being added */
 	if ((flags & PME_CMD_FCW_RES) && params->ren && !ctx->hw_residue) {
-		ctx->hw_residue = pme_hw_residue_new();
-		if (!ctx->hw_residue) {
-			spin_unlock_irq(&ctx->lock);
-			return -ENOMEM;
-		}
+		ctx->hw_residue = hw_res;
+		hw_res_used = 1;
 	}
 	spin_unlock_irq(&ctx->lock);
+	if (!hw_res_used)
+		pme_hw_residue_free(hw_res);
 	/* enqueue the FCW command to PME */
 	memset(&fd, 0, sizeof(fd));
 	token->internal_flow_ptr = pme_hw_flow_new();
