@@ -1240,7 +1240,7 @@ struct qman_fq {
 	enum qman_fq_state state;
 	int cgr_groupid;
 	struct rb_node node;
-} ____cacheline_aligned;
+};
 
 /* Flags to qman_create_fq() */
 #define QMAN_FQ_FLAG_NO_ENQUEUE      0x00000001 /* can't enqueue */
