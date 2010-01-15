@@ -61,6 +61,7 @@ config P4080_DS
 	bool "Freescale P4080 DS"
 	select DEFAULT_UIMAGE
 	select HAS_RAPIDIO
+	select HAS_FSL_PAMU
 	help
 	  This option enables support for the P4080 DS board
 
