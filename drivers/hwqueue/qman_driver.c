@@ -339,7 +339,11 @@ bad_cpu_ph:
 	if (of_get_property(node, "fsl,hv-dma-handle", &ret))
 		cfg.has_hv_dma = 1;
 	else
+#ifdef CONFIG_FSL_PAMU
+		cfg.has_hv_dma = 1;
+#else
 		cfg.has_hv_dma = 0;
+#endif
 	addr.addr_ce = ioremap_flags(res[0].start,
 				res[0].end - res[0].start + 1, 0);
 	addr.addr_ci = ioremap_flags(res[1].start,
