@@ -2545,7 +2545,7 @@ dpa_probe(struct of_device *_of_dev)
 		/* For now, stick to the idea that we have to have
 		 * static declarations on MAC-less devices */
 		for (i = 0; i < ARRAY_SIZE(fqids); i++)
-			if (unlikely(fqids[i])) {
+			if (unlikely(fqids[i] == NULL)) {
 				cpu_dev_err(dev, "%s:%hu:%s(): "
 			     "MAC-less interfaces require %s FQ declarations\n",
 			      __file__, __LINE__, __func__, rtx[i]);
