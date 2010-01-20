@@ -1,4 +1,4 @@
-/* Copyright (c) 2008, 2009, Freescale Semiconductor, Inc.
+/* Copyright (c) 2008, 2009, 2010, Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -32,6 +32,14 @@
 
 #include "pme2_private.h"
 #include "pme2_regs.h"
+
+/* PME HW Revision */
+#define PME_REV(rev1_reg) (rev1_reg & 0x0000FFFF)
+#define PME_REV_2_0 0x00000200
+#define PME_REV_2_1 0x00000201
+#define DEC1_MAX_REV_2_0 0x000FFFFC
+#define DEC1_MAX_REV_2_1 0x0007FFFC
+
 
 /* Driver Name is used in naming the sysfs directory
  * /sys/bus/of_platform/drivers/DRV_NAME
@@ -275,6 +283,7 @@ static int __devinit of_fsl_pme_probe(struct of_device *ofdev,
 	const u32 *value;
 	int srec_aim = 0, srec_esr = 0;
 	u32 srecontextsize_code;
+	u32 dec1;
 
 	pme_err_irq = of_irq_to_resource(nprop, 0, NULL);
 	if (pme_err_irq == NO_IRQ) {
@@ -307,7 +316,8 @@ static int __devinit of_fsl_pme_probe(struct of_device *ofdev,
 	 *      DMCR = 0x00000000
 	 *      SMCR = 0x00000000
 	 */
-	pme_out(global_pme, FAMCR, 0x01010101);
+	/* PME HW rev 2.1: Added TWC field in FAMCR */
+	pme_out(global_pme, FAMCR, 0x11010101);
 	pme_out(global_pme, DMCR, 0x00000001);
 	pme_out(global_pme, SMCR, 0x00000211);
 
@@ -346,10 +356,24 @@ static int __devinit of_fsl_pme_probe(struct of_device *ofdev,
 	BUG_ON(sizeof(dxe_a) != 4);
 	pme_out(global_pme, PDSRBAL, (u32)dxe_a);
 	pme_out(global_pme, SCBARL, (u32)sre_a);
-	/* Maximum allocated index into the PDSR table available to the DXE */
-	pme_out(global_pme, DEC1, (dxe_sz/PDSR_TBL_ALIGN)-1);
+	/* Maximum allocated index into the PDSR table available to the DXE
+	 * Rev 2.0: Max 0xF_FFFC
+	 * Rev 2.1: Max 0x7_FFFC
+	 */
+	if (PME_REV(pme_in(global_pme, PM_IP_REV1)) == PME_REV_2_0) {
+		if (((dxe_sz/PDSR_TBL_ALIGN)-1) > DEC1_MAX_REV_2_0)
+			dec1 = DEC1_MAX_REV_2_0;
+		else
+			dec1 = (dxe_sz/PDSR_TBL_ALIGN)-1;
+	} else {
+		if (((dxe_sz/PDSR_TBL_ALIGN)-1) > DEC1_MAX_REV_2_1)
+			dec1 = DEC1_MAX_REV_2_1;
+		else
+			dec1 = (dxe_sz/PDSR_TBL_ALIGN)-1;
+	}
+	pme_out(global_pme, DEC1, dec1);
 	/* Maximum allocated index into the PDSR table available to the SRE */
-	pme_out(global_pme, SEC2, (dxe_sz/PDSR_TBL_ALIGN)-1);
+	pme_out(global_pme, SEC2, dec1);
 	/* Maximum allocated 32-byte offset into SRE Context Table.*/
 	if (sre_sz)
 		pme_out(global_pme, SEC3, (sre_sz/SRE_TBL_ALIGN)-1);
