@@ -26,13 +26,13 @@ config FSL_PME2_CTRL
 config FSL_PME2_PDSRSIZE
 	int "Pattern Description and Stateful Rule default table size"
 	depends on FSL_PME2_CTRL
-	range 74240 33554431
+	range 74240 1048573
 	default 131072
 	help
 	  Select the default size of the Pattern Description and Stateful Rule
 	  table as the number of 128 byte entries. This only takes effect if
 	  the device tree node doesn't have the 'fsl,pme-pdsr' property.
-	  range 74240-33554431 (9.5MB-4GB)
+	  range 74240-1048573 (9.5MB-134MB)
 	  default 131072 (16MB)
 
 if FSL_PME2_CTRL
