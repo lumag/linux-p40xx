@@ -1,4 +1,4 @@
-/* Copyright (c) 2008, 2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -104,7 +104,7 @@ static struct qm_fd fd, fd_dq;
 /* Helpers for initialising and "incrementing" a frame descriptor */
 static void fd_init(struct qm_fd *__fd)
 {
-	__fd->addr_hi = 0xabba;		/* high 16-bits */
+	__fd->addr_hi = 0xab;		/* high 16-bits */
 	__fd->addr_lo = 0xdeadbeef;	/* low 32-bits */
 	__fd->format = qm_fd_contig_big;
 	__fd->length29 = 0x0000ffff;
@@ -414,7 +414,8 @@ void qman_test_low(struct qm_portal *__p)
 		BUG_ON(dq->tok != TTOKEN);
 		BUG_ON(dq->fqid != fqid);
 		BUG_ON(dq->contextB != TCONTEXTB);
-		fd_dq.pid = dq->fd.pid;
+		fd_dq.liodn_offset = dq->fd.liodn_offset;
+		fd_dq.eliodn_offset = dq->fd.eliodn_offset;
 		BUG_ON(memcmp(&dq->fd, &fd_dq, sizeof(fd_dq)));
 		/* Modify the frame-descriptor for next time */
 		fd_inc(&fd_dq);

@@ -1,4 +1,4 @@
-/* Copyright (c) 2008, 2009, Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -686,7 +686,7 @@ int pme_ctx_ctrl_nop(struct pme_ctx *ctx, u32 flags,
 	token->base_token.cmd_type = pme_cmd_nop;
 	/* enqueue the NOP command to PME */
 	memset(&fd, 0, sizeof(fd));
-	fd.addr_hi = 0xfeed;
+	fd.addr_hi = 0x00;
 	fd.addr_lo = (u32)token;
 	pme_fd_cmd_nop(&fd);
 	return do_work(ctx, flags, &fd, &token->base_token, NULL, 0);

@@ -1,4 +1,4 @@
-/* Copyright (c) 2008, 2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -560,10 +560,12 @@ enum qm_fd_format {
 /* See 1.5.1.1: "Frame Descriptor (FD)" */
 struct qm_fd {
 	u8 dd:2;	/* dynamic debug */
-	u8 pid:6;	/* Partition ID */
+	u8 liodn_offset:6; /* aka. "Partition ID" in rev1.0 */
 	u8 bpid;	/* Buffer Pool ID */
-	u16 addr_hi;	/* high 16-bits of 48-bit address */
-	u32 addr_lo;	/* low 32-bits of 48-bit address */
+	u8 eliodn_offset:4;
+	u8 __reserved:4;
+	u8 addr_hi;	/* high 8-bits of 40-bit address */
+	u32 addr_lo;	/* low 32-bits of 40-bit address */
 	/* The 'format' field indicates the interpretation of the remaining 29
 	 * bits of the 32-bit word. For packing reasons, it is duplicated in the
 	 * other union elements. */
@@ -598,9 +600,9 @@ struct qm_fd {
 
 /* See 2.2.1.3 Multi-Core Datapath Acceleration Architecture */
 struct qm_sg_entry {
-	u16 __reserved1;
-	u16 addr_hi;		/* high 16-bits of 48-bit address */
-	u32 addr_lo;		/* low 32-bits of 48-bit address */
+	u8 __reserved1[3];
+	u8 addr_hi;		/* high 8-bits of 40-bit address */
+	u32 addr_lo;		/* low 32-bits of 40-bit address */
 	u32 extension:1; 	/* Extension bit */
 	u32 final:1; 		/* Final bit */
 	u32 length:30;
