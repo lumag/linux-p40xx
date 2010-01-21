@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -39,7 +39,14 @@
 #include "fm_hc.h"
 
 
-#define __ERR_MODULE__  MODULE_FM
+#define __ERR_MODULE__  MODULE_FM_PCD
+
+#define HC_HCOR_OPCODE_PLCR_PRFL            0x0
+#define HC_HCOR_OPCODE_KG_SCM               0x1
+#define HC_HCOR_OPCODE_SYNC                 0x2
+#define HC_HCOR_OPCODE_CC                   0x3
+
+#define HC_HCOR_GBL                         0x20000000
 
 #define SIZE_OF_HC_FRAME_PORT_REGS          (sizeof(t_HcFrame)-sizeof(t_FmPcdKgInterModuleSchemeRegs)+sizeof(t_FmPcdKgPortRegs))
 #define SIZE_OF_HC_FRAME_SCHEME_REGS        sizeof(t_HcFrame)
@@ -63,7 +70,7 @@ do {                                                                            
     p_FmHc->wait[savedSeqNum] = TRUE;                                           \
     DBG(TRACE, ("Send Hc 0x%x , SeqNum %d, fd addr 0x%x, fd offset 0x%x",       \
             p_FmHc,savedSeqNum,FM_FD_GET_ADDR(frm),FM_FD_GET_OFFSET(frm)));     \
-    err = p_FmHc->f_QmEnqueueCB(p_FmHc->h_QmArg, p_FmHc->enqFqid, (void *)frm); \
+    err = p_FmHc->f_QmEnqueue(p_FmHc->h_QmArg, p_FmHc->enqFqid, (void *)frm);   \
     if(err)                                                                     \
         RETURN_ERROR(MINOR, err, ("HC enqueue failed"));                        \
     while (p_FmHc->wait[savedSeqNum]) ;                                         \
@@ -77,7 +84,7 @@ do {                                                                            
     p_FmHc->wait[savedSeqNum] = TRUE;                                           \
     DBG(TRACE, ("Send Hc Null 0x%x , SeqNum %d, fd addr 0x%x, fd offset 0x%x",  \
             p_FmHc,savedSeqNum,FM_FD_GET_ADDR(frm),FM_FD_GET_OFFSET(frm)));     \
-    err = p_FmHc->f_QmEnqueueCB(p_FmHc->h_QmArg, p_FmHc->enqFqid, (void *)frm); \
+    err = p_FmHc->f_QmEnqueue(p_FmHc->h_QmArg, p_FmHc->enqFqid, (void *)frm);   \
     if(err)  {                                                                  \
         REPORT_ERROR(MINOR, err, ("HC enqueue failed")); return NULL;           \
     }                                                                           \
@@ -113,67 +120,66 @@ do {                                                                            
 
 
 
-#ifdef __MWERKS__
+#if defined(__MWERKS__) && !defined(__GNUC__)
 #pragma pack(push,1)
-#endif /*__MWERKS__ */
+#endif /* defined(__MWERKS__) && ... */
 #define MEM_MAP_START
 
 /**************************************************************************//**
  @Description   PCD KG scheme registers
 *//***************************************************************************/
 typedef _Packed struct t_FmPcdKgSchemeRegsWithoutCounter {
-    uint32_t kgse_mode;    /**< MODE */
-    uint32_t kgse_ekfc;    /**< Extract Known Fields Command */
-    uint32_t kgse_ekdv;    /**< Extract Known Default Value */
-    uint32_t kgse_bmch;    /**< Bit Mask Command High */
-    uint32_t kgse_bmcl;    /**< Bit Mask Command Low */
-    uint32_t kgse_fqb;     /**< Frame Queue Base */
-    uint32_t kgse_hc;      /**< Hash Command */
-    uint32_t kgse_ppc;     /**< Policer Profile Command */
-    uint32_t kgse_gec[FM_PCD_KG_NUM_OF_GENERIC_REGS];
+    volatile uint32_t kgse_mode;    /**< MODE */
+    volatile uint32_t kgse_ekfc;    /**< Extract Known Fields Command */
+    volatile uint32_t kgse_ekdv;    /**< Extract Known Default Value */
+    volatile uint32_t kgse_bmch;    /**< Bit Mask Command High */
+    volatile uint32_t kgse_bmcl;    /**< Bit Mask Command Low */
+    volatile uint32_t kgse_fqb;     /**< Frame Queue Base */
+    volatile uint32_t kgse_hc;      /**< Hash Command */
+    volatile uint32_t kgse_ppc;     /**< Policer Profile Command */
+    volatile uint32_t kgse_gec[FM_PCD_KG_NUM_OF_GENERIC_REGS];
                            /**< Generic Extract Command */
-    uint32_t kgse_dv0;     /**< KeyGen Scheme Entry Default Value 0 */
-    uint32_t kgse_dv1;     /**< KeyGen Scheme Entry Default Value 1 */
-    uint32_t kgse_ccbs;    /**< KeyGen Scheme Entry Coarse Classification Bit*/
-    uint32_t kgse_mv;      /**< KeyGen Scheme Entry Match vector */
+    volatile uint32_t kgse_dv0;     /**< KeyGen Scheme Entry Default Value 0 */
+    volatile uint32_t kgse_dv1;     /**< KeyGen Scheme Entry Default Value 1 */
+    volatile uint32_t kgse_ccbs;    /**< KeyGen Scheme Entry Coarse Classification Bit*/
+    volatile uint32_t kgse_mv;      /**< KeyGen Scheme Entry Match vector */
 } _PackedType t_FmPcdKgSchemeRegsWithoutCounter;
 
-#define MEM_MAP_END
-#ifdef __MWERKS__
-#pragma pack(pop)
-#endif /* __MWERKS__ */
+typedef _Packed struct t_FmPcdKgPortRegs {
+    volatile uint32_t                spReg;
+    volatile uint32_t                cppReg;
+} _PackedType t_FmPcdKgPortRegs;
 
-typedef struct t_FmPcdKgPortRegs {
-        uint32_t                spReg;
-        uint32_t                cppReg;
-} t_FmPcdKgPortRegs;
-
-typedef struct t_HcFrame {
-    uint32_t                    opcode;
-    uint32_t                    actionReg;
-    uint32_t                    extraReg;
-    uint32_t                    commandSequence;
+typedef _Packed struct t_HcFrame {
+    volatile uint32_t                    opcode;
+    volatile uint32_t                    actionReg;
+    volatile uint32_t                    extraReg;
+    volatile uint32_t                    commandSequence;
     union
     {
         t_FmPcdKgInterModuleSchemeRegs      schemeRegs;
         t_FmPcdKgInterModuleSchemeRegs      schemeRegsWithoutCounter;
         t_FmPcdPlcrInterModuleProfileRegs   profileRegs;
-        uint32_t                            singleRegForWrite;    /* for writing SP, CPP, profile counter */
+        volatile uint32_t                   singleRegForWrite;    /* for writing SP, CPP, profile counter */
         t_FmPcdKgPortRegs                   portRegsForRead;
-        uint32_t                            clsPlanEntries[CLS_PLAN_NUM_PER_GRP];
+        volatile uint32_t                   clsPlanEntries[CLS_PLAN_NUM_PER_GRP];
     } hcSpecificData;
-} t_HcFrame;
+} _PackedType t_HcFrame;
+
+#define MEM_MAP_END
+#if defined(__MWERKS__) && !defined(__GNUC__)
+#pragma pack(pop)
+#endif /* defined(__MWERKS__) && ... */
 
 typedef struct t_FmHc {
-    t_Handle                h_FmPcd;
-    t_Handle                h_HcPortDev;
-    uint32_t                enqFqid;            /**< Host-Command enqueue Queue Id. */
-    t_FmPcdQmEnqueueCB      *f_QmEnqueueCB;     /**< A callback for enquing frames to the QM */
-    t_Handle                h_QmArg;            /**< A handle to the QM module */
+    t_Handle                    h_FmPcd;
+    t_Handle                    h_HcPortDev;
+    uint32_t                    enqFqid;            /**< Host-Command enqueue Queue Id. */
+    t_FmPcdQmEnqueueCallback    *f_QmEnqueue;     /**< A callback for enquing frames to the QM */
+    t_Handle                    h_QmArg;            /**< A handle to the QM module */
 
-    //volatile bool           lock;
-    uint32_t                seqNum;
-    volatile bool           wait[32];
+    uint32_t                    seqNum;
+    volatile bool               wait[32];
 } t_FmHc;
 
 
@@ -189,11 +195,11 @@ static t_Error KgHcSetClsPlan(t_FmHc *p_FmHc, t_FmPcdKgInterModuleClsPlanSet *p_
     for(i=p_Set->baseEntry;i<p_Set->baseEntry+p_Set->numOfClsPlanEntries;i+=8)
     {
         memset(&hcFrame, 0, sizeof(hcFrame));
-        hcFrame.opcode = 0x00000001;
+        hcFrame.opcode = (uint32_t)(HC_HCOR_GBL | HC_HCOR_OPCODE_KG_SCM);
         hcFrame.actionReg  = FmPcdKgBuildWriteClsPlanBlockActionReg((uint8_t)(i / CLS_PLAN_NUM_PER_GRP));
         hcFrame.extraReg = 0xFFFFF800;
         hcFrame.commandSequence = p_FmHc->seqNum;
-        memcpy(&hcFrame.hcSpecificData.clsPlanEntries, &p_Set->vectors[i-p_Set->baseEntry], CLS_PLAN_NUM_PER_GRP*sizeof(uint32_t));
+        memcpy((void*)&hcFrame.hcSpecificData.clsPlanEntries, (void*)&p_Set->vectors[i-p_Set->baseEntry], CLS_PLAN_NUM_PER_GRP*sizeof(uint32_t));
 
         BUILD_FD(sizeof(hcFrame));
 
@@ -212,7 +218,7 @@ static t_Error CcHcDoDynamicChange(t_FmHc *p_FmHc, bool keyModify, t_Handle p_Ol
     ASSERT_COND(p_FmHc);
 
     memset(&hcFrame, 0, sizeof(hcFrame));
-    hcFrame.opcode = 0x00000003;
+    hcFrame.opcode = (uint32_t)(HC_HCOR_GBL | HC_HCOR_OPCODE_CC);
     hcFrame.actionReg  = FmPcdCcGetNodeAddrOffset(p_FmHc->h_FmPcd, p_NewPointer);
     if(hcFrame.actionReg == ILLEGAL_BASE)
         RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("Something wrong with base address"));
@@ -293,13 +299,13 @@ t_Handle    FmHcConfigAndInit(t_FmHcParams *p_FmHcParams)
 
     p_FmHc->h_FmPcd             = p_FmHcParams->h_FmPcd;
     p_FmHc->enqFqid             = p_FmHcParams->params.enqFqid;
-    p_FmHc->f_QmEnqueueCB       = p_FmHcParams->params.f_QmEnqueueCB;
+    p_FmHc->f_QmEnqueue         = p_FmHcParams->params.f_QmEnqueue;
     p_FmHc->h_QmArg             = p_FmHcParams->params.h_QmArg;
 
 #ifndef CONFIG_GUEST_PARTITION
     memset(&fmPortParam, 0, sizeof(fmPortParam));
     fmPortParam.baseAddr    = p_FmHcParams->params.portBaseAddr;
-    fmPortParam.portType    = e_FM_PORT_TYPE_HOST_COMMAND;
+    fmPortParam.portType    = e_FM_PORT_TYPE_OH_HOST_COMMAND;
     fmPortParam.portId      = p_FmHcParams->params.portId;
     fmPortParam.h_Fm        = p_FmHcParams->h_Fm;
 
@@ -353,9 +359,10 @@ void FmHcTxConf(t_Handle h_FmHc, t_FmFD *p_Fd)
     DBG(TRACE, ("Hc Conf 0x%x , SeqNum %d, fd addr 0x%x, fd offset 0x%x",
             p_FmHc,p_HcFrame->commandSequence,FM_FD_GET_ADDR(p_Fd),FM_FD_GET_OFFSET(p_Fd)));
 
-    ASSERT_COND(p_FmHc->wait[p_HcFrame->commandSequence]);
-
-    p_FmHc->wait[p_HcFrame->commandSequence] = FALSE;
+    if (!(p_FmHc->wait[p_HcFrame->commandSequence]))
+        REPORT_ERROR(MINOR, E_INVALID_FRAME, ("Not an Host-Command frame recieved!"));
+    else
+        p_FmHc->wait[p_HcFrame->commandSequence] = FALSE;
 }
 
 t_Handle FmHcPcdKgSetScheme(t_Handle h_FmHc, t_FmPcdKgSchemeParams *p_Scheme)
@@ -375,6 +382,7 @@ t_Handle FmHcPcdKgSetScheme(t_Handle h_FmHc, t_FmPcdKgSchemeParams *p_Scheme)
         /* check that schameId is in range */
         if(p_Scheme->id.relativeSchemeId >= FmPcdKgGetNumOfPartitionSchemes(p_FmHc->h_FmPcd))
         {
+            FmPcdReleaseLock(p_FmHc->h_FmPcd);
             REPORT_ERROR(MAJOR, E_NOT_IN_RANGE, ("Scheme is out of range"));
             return NULL;
         }
@@ -391,7 +399,7 @@ t_Handle FmHcPcdKgSetScheme(t_Handle h_FmHc, t_FmPcdKgSchemeParams *p_Scheme)
         physicalSchemeId = FmPcdKgGetPhysicalSchemeId(p_FmHc->h_FmPcd, relativeSchemeId);
 
         memset(&hcFrame, 0, sizeof(hcFrame));
-        hcFrame.opcode = 0x00000001;
+        hcFrame.opcode = (uint32_t)(HC_HCOR_GBL | HC_HCOR_OPCODE_KG_SCM);
         hcFrame.actionReg  = FmPcdKgBuildReadSchemeActionReg(physicalSchemeId);
         hcFrame.extraReg = 0xFFFFF800;
         hcFrame.commandSequence = p_FmHc->seqNum;
@@ -412,6 +420,12 @@ t_Handle FmHcPcdKgSetScheme(t_Handle h_FmHc, t_FmPcdKgSchemeParams *p_Scheme)
     {
         physicalSchemeId = (uint8_t)(CAST_POINTER_TO_UINT32(p_Scheme->id.h_Scheme)-1);
         relativeSchemeId = FmPcdKgGetRelativeSchemeId(p_FmHc->h_FmPcd, physicalSchemeId);
+        if( relativeSchemeId == FM_PCD_KG_NUM_OF_SCHEMES)
+        {
+            FmPcdKgReleaseSchemeLock(p_FmHc->h_FmPcd, relativeSchemeId);
+            REPORT_ERROR(MAJOR, E_NOT_IN_RANGE, NO_MSG);
+            return NULL;
+        }
         if (FmPcdKgSchemeTryLock(p_FmHc->h_FmPcd, relativeSchemeId))
         {
             FmPcdReleaseLock(p_FmHc->h_FmPcd);
@@ -419,15 +433,9 @@ t_Handle FmHcPcdKgSetScheme(t_Handle h_FmHc, t_FmPcdKgSchemeParams *p_Scheme)
         }
         FmPcdReleaseLock(p_FmHc->h_FmPcd);
 
-        if( relativeSchemeId == FM_PCD_KG_NUM_OF_SCHEMES)
-        {
-            FmPcdKgReleaseSchemeLock(p_FmHc->h_FmPcd, relativeSchemeId);
-            REPORT_ERROR(MAJOR, E_NOT_IN_RANGE, NO_MSG);
-            return NULL;
-        }
     }
 
-    err = FmPcdKgBuildScheme(p_FmHc->h_FmPcd, p_Scheme, &schemeRegs,  &p_Scheme->orderedArray);
+    err = FmPcdKgBuildScheme(p_FmHc->h_FmPcd, p_Scheme, &schemeRegs);
     if(err)
     {
         FmPcdKgReleaseSchemeLock(p_FmHc->h_FmPcd, relativeSchemeId);
@@ -436,14 +444,16 @@ t_Handle FmHcPcdKgSetScheme(t_Handle h_FmHc, t_FmPcdKgSchemeParams *p_Scheme)
     }
 
     memset(&hcFrame, 0, sizeof(hcFrame));
-    hcFrame.opcode = 0x00000001;
+    hcFrame.opcode = (uint32_t)(HC_HCOR_GBL | HC_HCOR_OPCODE_KG_SCM);
     hcFrame.actionReg  = FmPcdKgBuildWriteSchemeActionReg(physicalSchemeId, p_Scheme->schemeCounter.update);
     hcFrame.extraReg = 0xFFFFF800;
     hcFrame.commandSequence = p_FmHc->seqNum;
     memcpy(&hcFrame.hcSpecificData.schemeRegs, &schemeRegs, sizeof(t_FmPcdKgInterModuleSchemeRegs));
     //p_NewStruct= (t_FmPcdKgSchemeRegsWithoutCounter*)&hcFrame.hcSpecificData;
     if(!p_Scheme->schemeCounter.update)
-        memcpy((t_FmPcdKgSchemeRegsWithoutCounter*)&hcFrame.hcSpecificData.schemeRegs.kgse_dv0, &schemeRegs.kgse_dv0, 4*sizeof(uint32_t));
+        memcpy((void*)&hcFrame.hcSpecificData.schemeRegs.kgse_dv0,
+               (void*)&schemeRegs.kgse_dv0,
+               4*sizeof(uint32_t));
 
     BUILD_FD(sizeof(hcFrame));
 
@@ -466,25 +476,27 @@ t_Error FmHcPcdKgDeleteScheme(t_Handle h_FmHc, t_Handle h_Scheme)
     uint8_t                             physicalSchemeId = (uint8_t)(CAST_POINTER_TO_UINT32(h_Scheme)-1);
 
     if ((err = FmPcdTryLock(p_FmHc->h_FmPcd)) != E_OK)
-        return err;
+        RETURN_ERROR(MAJOR, err, NO_MSG);
 
     relativeSchemeId = FmPcdKgGetRelativeSchemeId(p_FmHc->h_FmPcd, physicalSchemeId);
 
     err = FmPcdKgSchemeTryLock(p_FmHc->h_FmPcd, relativeSchemeId);
     FmPcdReleaseLock(p_FmHc->h_FmPcd);
     if (err)
-        return err;
+        RETURN_ERROR(MAJOR, err, NO_MSG);
 
     if(relativeSchemeId == FM_PCD_KG_NUM_OF_SCHEMES)
     {
         FmPcdKgReleaseSchemeLock(p_FmHc->h_FmPcd, relativeSchemeId);
-        REPORT_ERROR(MAJOR, E_NOT_IN_RANGE, NO_MSG);
+        RETURN_ERROR(MAJOR, E_NOT_IN_RANGE, NO_MSG);
     }
 
-    FmPcdKgCheckInvalidateSchemeSw(p_FmHc->h_FmPcd, relativeSchemeId);
+    err = FmPcdKgCheckInvalidateSchemeSw(p_FmHc->h_FmPcd, relativeSchemeId);
+    if (err)
+        RETURN_ERROR(MAJOR, err, NO_MSG);
 
     memset(&hcFrame, 0, sizeof(hcFrame));
-    hcFrame.opcode = 0x00000001;
+    hcFrame.opcode = (uint32_t)(HC_HCOR_GBL | HC_HCOR_OPCODE_KG_SCM);
     hcFrame.actionReg  = FmPcdKgBuildWriteSchemeActionReg(physicalSchemeId, TRUE);
     hcFrame.extraReg = 0xFFFFF800;
     memset(&hcFrame.hcSpecificData.schemeRegs, 0, sizeof(t_FmPcdKgInterModuleSchemeRegs));
@@ -529,7 +541,7 @@ uint32_t  FmHcPcdKgGetSchemeCounter(t_Handle h_FmHc, t_Handle h_Scheme)
 
     /* first read scheme and check that it is valid */
     memset(&hcFrame, 0, sizeof(hcFrame));
-    hcFrame.opcode = 0x00000001;
+    hcFrame.opcode = (uint32_t)(HC_HCOR_GBL | HC_HCOR_OPCODE_KG_SCM);
     hcFrame.actionReg  = FmPcdKgBuildReadSchemeActionReg(physicalSchemeId);
     hcFrame.extraReg = 0xFFFFF800;
     hcFrame.commandSequence = p_FmHc->seqNum;
@@ -577,7 +589,7 @@ t_Error  FmHcPcdKgSetSchemeCounter(t_Handle h_FmHc, t_Handle h_Scheme, uint32_t 
 
     /* first read scheme and check that it is valid */
     memset(&hcFrame, 0, sizeof(hcFrame));
-    hcFrame.opcode = 0x00000001;
+    hcFrame.opcode = (uint32_t)(HC_HCOR_GBL | HC_HCOR_OPCODE_KG_SCM);
     hcFrame.actionReg  = FmPcdKgBuildReadSchemeActionReg(physicalSchemeId);
     hcFrame.extraReg = 0xFFFFF800;
     hcFrame.commandSequence = p_FmHc->seqNum;
@@ -594,7 +606,7 @@ t_Error  FmHcPcdKgSetSchemeCounter(t_Handle h_FmHc, t_Handle h_Scheme, uint32_t 
     }
 
     /* Write scheme back, with modified counter */
-    hcFrame.opcode = 0x00000001;
+    hcFrame.opcode = (uint32_t)(HC_HCOR_GBL | HC_HCOR_OPCODE_KG_SCM);
     hcFrame.actionReg  = FmPcdKgBuildWriteSchemeActionReg(physicalSchemeId, TRUE);
     hcFrame.extraReg = 0xFFFFF800;
     hcFrame.commandSequence = p_FmHc->seqNum;
@@ -693,7 +705,7 @@ t_Handle FmHcPcdPlcrSetProfile(t_Handle h_FmHc,t_FmPcdPlcrProfileParams *p_Profi
     if(!p_Profile->modify)
     {
         memset(&hcFrame, 0, sizeof(hcFrame));
-        hcFrame.opcode = 0x00000000;
+        hcFrame.opcode = (uint32_t)(HC_HCOR_GBL | HC_HCOR_OPCODE_PLCR_PRFL);
         hcFrame.actionReg  = FmPcdPlcrBuildReadPlcrActionReg(profileIndx);
         hcFrame.extraReg = 0x00008000;
         hcFrame.commandSequence = p_FmHc->seqNum;
@@ -721,7 +733,7 @@ t_Handle FmHcPcdPlcrSetProfile(t_Handle h_FmHc,t_FmPcdPlcrProfileParams *p_Profi
     }
 
     memset(&hcFrame, 0, sizeof(hcFrame));
-    hcFrame.opcode = 0x00000000;
+    hcFrame.opcode = (uint32_t)(HC_HCOR_GBL | HC_HCOR_OPCODE_PLCR_PRFL);
     hcFrame.actionReg  = FmPcdPlcrBuildWritePlcrActionRegs(profileIndx);
     hcFrame.extraReg = 0x00008000;
     hcFrame.commandSequence = p_FmHc->seqNum;
@@ -751,7 +763,7 @@ t_Error FmHcPcdPlcrDeleteProfile(t_Handle h_FmHc, t_Handle h_Profile)
 
     FmPcdPlcrInvalidateProfileSw(p_FmHc->h_FmPcd, absoluteProfileId);
     memset(&hcFrame, 0, sizeof(hcFrame));
-    hcFrame.opcode = 0x00000000;
+    hcFrame.opcode = (uint32_t)(HC_HCOR_GBL | HC_HCOR_OPCODE_PLCR_PRFL);
     hcFrame.actionReg  = FmPcdPlcrBuildWritePlcrActionReg(absoluteProfileId);
     hcFrame.actionReg  |= 0x00008000;
     hcFrame.extraReg = 0x00008000;
@@ -781,7 +793,7 @@ t_Error  FmHcPcdPlcrSetProfileCounter(t_Handle h_FmHc, t_Handle h_Profile, e_FmP
 
     /* first read scheme and check that it is valid */
     memset(&hcFrame, 0, sizeof(hcFrame));
-    hcFrame.opcode = 0x00000000;
+    hcFrame.opcode = (uint32_t)(HC_HCOR_GBL | HC_HCOR_OPCODE_PLCR_PRFL);
     hcFrame.actionReg  = FmPcdPlcrBuildReadPlcrActionReg(absoluteProfileId);
     hcFrame.extraReg = 0x00008000;
     hcFrame.commandSequence = p_FmHc->seqNum;
@@ -797,7 +809,7 @@ t_Error  FmHcPcdPlcrSetProfileCounter(t_Handle h_FmHc, t_Handle h_Profile, e_FmP
         RETURN_ERROR(MAJOR, E_ALREADY_EXISTS, ("Policer is already used"));
     }
 
-    hcFrame.opcode = 0x00000000;
+    hcFrame.opcode = (uint32_t)(HC_HCOR_GBL | HC_HCOR_OPCODE_PLCR_PRFL);
     hcFrame.actionReg  = FmPcdPlcrBuildWritePlcrActionReg(absoluteProfileId);
     hcFrame.actionReg |= FmPcdPlcrBuildCounterProfileReg(counter);
     hcFrame.extraReg = 0x00008000;
@@ -829,7 +841,7 @@ uint32_t FmHcPcdPlcrGetProfileCounter(t_Handle h_FmHc, t_Handle h_Profile, e_FmP
 
     /* first read scheme and check that it is valid */
     memset(&hcFrame, 0, sizeof(hcFrame));
-    hcFrame.opcode = 0x00000000;
+    hcFrame.opcode = (uint32_t)(HC_HCOR_GBL | HC_HCOR_OPCODE_PLCR_PRFL);
     hcFrame.actionReg  = FmPcdPlcrBuildReadPlcrActionReg(absoluteProfileId);
     hcFrame.extraReg = 0x00008000;
     hcFrame.commandSequence = p_FmHc->seqNum;
@@ -842,7 +854,7 @@ uint32_t FmHcPcdPlcrGetProfileCounter(t_Handle h_FmHc, t_Handle h_Profile, e_FmP
     if (!FmPcdPlcrHwProfileIsValid(hcFrame.hcSpecificData.profileRegs.fmpl_pemode))
     {
         FmPcdPlcrReleaseProfileLock(p_FmHc->h_FmPcd, absoluteProfileId);
-        RETURN_ERROR(MAJOR, E_ALREADY_EXISTS, ("Policer is already used"));
+        RETURN_ERROR(MAJOR, E_ALREADY_EXISTS, ("invalid Policer profile"));
     }
 
     switch (counter)
@@ -1123,7 +1135,7 @@ t_Error FmHcKgWriteSp(t_Handle h_FmHc, uint8_t hardwarePortId, uint32_t spReg, b
 
     memset(&hcFrame, 0, sizeof(hcFrame));
     /* first read SP register */
-    hcFrame.opcode = 0x00000001;
+    hcFrame.opcode = (uint32_t)(HC_HCOR_GBL | HC_HCOR_OPCODE_KG_SCM);
     hcFrame.actionReg  = FmPcdKgBuildReadPortSchemeBindActionReg(hardwarePortId);
     hcFrame.extraReg = 0xFFFFF800;
     hcFrame.commandSequence = p_FmHc->seqNum;
@@ -1132,7 +1144,7 @@ t_Error FmHcKgWriteSp(t_Handle h_FmHc, uint8_t hardwarePortId, uint32_t spReg, b
 
     ENQUEUE_FRM(&fmFd);
 
-    /* spReg is the first reg, so we can use it bothe for read and for write */
+    /* spReg is the first reg, so we can use it both for read and for write */
     if(add)
         hcFrame.hcSpecificData.portRegsForRead.spReg |= spReg;
     else
@@ -1159,7 +1171,7 @@ t_Error FmHcKgWriteCpp(t_Handle h_FmHc, uint8_t hardwarePortId, uint32_t cppReg)
 
     memset(&hcFrame, 0, sizeof(hcFrame));
     /* first read SP register */
-    hcFrame.opcode = 0x00000001;
+    hcFrame.opcode = (uint32_t)(HC_HCOR_GBL | HC_HCOR_OPCODE_KG_SCM);
     hcFrame.actionReg  = FmPcdKgBuildWritePortClsPlanBindActionReg(hardwarePortId);
     hcFrame.extraReg = 0xFFFFF800;
     hcFrame.commandSequence = p_FmHc->seqNum;

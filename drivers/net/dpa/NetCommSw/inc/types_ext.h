@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -59,35 +59,38 @@
 
 static __inline__ void TypesChecker(void)
 {
-#ifdef __MWERKS__
+#if defined(__MWERKS__) && !defined(__GNUC__)
 #pragma pack(push,1)
-#endif /*__MWERKS__ */
+#endif /* defined(__MWERKS__) && ... */
 #define MEM_MAP_START
      _Packed struct strct {
         __volatile__ int vi;
     } _PackedType;
 #define MEM_MAP_END
-#ifdef __MWERKS__
+#if defined(__MWERKS__) && !defined(__GNUC__)
 #pragma pack(pop)
-#endif /* __MWERKS__ */
-    size_t          size=0;
-    int             on=ON, off=OFF;
-    bool            tr=TRUE,fls=FALSE;
+#endif /* defined(__MWERKS__) && ... */
+    size_t          size = 0;
+    int             on = ON, off = OFF;
+    bool            tr = TRUE, fls = FALSE;
     struct strct    *p_Strct = NULL;
+    physAddress_t   addr = 0x100;
 
-    on=off;
-    tr=fls;
-    p_Strct=p_Strct;
+    on      = off;
+    tr      = fls;
+    p_Strct = p_Strct;
     size++;
 
-    WRITE_UINT8(*(uint8_t *)UINT8_MAX, GET_UINT8(*(uint8_t *)UINT8_MIN));
+    WRITE_UINT8 (*(uint8_t  *)addr,  GET_UINT8 (*(uint8_t  *)addr ));
+
+    WRITE_UINT8 (*(uint8_t  *)UINT8_MAX,  GET_UINT8 (*(uint8_t  *)UINT8_MIN ));
     WRITE_UINT16(*(uint16_t *)UINT16_MAX, GET_UINT16(*(uint16_t *)UINT16_MIN));
     WRITE_UINT32(*(uint32_t *)UINT32_MAX, GET_UINT32(*(uint32_t *)UINT32_MIN));
     WRITE_UINT64(*(uint64_t *)UINT64_MAX, GET_UINT64(*(uint64_t *)UINT64_MIN));
-    WRITE_UINT8(*(uint8_t *)INT8_MAX, GET_UINT8(*(uint8_t *)UINT8_MIN));
-    WRITE_UINT16(*(uint16_t *)INT16_MAX, GET_UINT16(*(uint16_t *)INT16_MIN));
-    WRITE_UINT32(*(uint32_t *)INT32_MAX, GET_UINT32(*(uint32_t *)INT32_MIN));
-    WRITE_UINT64(*(uint64_t *)INT64_MAX, GET_UINT64(*(uint64_t *)INT64_MIN));
+    WRITE_UINT8 (*(uint8_t  *)INT8_MAX,   GET_UINT8 (*(uint8_t  *)UINT8_MIN ));
+    WRITE_UINT16(*(uint16_t *)INT16_MAX,  GET_UINT16(*(uint16_t *)INT16_MIN ));
+    WRITE_UINT32(*(uint32_t *)INT32_MAX,  GET_UINT32(*(uint32_t *)INT32_MIN ));
+    WRITE_UINT64(*(uint64_t *)INT64_MAX,  GET_UINT64(*(uint64_t *)INT64_MIN ));
 }
 
 

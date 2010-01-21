@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -36,6 +36,31 @@
 #include "std_ext.h"
 
 
+/**************************************************************************//**
+ @Group         sys_grp     System Interfaces
+
+ @Description   Linux system programming interfaces.
+
+ @{
+*//***************************************************************************/
+
+/**************************************************************************//**
+ @Group         sys_gen_grp     System General Interface
+
+ @Description   General definitions, structures and routines of the linux
+                system programming interface.
+
+ @{
+*//***************************************************************************/
+
+/**************************************************************************//**
+ @Description   System Modules and Sub-Modules Enumeration
+
+                This enumeration type is expected by most system routines in
+                order to identify the type of the referenced module or sub-module.
+                The lower values of this enumeration type are modules, and the
+                higher values are sub-modules.
+*//***************************************************************************/
 typedef enum e_SysModule
 {
     e_SYS_MODULE_NONE = 0,
@@ -100,9 +125,11 @@ typedef enum e_SysModule
     e_SYS_MODULE_MPC8568_RIO_DEV,
     e_SYS_MODULE_MPC8568_PCI_DEV,
     e_SYS_MODULE_MPC836X_PCI_DEV,
+    e_SYS_MODULE_MPC837x_PCI_DEV,
     e_SYS_MODULE_MPC832X_PCI_DEV,
     e_SYS_MODULE_MPC8568_PCIE_DEV,
     e_SYS_MODULE_MPC8569_PCIE_DEV,
+    e_SYS_MODULE_MPC837x_PCIE_DEV,
     e_SYS_MODULE_MPC8568_SPI_FLASH_DEV,
     e_SYS_MODULE_MPC8568_SPI_LB_DEV,
     e_SYS_MODULE_SD_DEV,
@@ -135,6 +162,7 @@ typedef enum e_SysModule
     e_SYS_SUBMODULE_QE_TIMERS,
     e_SYS_SUBMODULE_GTIMERS,
     e_SYS_SUBMODULE_PAR_IO,
+    e_SYS_SUBMODULE_GPIO,
     e_SYS_SUBMODULE_SI,
     e_SYS_SUBMODULE_TDM,
     e_SYS_SUBMODULE_TDM_RX_FRAME,
@@ -209,6 +237,7 @@ typedef enum e_SysModule
     e_SYS_SUBMODULE_IW_IP_REASS,
     e_SYS_SUBMODULE_IW_PLCR,
     e_SYS_SUBMODULE_IW_QM,
+    e_SYS_SUBMODULE_IW_IPSEC,
     e_SYS_SUBMODULE_QE_FILTER,
     e_SYS_SUBMODULE_QE_TABLE,
     e_SYS_SUBMODULE_QE_RTC,
@@ -216,6 +245,8 @@ typedef enum e_SysModule
     e_SYS_SUBMODULE_VP_PORT,
     e_SYS_SUBMODULE_MII_MNG,
     e_SYS_SUBMODULE_PTP,
+    e_SYS_SUBMODULE_SATA,
+    e_SYS_SUBMODULE_SERDES,
     e_SYS_SUBMODULE_BM,
     e_SYS_SUBMODULE_BM_PORTAL,
     e_SYS_SUBMODULE_BM_CE_PORTAL,
@@ -282,6 +313,457 @@ static __inline__ t_Handle SYS_GetUniqueHandle(e_SysModule module)
 }
 
 /**************************************************************************//**
+ @Description   System Object Descriptor
+
+                This is the generic object descriptor for the system layout.
+                It contains only the module enumeration type, according to
+                which the system can decide whether this is a module descriptor
+                or a sub-module descriptor.
+*//***************************************************************************/
+typedef struct t_SysObjectDescriptor
+{
+    e_SysModule module; /**< Module/sub-module type */
+
+} t_SysObjectDescriptor;
+
+/**************************************************************************//**
+ @Description   Module initialization function (with no parameters)
+*//***************************************************************************/
+typedef t_Handle (t_SysModuleInitFuncNoParams)(void);
+
+/**************************************************************************//**
+ @Description   Module initialization function (with pointer to parameters)
+*//***************************************************************************/
+typedef t_Handle (t_SysModuleInitFuncWithParams)(void *p_ModuleParams);
+
+/**************************************************************************//**
+ @Description   System Module Descriptor
+
+                This structure should be used in the use case layout to request
+                initialization of a module object.
+
+                A module is by definition a singleton object, therefore no ID
+                is required in this structure.
+*//***************************************************************************/
+typedef struct t_SysModuleDescriptor
+{
+    e_SysModule module;                     /**< Module type */
+    void        *p_Settings;                /**< Pointer to the module's settings */
+
+    struct
+    {
+        union
+        {
+            t_SysModuleInitFuncNoParams     *f_InitNoParams;
+                                            /**< Module initialization routine (with no parameters) */
+            t_SysModuleInitFuncWithParams   *f_InitWithParams;
+                                            /**< Module initialization routine (with parameters) */
+        } cbs;
+        t_Error                             (*f_Free)(t_Handle h_Module);
+                                            /**< Module free routine */
+    } moduleInterface;
+
+} t_SysModuleDescriptor;
+
+
+/**************************************************************************//**
+ @Description   System Sub-Module Descriptor
+
+                This structure should be used in the use case layout to request
+                initialization of a sub-module object.
+
+                There may be multiple objects of the same sub-module type,
+                therefore the ID variable must be unique for each instance of
+                the same type.
+
+                The f_UpdateSettings callback routine and the idIncrement value
+                may be used to clone multiple objects of the same type. If the
+                callback is not NULL, the system shall call this routine to
+                generate a new settings structure for the next object, and then
+                initialize the object. The system will continue to invoke the
+                callback routine until a NULL pointer is returned. The callback
+                routine is responsible for allocating and freeing the cloned
+                settings structure. The original settings must not be modified.
+*//***************************************************************************/
+typedef struct t_SysSubModuleDescriptor
+{
+    e_SysModule module;             /**< Sub-module type */
+    uint32_t    id;                 /**< The sub-module ID */
+    void        *p_Settings;        /**< Pointer to the sub-module's settings */
+    void *      (*f_UpdateSettings)(uint32_t newId, void *p_OrigSettings, void *p_PrevSettings);
+                                    /**< Callback routine for cloning objects */
+    uint16_t    idIncrement;        /**< Amount by which to increment the
+                                         Sub-module ID when cloning objects */
+} t_SysSubModuleDescriptor;
+
+
+/**************************************************************************//**
+ @Collection    Object Identifier Macros
+ @{
+*//***************************************************************************/
+#define SYS_NULL_OBJECT_ID          0xFFFFFFFF
+                                    /**< Object ID representing no object */
+
+#define CAST_ID_TO_HANDLE(_id)      ((t_Handle)(_id))
+                                    /**< Macro for casting an object ID to a handle */
+#define CAST_HANDLE_TO_ID(_h)       ((uint32_t)(_h))
+                                    /**< Macro for casting a handle to an object ID */
+/* @} */
+
+/**************************************************************************//**
+ @Collection    Macros for Advanced Configuration Requests
+ @{
+*//***************************************************************************/
+#define SYS_MAX_ADV_CONFIG_ARGS     4
+                                    /**< Maximum number of arguments in
+                                         an advanced confiuration entry */
+
+#define ADV_CONFIG_DONE             NULL, { 0 }
+                                    /**< Marks the end of an advanced
+                                         configuration requests array \hideinitializer */
+#define ADV_CONFIG_NONE             (t_SysObjectAdvConfigEntry[]){ {ADV_CONFIG_DONE} }
+                                    /**< Marks an empty advanced
+                                         configuration requests array \hideinitializer */
+/* @} */
+
+/**************************************************************************//**
+ @Description   System Object Advanced Configuration Entry
+
+                This structure represents a single request for an advanced
+                configuration call on the initialized object. An array of such
+                requests may be contained in the settings structure of the
+                corresponding object.
+
+                The maximum number of arguments is limited to #SYS_MAX_ADV_CONFIG_ARGS.
+*//***************************************************************************/
+typedef struct t_SysObjectAdvConfigEntry
+{
+    void        *p_Function;    /**< Pointer to advanced configuration routine */
+#if 0
+     /*@@@@ cannot use uint64_t (CW bug?) */
+#endif
+    uint32_t    args[SYS_MAX_ADV_CONFIG_ARGS];
+                                /**< Array of arguments for the specified routine;
+                                     All arguments should be casted to uint32_t. */
+} t_SysObjectAdvConfigEntry;
+
+
+/** @} */ /* end of sys_gen_grp */
+
+/**************************************************************************//**
+ @Group         sys_app_grp     System Interface for Applications
+
+ @Description   Linux system programming interface for applications and
+                use cases.
+
+ @{
+*//***************************************************************************/
+
+/**************************************************************************//**
+ @Collection    Test Descriptor Text Length Limits
+ @{
+*//***************************************************************************/
+#define SYS_MAX_TEST_MODULE_NAME_LENGTH     32  /**< Maximum test module name length */
+#define SYS_MAX_TEST_GROUP_NAME_LENGTH      64  /**< Maximum test group name length */
+#define SYS_MAX_TEST_DESCRIPTION_LENGTH     128 /**< Maximum test description length */
+/* @} */
+
+/**************************************************************************//**
+ @Description   Test Descriptor
+
+                This structure should be used in the use case layout to request
+                execution of a specific test.
+*//***************************************************************************/
+typedef struct t_SysTestDescriptor
+{
+    char        testModule[SYS_MAX_TEST_MODULE_NAME_LENGTH];
+                /**< Test module name */
+    char        testGroup[SYS_MAX_TEST_GROUP_NAME_LENGTH];
+                /**< Test group name */
+    uint16_t    testId;
+                /**< Test identifier */
+    char        description[SYS_MAX_TEST_DESCRIPTION_LENGTH];
+                /**< Test description */
+    t_Error     (*f_RunTest)(void *p_TestParam);
+                /**< Test routine */
+    void        (*f_KillTest)(void);
+                /**< Test termination routine */
+    void        *p_TestParam;
+                /**< Pointer to the test parameters structure */
+
+} t_SysTestDescriptor;
+
+
+/**************************************************************************//**
+ @Description   Runtime Layout Structure
+
+                This structure describes a requested runtime layout, and
+                contains both logical object descriptors and test descriptors.
+*//***************************************************************************/
+typedef struct t_SysRuntimeLayout
+{
+    t_SysObjectDescriptor   **p_LogicalObjects;     /**< Logical-layer object descriptors */
+    t_SysTestDescriptor     **p_TestDescriptors;    /**< Test descriptors */
+
+} t_SysRuntimeLayout;
+
+/**************************************************************************//**
+ @Description   Peripheral Layout Structure
+
+                This structure describes a peripheral layout, and contains both
+                peripheral object descriptors and an array of runtime layouts
+*//***************************************************************************/
+typedef struct t_SysPeripheralLayout
+{
+    t_SysObjectDescriptor   **p_PeripheralObjects;  /**< Peripheral-layer object descriptors */
+    t_SysRuntimeLayout      *p_RuntimeLayouts;      /**< An array of runtime layouts */
+
+} t_SysPeripheralLayout;
+
+/**************************************************************************//**
+ @Description   System Layout Structure
+
+                This structure describes a system layout, and contains both
+                system object descriptors and an array of peripheral layouts
+*//***************************************************************************/
+typedef struct t_SysSystemLayout
+{
+    t_SysObjectDescriptor   **p_SystemObjects;      /**< System-layer object descriptors */
+    t_SysPeripheralLayout   *p_PeripheralLayouts;   /**< An array of peripheral layouts */
+
+} t_SysSystemLayout;
+
+/**************************************************************************//**
+ @Description   Use Case Layout Structure
+
+                This structure describes a use case runtime layout, and
+                contains a pointer to the platform settings as well as an
+                array of system layouts.
+*//***************************************************************************/
+typedef struct t_SysUseCaseLayout
+{
+    t_SysObjectDescriptor   *p_PlatformObject;      /**< Platform object descriptor */
+    t_SysSystemLayout       *p_SystemLayouts;       /**< An array of system layouts */
+
+} t_SysUseCaseLayout;
+
+
+/**************************************************************************//**
+ @Collection    Macros for Building the Use Case Layout
+ @{
+*//***************************************************************************/
+#define SYS_SYSTEM_OBJECTS(...)     (t_SysObjectDescriptor*[]){ __VA_ARGS__, NULL }
+                                    /**< Defines an array of system object descriptors \hideinitializer */
+#define SYS_PERIPHERAL_OBJECTS(...) (t_SysObjectDescriptor*[]){ __VA_ARGS__, NULL }
+                                    /**< Defines an array of peripheral object descriptors \hideinitializer */
+#define SYS_LOGICAL_OBJECTS(...)    (t_SysObjectDescriptor*[]){ __VA_ARGS__, NULL }
+                                    /**< Defines an array of logical object descriptors \hideinitializer */
+#define SYS_TEST_DESCRIPTORS(...)   (t_SysTestDescriptor*[]){ __VA_ARGS__, NULL }
+                                    /**< Defines an array of test descriptors \hideinitializer */
+
+#define SYS_BEGIN_SYSTEM_LAYOUTS \
+        (t_SysSystemLayout[]){      /**< Starts an array of system layout structures \hideinitializer */
+#define SYS_END_SYSTEM_LAYOUTS \
+        , { NULL, NULL } }          /**< Ends an array of system layout structures \hideinitializer */
+
+#define SYS_BEGIN_PERIPHERAL_LAYOUTS \
+        (t_SysPeripheralLayout[]){  /**< Starts an array of peripheral layout structures \hideinitializer */
+#define SYS_END_PERIPHERAL_LAYOUTS \
+        , { NULL, NULL } }          /**< Ends an array of peripheral layout structures \hideinitializer */
+
+#define SYS_BEGIN_RUNTIME_LAYOUTS \
+        (t_SysRuntimeLayout[]){     /**< Starts an array of runtime layout structures \hideinitializer */
+#define SYS_END_RUNTIME_LAYOUTS \
+        , { NULL, NULL } }          /**< Ends an array of runtime layout structures \hideinitializer */
+
+/* @} */
+
+/**************************************************************************//**
+ @Collection    Macros for Defining a Module Interface
+ @{
+*//***************************************************************************/
+#define MODULE_INTERFACE_VOID_PARAM(_initFunc, _freeFunc) \
+    { .cbs.f_InitNoParams = (_initFunc), .f_Free = (_freeFunc) }
+                    /**< Defines a module interface (with no initialization parameters) \hideinitializer */
+
+#define MODULE_INTERFACE_WITH_PARAM(_initFunc, _freeFunc) \
+    { .cbs.f_InitWithParams = (t_SysModuleInitFuncWithParams *)(_initFunc), .f_Free = (_freeFunc) }
+                    /**< Defines a module interface (with initialization parameters) \hideinitializer */
+/* @} */
+
+typedef t_Error (t_UpdateSettingsFunc)(uint32_t id, void *p_SubmoduleSettings);
+
+
+/**************************************************************************//**
+ @Function      SYS_Init
+
+ @Description   System initialization routine.
+
+                This routine calls the SYS_InternalInit() routine to initialize
+                the internal system structures and services, such as memory
+                management, objects repository and more.
+
+ @Return        None.
+*//***************************************************************************/
+void SYS_Init(void);
+
+/**************************************************************************//**
+ @Function      SYS_Free
+
+ @Description   System termination routine.
+
+                This routine releases all internal structures that were
+                initialized by the SYS_Init() routine.
+
+ @Return        None.
+*//***************************************************************************/
+void SYS_Free(void);
+
+/**************************************************************************//**
+ @Function      SYS_RunLayout
+
+ @Description   Executes a given use case layout.
+
+                This routine may be called to process and execute a use case
+                layout structure. The user should pass a pointer to a valid
+                use case layout structure, and the system would initialize
+                the requested objects and execute the requested test routines.
+
+ @Param[in]     p_UcLayout - Pointer to use case layout structure.
+
+ @Return        Zero for success; Non-zero value on error.
+*//***************************************************************************/
+int SYS_RunLayout(t_SysUseCaseLayout *p_UcLayout);
+
+
+/**************************************************************************//**
+ @Function      USER_BuildLayout
+
+ @Description   User-implemented routine for building the use case layout.
+
+                Any memory allocations in this routine must be released in the
+                USER_FreeLayout() routine.
+
+ @Return        Pointer to the use case layout; NULL on failure.
+*//***************************************************************************/
+t_SysUseCaseLayout * USER_BuildLayout(void);
+
+/**************************************************************************//**
+ @Function      USER_FreeLayout
+
+ @Description   User-implemented routine for freeing the use case layout.
+
+                This routine is called by the main routine in order to free
+                the use case layout before terminating the program.
+
+ @Param[in]     p_UseCaseLayout - Pointer to the use case layout to free.
+
+ @Return        None.
+*//***************************************************************************/
+void USER_FreeLayout(t_SysUseCaseLayout *p_UseCaseLayout);
+
+
+/**************************************************************************//**
+ @Function      USER_ModuleInit
+
+ @Description   User-implemented routine for system initialization. It calls
+                the necessary routines to build and run the use case layout.
+
+                This must be called from the kernel module's init routine.
+
+ @Return        0 on sucess, negative error code otherwise.
+*//***************************************************************************/
+int USER_ModuleInit(void);
+
+/**************************************************************************//**
+ @Function      USER_ModuleExit
+
+ @Description   User-implemented routine for freeing system resources. out.
+
+                This must be called from the kernel module's exit routine.
+
+ @Return        None.
+*//***************************************************************************/
+void USER_ModuleExit(void);
+
+/** @} */ /* end of sys_app_grp */
+
+/**************************************************************************//**
+ @Group         sys_mod_grp     System Interface for Modules
+
+ @Description   Linux system programming interface for modules (such as
+                wrappers and others).
+
+ @{
+*//***************************************************************************/
+
+/**************************************************************************//**
+ @Description   Sub-Modules Registration Parameters.
+
+                This structure provides registration parameters for a set of
+                sub-modules. Each module should register its own sub-modules
+                in the system using the SYS_RegisterSubModules() routine.
+*//***************************************************************************/
+typedef struct t_SysSubModuleRegisterParam
+{
+    e_SysModule owner;              /**< The type of the owner module */
+    uint8_t     numOfSubModules;    /**< Number of sub-modules in the \c p_SubModules array */
+    e_SysModule *p_SubModules;      /**< An array of sub-module types, of size \c numOfSubModules */
+    t_Error     (*f_InitSubModule)(t_Handle h_Module, t_SysSubModuleDescriptor *p_SubModuleDesc);
+                                    /**< Sub-modules initialization routine */
+    t_Error     (*f_FreeSubModule)(t_Handle h_Module, e_SysModule subModule, uint32_t id);
+                                    /**< Sub-modules free routine */
+    t_Handle    (*f_GetSubModule)(t_Handle h_Module, e_SysModule subModule, uint32_t id);
+                                    /**< Routine for retrieving sub-module handles */
+} t_SysSubModuleRegisterParam;
+
+/**************************************************************************//**
+ @Description   Sub-Modules Deregistration Parameters.
+
+                This structure provides deregistration parameters for a set of
+                sub-modules. Each module should deregister its own sub-modules
+                from the system during its termination and cleanup phase, using
+                the SYS_UnregisterSubModules() routine.
+*//***************************************************************************/
+typedef struct t_SysSubModuleUnregisterParam
+{
+    e_SysModule owner;              /**< The type of the owner module */
+    uint8_t     numOfSubModules;    /**< Number of sub-modules in the \c p_SubModules array */
+    e_SysModule *p_SubModules;      /**< An array of sub-module types, of size \c numOfSubModules */
+
+} t_SysSubModuleUnregisterParam;
+
+/**************************************************************************//**
+ @Function      SYS_RegisterSubModules
+
+ @Description   Registers a set of sub-modules as being owned by a given module.
+
+                This routine should be called by every system module in order
+                to register its sub-modules in the system. Without registration,
+                sub-modules cannot be initialized through the use case layout.
+
+ @Param[in]     p_RegParam - Pointer to registration parameters structure.
+
+ @Return        E_OK on success; Error code otherwise.
+*//***************************************************************************/
+t_Error SYS_RegisterSubModules(t_SysSubModuleRegisterParam *p_RegParam);
+
+/**************************************************************************//**
+ @Function      SYS_UnregisterSubModules
+
+ @Description   Unregisters a set of sub-modules from their owner module.
+
+                This routine should be called by every system module during
+                its termination and cleanup phase, in order to deregister its
+                sub-modules.
+
+ @Param[in]     p_UnregParam - Pointer to de-registration parameters structure.
+
+ @Return        E_OK on success; Error code otherwise.
+*//***************************************************************************/
+t_Error SYS_UnregisterSubModules(t_SysSubModuleUnregisterParam *p_UnregParam);
+
+/**************************************************************************//**
  @Function      SYS_ForceHandle
 
  @Description   Forces a handle for a specific object in the system.
@@ -321,26 +803,18 @@ t_Error SYS_ForceHandle(e_SysModule module, uint32_t id, t_Handle h_Module);
 *//***************************************************************************/
 void SYS_RemoveForcedHandle(e_SysModule module, uint32_t id);
 
-typedef struct t_SysObjectDescriptor
-{
-    e_SysModule module;
-    uint32_t    id;
-    void        *p_Settings;
+#ifdef CONFIG_MULTI_PARTITION_SUPPORT
+t_Error SYS_RegisterMessageHandler   (char *p_Addr, t_MsgHandler *f_MsgHandlerCB, t_Handle h_Mod);
+t_Error SYS_UnregisterMessageHandler (char *p_Addr);
+t_Error SYS_SendMessage(char                 *p_DestAddr,
+                        uint32_t             msgId,
+                        uint8_t              msgBody[MSG_BODY_SIZE],
+                        t_MsgCompletionCB    *f_CompletionCB,
+                        t_Handle             h_CBArg);
+#endif /* CONFIG_MULTI_PARTITION_SUPPORT */
 
-} t_SysObjectDescriptor;
-
-
-#define SYS_MAX_ADV_CONFIG_ARGS      4
-
-typedef struct t_SysObjectAdvConfigEntry
-{
-    void        *p_Function;
-    uint32_t    args[SYS_MAX_ADV_CONFIG_ARGS]; //@@@@ uint64_t (CW bug) ?
-} t_SysObjectAdvConfigEntry;
-
-
-#define ADV_CONFIG_DONE         NULL, { 0 }
-#define ADV_CONFIG_NONE         (t_SysObjectAdvConfigEntry[]){ ADV_CONFIG_DONE }
+/** @} */ /* end of sys_mod_grp */
+/** @} */ /* end of sys_grp */
 
 
 #define PARAMS(_num, _params)   ADV_CONFIG_PARAMS_##_num _params
@@ -389,17 +863,15 @@ typedef struct t_SysObjectAdvConfigEntry
             i++;                            \
         }                                   \
         else                                \
-            REPORT_ERROR(MINOR, E_INVALID_VALUE, ("number of advance-configuration exceeded!!!"));\
+            RETURN_ERROR(MAJOR, E_INVALID_VALUE, \
+                         ("Number of advanced-configuration entries exceeded")); \
     } while (0)
 
-#define ADD_ADV_CONFIG_START(_p_Entries, _maxEntries)                   \
-    {                                                                   \
-        t_SysObjectAdvConfigEntry   *p_Entry;                           \
-        t_SysObjectAdvConfigEntry   *p_Entrys = (_p_Entries);           \
-        int                         i=0, max = (_maxEntries);           \
-        for (; i<FM_MAX_NUM_OF_ADV_SETTINGS;i++)                        \
-            if (!p_LnxWrpFmPortDev->settings.advConfig[i].p_Function)   \
-                break;
+#define ADD_ADV_CONFIG_START(_p_Entries, _maxEntries)           \
+    {                                                           \
+        t_SysObjectAdvConfigEntry   *p_Entry;                   \
+        t_SysObjectAdvConfigEntry   *p_Entrys = (_p_Entries);   \
+        int                         i=0, max = (_maxEntries);   \
 
 #define ADD_ADV_CONFIG_END \
     }
@@ -427,136 +899,6 @@ typedef struct t_SysObjectAdvConfigEntry
             return NULL;                                        \
         }                                                       \
     }
-
-
-
-#define CAST_ID_TO_HANDLE(_id)      ((t_Handle)(_id))
-#define CAST_HANDLE_TO_ID(_h)       ((uint32_t)(_h))
-
-
-#define SYS_MAX_TEST_GROUP_NAME_LENGTH      14
-#define SYS_MAX_TEST_DESCRIPTION_LENGTH     64
-
-typedef struct t_SysTestDescriptor
-{
-    char        testGroup[SYS_MAX_TEST_GROUP_NAME_LENGTH];
-    uint16_t    testId;
-    char        description[SYS_MAX_TEST_DESCRIPTION_LENGTH];
-    t_Error     (*f_RunTest)(void *p_TestParam);
-    void        (*f_KillTest)(void);
-    void        *p_TestParam;
-
-} t_SysTestDescriptor;
-
-
-typedef struct t_SysRuntimeLayout
-{
-    t_SysObjectDescriptor   **p_LogicalObjects;
-    t_SysTestDescriptor     **p_TestDescriptors;
-
-} t_SysRuntimeLayout;
-
-typedef struct t_SysPeripheralLayout
-{
-    t_SysObjectDescriptor   **p_PeripheralObjects;
-    t_SysRuntimeLayout      *p_RuntimeLayouts;
-
-} t_SysPeripheralLayout;
-
-typedef struct t_SysSystemLayout
-{
-    t_SysObjectDescriptor   **p_SystemObjects;
-    t_SysPeripheralLayout   *p_PeripheralLayouts;
-
-} t_SysSystemLayout;
-
-typedef struct t_SysUseCaseLayout
-{
-    t_SysObjectDescriptor   *p_PlatformObject;
-    t_SysSystemLayout       *p_SystemLayouts;
-
-} t_SysUseCaseLayout;
-
-
-
-t_SysUseCaseLayout * USER_BuildLayout(int argc, char *argv[]);
-
-void USER_FreeLayout(t_SysUseCaseLayout *p_UseCaseLayout);
-
-
-
-#define SYS_SYSTEM_OBJECTS(...)     (t_SysObjectDescriptor*[]){ __VA_ARGS__, NULL }
-#define SYS_PERIPHERAL_OBJECTS(...) (t_SysObjectDescriptor*[]){ __VA_ARGS__, NULL }
-#define SYS_LOGICAL_OBJECTS(...)    (t_SysObjectDescriptor*[]){ __VA_ARGS__, NULL }
-#define SYS_TEST_DESCRIPTORS(...)   (t_SysTestDescriptor*[]){ __VA_ARGS__, NULL }
-
-
-#define SYS_BEGIN_SYSTEM_LAYOUTS \
-        (t_SysSystemLayout[]){
-#define SYS_END_SYSTEM_LAYOUTS \
-        , { NULL, NULL } }
-
-#define SYS_BEGIN_PERIPHERAL_LAYOUTS \
-        (t_SysPeripheralLayout[]){
-#define SYS_END_PERIPHERAL_LAYOUTS \
-        , { NULL, NULL } }
-
-#define SYS_BEGIN_RUNTIME_LAYOUTS \
-        (t_SysRuntimeLayout[]){
-#define SYS_END_RUNTIME_LAYOUTS \
-        , { NULL, NULL } }
-
-
-
-typedef t_Handle (t_SysModuleInitFuncNoParams)(void);
-typedef t_Handle (t_SysModuleInitFuncWithParams)(void *p_ModuleParams);
-
-typedef struct t_SysRegistryEntry
-{
-    e_SysModule     module;
-    bool            noInitParams;
-    union
-    {
-        t_SysModuleInitFuncNoParams     *f_InitNoParams;
-        t_SysModuleInitFuncWithParams   *f_InitWithParams;
-    };
-    t_Error         (*f_Free)(t_Handle h_Module);
-
-} t_SysRegistryEntry;
-
-
-#define SYS_REGISTER_MODULE_VOID_PARAM(mod, initFunc, freeFunc) \
-    {(mod), TRUE,  .f_InitNoParams   = (initFunc), (freeFunc) }
-
-#define SYS_REGISTER_MODULE_WITH_PARAM(mod, initFunc, freeFunc) \
-    {(mod), FALSE, .f_InitWithParams = (t_SysModuleInitFuncWithParams *)(initFunc), (freeFunc) }
-
-#define SYS_REGISTER_MODULE_DONE \
-    {e_SYS_MODULE_NONE, TRUE, NULL, NULL }
-
-typedef struct t_SysSubModuleRegisterParam
-{
-    e_SysModule owner;
-    uint8_t     numOfSubModules;
-    e_SysModule *p_SubModules;
-    t_Error     (*f_InitSubModule)(t_Handle h_Module, t_SysObjectDescriptor *p_SubModuleDesc);
-    t_Error     (*f_FreeSubModule)(t_Handle h_Module, e_SysModule subModule, uint32_t id);
-    t_Handle    (*f_GetSubModule)(t_Handle h_Module, e_SysModule subModule, uint32_t id);
-
-} t_SysSubModuleRegisterParam;
-
-
-typedef struct t_SysSubModuleUnregisterParam
-{
-    e_SysModule owner;
-    uint8_t     numOfSubModules;
-    e_SysModule *p_SubModules;
-
-} t_SysSubModuleUnregisterParam;
-
-
-void SYS_Init(void);
-void SYS_Free(void);
 
 
 #endif /* __SYS_EXT_H */

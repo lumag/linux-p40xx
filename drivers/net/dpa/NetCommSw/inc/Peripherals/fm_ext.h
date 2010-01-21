@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -43,10 +43,17 @@
 
 
 /**************************************************************************//**
+ @Group         DPAA_grp Data Path Acceleration Architecture API
+
+ @Description   DPAA API functions, definitions and enums.
+
+ @{
+*//***************************************************************************/
+
+/**************************************************************************//**
  @Group         FM_grp Frame Manager API
 
  @Description   FM API functions, definitions and enums.
-
 
  @{
 *//***************************************************************************/
@@ -71,14 +78,14 @@
  @Description   enum for defining port types
 *//***************************************************************************/
 typedef enum e_FmPortType {
-    e_FM_PORT_TYPE_OFFLINE_PARSING, /**< Offline parsing port (id's: 0-6, share id's with
-                                         host command, so must have exclusive id) */
-    e_FM_PORT_TYPE_HOST_COMMAND,    /**< Host command port (id's: 0-6, share id's with
-                                         offline parsing ports, so must have exclusive id) */
-    e_FM_PORT_TYPE_RX,              /**< 1G Rx port (id's: 0-3) */
-    e_FM_PORT_TYPE_RX_10G,          /**< 10G Rx port (id's: 0) */
-    e_FM_PORT_TYPE_TX,              /**< 1G Tx port (id's: 0-3) */
-    e_FM_PORT_TYPE_TX_10G,          /**< 10G Tx port (id's: 0) */
+    e_FM_PORT_TYPE_OH_OFFLINE_PARSING,  /**< Offline parsing port (id's: 0-6, share id's with
+                                             host command, so must have exclusive id) */
+    e_FM_PORT_TYPE_OH_HOST_COMMAND,     /**< Host command port (id's: 0-6, share id's with
+                                             offline parsing ports, so must have exclusive id) */
+    e_FM_PORT_TYPE_RX,                  /**< 1G Rx port (id's: 0-3) */
+    e_FM_PORT_TYPE_RX_10G,              /**< 10G Rx port (id's: 0) */
+    e_FM_PORT_TYPE_TX,                  /**< 1G Tx port (id's: 0-3) */
+    e_FM_PORT_TYPE_TX_10G,              /**< 10G Tx port (id's: 0) */
     e_FM_PORT_TYPE_DUMMY
 } e_FmPortType;
 
@@ -115,19 +122,18 @@ typedef uint32_t    fmPortFrameErrSelect_t;                         /**< typedef
 #define FM_PORT_FRM_ERR_PROCESS_TIMEOUT                 0x00000001  /**< FPT Frame Processing Timeout Exceeded */
 /* @} */
 
-#ifdef __MWERKS__
+#if defined(__MWERKS__) && !defined(__GNUC__)
 #pragma pack(push,1)
-#endif /*__MWERKS__ */
+#endif /* defined(__MWERKS__) && ... */
 #define MEM_MAP_START
 
 /**************************************************************************//**
  @Description   FM physical Address
 *//***************************************************************************/
-typedef _Packed struct t_FmPhysAddr
-{
-    volatile uint16_t high;         /**< High part of the physical address */
+typedef _Packed struct t_FmPhysAddr {
+    volatile uint8_t  high;         /**< High part of the physical address */
     volatile uint32_t low;          /**< Low part of the physical address */
-}_PackedType t_FmPhysAddr;
+} _PackedType t_FmPhysAddr;
 
 /**************************************************************************//**
  @Description   Parse results memory layout
@@ -166,14 +172,6 @@ typedef _Packed struct t_FmPrsResult {
 #define FM_PR_L2_PPPoE            0x0800    /**< */
 
 /**************************************************************************//**
- @Description   Time stamp in buffer
-*//***************************************************************************/
-typedef _Packed struct t_FmTimeStamp {
-    volatile uint32_t    timeStamp;          /**< Time stamp integer */
-    volatile uint32_t    timeStampFrac;      /**< Time stamp fraction */
-} _PackedType t_FmTimeStamp;
-
-/**************************************************************************//**
  @Description   Frame descriptor
 *//***************************************************************************/
 typedef _Packed struct t_FmFD {
@@ -205,33 +203,36 @@ typedef enum e_FmFDFormatType {
 *//***************************************************************************/
 #define FM_FD_DD_MASK       0xc0000000           /**< FD DD field mask */
 #define FM_FD_PID_MASK      0x3f000000           /**< FD PID field mask */
+#define FM_FD_ELIODN_MASK   0x0000f000           /**< FD ELIODN field mask */
 #define FM_FD_BPID_MASK     0x00ff0000           /**< FD BPID field mask */
-#define FM_FD_ADDRH_MASK    0x0000ffff           /**< FD ADDRH field mask */
+#define FM_FD_ADDRH_MASK    0x000000ff           /**< FD ADDRH field mask */
 #define FM_FD_ADDRL_MASK    0xffffffff           /**< FD ADDRL field mask */
 #define FM_FD_FORMAT_MASK   0xe0000000           /**< FD FORMAT field mask */
 #define FM_FD_OFFSET_MASK   0x1ff00000           /**< FD OFFSET field mask */
 #define FM_FD_LENGTH_MASK   0x000fffff           /**< FD LENGTH field mask */
 
 #define FM_FD_GET_DD(fd)            ((((t_FmFD *)fd)->id & FM_FD_DD_MASK) >> (31-1))            /**< Macro to get FD DD field */
-#define FM_FD_GET_PID(fd)           ((((t_FmFD *)fd)->id & FM_FD_PID_MASK) >> (31-7))           /**< Macro to get FD PID field */
+#define FM_FD_GET_PID(fd)           (((((t_FmFD *)fd)->id & FM_FD_PID_MASK) >> (31-7)) | \
+                                        ((((t_FmFD *)fd)->id & FM_FD_LIODN_MASK) >> (31-19-6)))            /**< Macro to get FD PID field */
 #define FM_FD_GET_BPID(fd)          ((((t_FmFD *)fd)->id & FM_FD_BPID_MASK) >> (31-15))         /**< Macro to get FD BPID field */
 #define FM_FD_GET_ADDRH(fd)         (((t_FmFD *)fd)->id & FM_FD_ADDRH_MASK)                     /**< Macro to get FD ADDRH field */
 #define FM_FD_GET_ADDRL(fd)         ((t_FmFD *)fd)->addrl                                       /**< Macro to get FD ADDRL field */
-#define FM_FD_GET_PHYS_ADDR(fd)     ((uint64_t)(((uint64_t)FM_FD_GET_ADDRH(fd) << 32) | (uint64_t)FM_FD_GET_ADDRL(fd))) /**< Macro to get FD ADDR field */
+#define FM_FD_GET_PHYS_ADDR(fd)     ((physAddress_t)(((uint64_t)FM_FD_GET_ADDRH(fd) << 32) | (uint64_t)FM_FD_GET_ADDRL(fd))) /**< Macro to get FD ADDR field */
 #define FM_FD_GET_FORMAT(fd)        ((((t_FmFD *)fd)->length & FM_FD_FORMAT_MASK) >> (31-2))    /**< Macro to get FD FORMAT field */
 #define FM_FD_GET_OFFSET(fd)        ((((t_FmFD *)fd)->length & FM_FD_OFFSET_MASK) >> (31-11))   /**< Macro to get FD OFFSET field */
 #define FM_FD_GET_LENGTH(fd)        (((t_FmFD *)fd)->length & FM_FD_LENGTH_MASK)                /**< Macro to get FD LENGTH field */
 #define FM_FD_GET_STATUS(fd)        ((t_FmFD *)fd)->status                                      /**< Macro to get FD STATUS field */
-#define FM_FD_GET_ADDR(fd)          XX_PhysToVirt(CAST_UINT64_TO_POINTER(FM_FD_GET_PHYS_ADDR(fd)))
+#define FM_FD_GET_ADDR(fd)          XX_PhysToVirt(FM_FD_GET_PHYS_ADDR(fd))
 
-#define FM_FD_SET_DD(fd,val)        (((t_FmFD *)fd)->id = ((((t_FmFD *)fd)->id & ~FM_FD_DD_MASK) | ((val << (31-1))& FM_FD_DD_MASK )))      /**< Macro to set FD DD field */
-#define FM_FD_SET_PID(fd,val)       (((t_FmFD *)fd)->id = ((((t_FmFD *)fd)->id & ~FM_FD_PID_MASK) | ((val << (31-7))& FM_FD_PID_MASK)))     /**< Macro to set FD PID field */
-#define FM_FD_SET_BPID(fd,val)      (((t_FmFD *)fd)->id = ((((t_FmFD *)fd)->id & ~FM_FD_BPID_MASK) | ((val  << (31-15))& FM_FD_BPID_MASK))) /**< Macro to set FD BPID field */
+#define FM_FD_SET_DD(fd,val)        (((t_FmFD *)fd)->id = ((((t_FmFD *)fd)->id & ~FM_FD_DD_MASK) | ((val << (31-1)) & FM_FD_DD_MASK )))      /**< Macro to set FD DD field */
+/**< Macro to set FD PID field or LIODN offset*/
+#define FM_FD_SET_PID(fd,val)       (((t_FmFD *)fd)->id = ((((t_FmFD *)fd)->id & ~(FM_FD_PID_MASK|FM_FD_ELIODN_MASK)) | (((val << (31-7)) & FM_FD_PID_MASK) | (((val>>6) << (31-19)) & FM_FD_ELIODN_MASK))))
+#define FM_FD_SET_BPID(fd,val)      (((t_FmFD *)fd)->id = ((((t_FmFD *)fd)->id & ~FM_FD_BPID_MASK) | ((val  << (31-15)) & FM_FD_BPID_MASK))) /**< Macro to set FD BPID field */
 #define FM_FD_SET_ADDRH(fd,val)     (((t_FmFD *)fd)->id = ((((t_FmFD *)fd)->id & ~FM_FD_ADDRH_MASK) | (val & FM_FD_ADDRH_MASK)))            /**< Macro to set FD ADDRH field */
 #define FM_FD_SET_ADDRL(fd,val)     ((t_FmFD *)fd)->addrl = val                                 /**< Macro to set FD ADDRL field */
 #define FM_FD_SET_ADDR(fd,val)                                      \
 do {                                                                \
-    uint64_t physAddr = CAST_POINTER_TO_UINT64(XX_VirtToPhys(val)); \
+    uint64_t physAddr = (uint64_t)(XX_VirtToPhys(val)); \
     FM_FD_SET_ADDRH(fd, ((uint32_t)(physAddr >> 32)));              \
     FM_FD_SET_ADDRL(fd, (uint32_t)physAddr);                        \
 } while (0)                                                                                     /**< Macro to set FD ADDR field */
@@ -243,10 +244,11 @@ do {                                                                \
 #define FM_FD_CMD_FCO  0x80000000      /* Frame queue Context Override */
 #define FM_FD_CMD_RPD  0x40000000      /* Read Prepended Data */
 #define FM_FD_CMD_UDP  0x20000000      /* Update Prepended Data */
-#define FM_FD_CMD_BMF  0x10000000      /* Buffer Must not be Freed */
-#define FM_FD_CMD_DTC  0x08000000      /* Do TCP Checksum */
-#define FM_FD_CMD_DME  0x01000000      /* DMA Error */
+#define FM_FD_CMD_DTC  0x10000000      /* Do TCP Checksum */
+
 #define FM_FD_CMD_CFQ  0x00ffffff      /* Confirmation Frame Queue */
+
+#define FM_FD_TX_STATUS_ERR_MASK    0x07000000
 /* @} */
 
 /**************************************************************************//**
@@ -271,7 +273,7 @@ typedef _Packed struct t_FmSGT {
 /**************************************************************************//**
  @Collection   Frame Scatter/Gather Table Entry macros
 *//***************************************************************************/
-#define FM_SGTE_ADDRH_MASK    0x0000ffff           /**< SGTE ADDRH field mask */
+#define FM_SGTE_ADDRH_MASK    0x000000ff           /**< SGTE ADDRH field mask */
 #define FM_SGTE_ADDRL_MASK    0xffffffff           /**< SGTE ADDRL field mask */
 #define FM_SGTE_E_MASK        0x80000000           /**< SGTE Extension field mask */
 #define FM_SGTE_F_MASK        0x40000000           /**< SGTE Final field mask */
@@ -281,19 +283,19 @@ typedef _Packed struct t_FmSGT {
 
 #define FM_SGTE_GET_ADDRH(sgte)         (((t_FmSGTE *)sgte)->addrh & FM_SGTE_ADDRH_MASK)                /**< Macro to get SGTE ADDRH field */
 #define FM_SGTE_GET_ADDRL(sgte)         ((t_FmSGTE *)sgte)->addrl                                       /**< Macro to get SGTE ADDRL field */
-#define FM_SGTE_GET_PHYS_ADDR(sgte)       ((uint64_t)(((uint64_t)FM_SGTE_GET_ADDRH(sgte) << 32) | (uint64_t)FM_SGTE_GET_ADDRL(sgte))) /**< Macro to get FD ADDR field */
+#define FM_SGTE_GET_PHYS_ADDR(sgte)     ((physAddress_t)(((uint64_t)FM_SGTE_GET_ADDRH(sgte) << 32) | (uint64_t)FM_SGTE_GET_ADDRL(sgte))) /**< Macro to get FD ADDR field */
 #define FM_SGTE_GET_EXTENSION(sgte)     ((((t_FmSGTE *)sgte)->length & FM_SGTE_E_MASK) >> (31-0))       /**< Macro to get SGTE EXTENSION field */
 #define FM_SGTE_GET_FINAL(sgte)         ((((t_FmSGTE *)sgte)->length & FM_SGTE_F_MASK) >> (31-1))       /**< Macro to get SGTE FINAL field */
 #define FM_SGTE_GET_LENGTH(sgte)        (((t_FmSGTE *)sgte)->length & FM_SGTE_LENGTH_MASK)              /**< Macro to get SGTE LENGTH field */
 #define FM_SGTE_GET_BPID(sgte)          ((((t_FmSGTE *)sgte)->offset & FM_SGTE_BPID_MASK) >> (31-15))   /**< Macro to get SGTE BPID field */
 #define FM_SGTE_GET_OFFSET(sgte)        (((t_FmSGTE *)sgte)->offset & FM_SGTE_OFFSET_MASK)              /**< Macro to get SGTE OFFSET field */
-#define FM_SGTE_GET_ADDR(sgte)          XX_PhysToVirt(CAST_UINT64_TO_POINTER(FM_SGTE_GET_PHYS_ADDR(sgte)))
+#define FM_SGTE_GET_ADDR(sgte)          XX_PhysToVirt(FM_SGTE_GET_PHYS_ADDR(sgte))
 
 #define FM_SGTE_SET_ADDRH(sgte,val)     (((t_FmSGTE *)sgte)->addrh = ((((t_FmSGTE *)sgte)->addrh & ~FM_SGTE_ADDRH_MASK) | (val & FM_SGTE_ADDRH_MASK))) /**< Macro to set SGTE ADDRH field */
 #define FM_SGTE_SET_ADDRL(sgte,val)     ((t_FmSGTE *)sgte)->addrl = val                                 /**< Macro to set SGTE ADDRL field */
 #define FM_SGTE_SET_ADDR(sgte,val)                                      \
 do {                                                                    \
-    uint64_t physAddr = CAST_POINTER_TO_UINT64(XX_VirtToPhys(val));     \
+    uint64_t physAddr = (uint64_t)(XX_VirtToPhys(val));     \
     FM_SGTE_SET_ADDRH(sgte, ((uint32_t)(physAddr >> 32)));              \
     FM_SGTE_SET_ADDRL(sgte, (uint32_t)physAddr);                        \
 } while (0)                                                                                     /**< Macro to set SGTE ADDR field */
@@ -304,9 +306,9 @@ do {                                                                    \
 #define FM_SGTE_SET_OFFSET(sgte,val)    (((t_FmSGTE *)sgte)->offset = ((((t_FmSGTE *)sgte)->offset & ~FM_SGTE_OFFSET_MASK) | ((val << (31-11))& FM_SGTE_OFFSET_MASK) )) /**< Macro to set SGTE OFFSET field */
 
 #define MEM_MAP_END
-#ifdef __MWERKS__
+#if defined(__MWERKS__) && !defined(__GNUC__)
 #pragma pack(pop)
-#endif /* __MWERKS__ */
+#endif /* defined(__MWERKS__) && ... */
 
 /* @} */
 
@@ -319,13 +321,12 @@ typedef enum e_FmExceptions {
     e_FM_EX_DMA_READ_ECC,               /**< Read Buffer ECC error */
     e_FM_EX_DMA_SYSTEM_WRITE_ECC,       /**< Write Buffer ECC error on system side */
     e_FM_EX_DMA_FM_WRITE_ECC,           /**< Write Buffer ECC error on FM side */
-    e_FM_EX_FPM_STALL_ON_TASKS ,        /**< Stall of tasks on FPM */
+    e_FM_EX_FPM_STALL_ON_TASKS,         /**< Stall of tasks on FPM */
     e_FM_EX_FPM_SINGLE_ECC,             /**< Single ECC on FPM. */
     e_FM_EX_FPM_DOUBLE_ECC,             /**< Double ECC error on FPM ram access */
     e_FM_EX_QMI_SINGLE_ECC,             /**< Single ECC on QMI. */
     e_FM_EX_QMI_DOUBLE_ECC,             /**< Double bit ECC occured on QMI */
-    e_FM_EX_QMI_DEQ_FROM_DEFQ,          /**< Dequeu from default queue id, as a result
-                                             of invalid port id. */
+    e_FM_EX_QMI_DEQ_FROM_UNKNOWN_PORTID,/**< Dequeu from unknown port id */
     e_FM_EX_BMI_LIST_RAM_ECC,           /**< Linked List RAM ECC error */
     e_FM_EX_BMI_PIPELINE_ECC,           /**< Pipeline Table ECC Error */
     e_FM_EX_BMI_STATISTICS_RAM_ECC,     /**< Statistics Count RAM ECC Error Enable */
@@ -394,15 +395,15 @@ typedef struct t_FmPcdFirmwareParams {
 typedef struct t_FmParams {
     uint8_t                 fmId;                   /**< Index of the FM */
 #ifdef CONFIG_MULTI_PARTITION_SUPPORT
-    uint8_t                     partitionId;        /**< FM Partition Id */
+    uint8_t                 partitionId;            /**< FM Partition Id */
 #endif /* CONFIG_MULTI_PARTITION_SUPPORT */
 #ifndef CONFIG_GUEST_PARTITION
     uint64_t                baseAddr;               /**< A pointer to base of memory mapped FM registers (virtual).*/
     t_Handle                h_FmMuram;              /**< A handle of an initialized MURAM object,
                                                          to be used by the FM */
     uint16_t                fmClkFreq;              /**< In Mhz */
-    uint8_t                 liodnPerPartition[FM_MAX_NUM_OF_PARTITIONS]; /**< For each partition, LIODN should be configured here. */
-    t_FmExceptionsCallback  *f_Exceptions;          /**< An application callback routine to
+    uint16_t                liodnPerPartition[FM_MAX_NUM_OF_PARTITIONS]; /**< For each partition, LIODN should be configured here. */
+    t_FmExceptionsCallback  *f_Exception ;          /**< An application callback routine to
                                                          handle exceptions.*/
     t_FmBusErrorCallback    *f_BusError;            /**< An application callback routine to
                                                          handle exceptions.*/
@@ -484,7 +485,7 @@ typedef enum e_FmDmaDbgCntMode {
  @Description   DMA Cache Override
 *//***************************************************************************/
 typedef enum e_FmDmaCacheOverride {
-    e_FM_DMA_NO_CACHE_OR,                   /**< No override of the Cache field */
+    e_FM_DMA_NO_CACHE_OR = 0,               /**< No override of the Cache field */
     e_FM_DMA_NO_STASH_DATA,                 /**< Data should not be stashed in system level cache */
     e_FM_DMA_MAY_STASH_DATA,                /**< Data may be stashed in system level cache */
     e_FM_DMA_STASH_DATA                     /**< Data should be stashed in system level cache */
@@ -494,7 +495,7 @@ typedef enum e_FmDmaCacheOverride {
  @Description   DMA External Bus Priority
 *//***************************************************************************/
 typedef enum e_FmDmaExtBusPri {
-    e_FM_DMA_EXT_BUS_NORMAL,                /**< Normal priority */
+    e_FM_DMA_EXT_BUS_NORMAL = 0,            /**< Normal priority */
     e_FM_DMA_EXT_BUS_EBS,                   /**< AXI extended bus service priority */
     e_FM_DMA_EXT_BUS_SOS,                   /**< AXI sos priority */
     e_FM_DMA_EXT_BUS_EBS_AND_SOS            /**< AXI ebs + sos priority */
@@ -504,7 +505,7 @@ typedef enum e_FmDmaExtBusPri {
  @Description   enum for choosing the field that will be output on AID
 *//***************************************************************************/
 typedef enum e_FmDmaAidMode {
-    e_FM_DMA_AID_OUT_PORT_ID,               /**< 4 LSB of PORT_ID */
+    e_FM_DMA_AID_OUT_PORT_ID = 0,           /**< 4 LSB of PORT_ID */
     e_FM_DMA_AID_OUT_TNUM                   /**< 4 LSB of TNUM */
 } e_FmDmaAidMode;
 
@@ -512,7 +513,7 @@ typedef enum e_FmDmaAidMode {
  @Description   DMA AXI Bus protection
 *//***************************************************************************/
 typedef enum e_FmDmaBusProtectionType {
-    e_FM_DMA_DATA_BUS_PROT,                 /**< AXI data bus protection */
+    e_FM_DMA_DATA_BUS_PROT = 0,             /**< AXI data bus protection */
     e_FM_DMA_INSTRUCTION_BUS_PROT           /**< AXI instruction bus protection */
 } e_FmDmaBusProtectionType;
 
@@ -520,7 +521,7 @@ typedef enum e_FmDmaBusProtectionType {
  @Description   FPM Catasrophic error behaviour
 *//***************************************************************************/
 typedef enum e_FmCatastrophicErr {
-    e_FM_CATASTROPHIC_ERR_STALL_PORT,       /**< Port_ID is stalled (only reset can release it) */
+    e_FM_CATASTROPHIC_ERR_STALL_PORT = 0,   /**< Port_ID is stalled (only reset can release it) */
     e_FM_CATASTROPHIC_ERR_STALL_TASK        /**< Only errornous task is stalled */
 } e_FmCatastrophicErr;
 
@@ -528,7 +529,7 @@ typedef enum e_FmCatastrophicErr {
  @Description   FPM DMA error behaviour
 *//***************************************************************************/
 typedef enum e_FmDmaErr {
-    e_FM_DMA_ERR_CATASTROPHIC,              /**< Dma error is treated as a catastrophic error */
+    e_FM_DMA_ERR_CATASTROPHIC = 0,          /**< Dma error is treated as a catastrophic error */
     e_FM_DMA_ERR_REPORT                     /**< Dma error is just reported */
 } e_FmDmaErr;
 
@@ -536,7 +537,7 @@ typedef enum e_FmDmaErr {
  @Description   DMA Emergency level by BMI emergency signal
 *//***************************************************************************/
 typedef enum e_FmDmaEmergencyLevel {
-    e_FM_DMA_EM_EBS,                        /**< EBS emergency */
+    e_FM_DMA_EM_EBS = 0,                    /**< EBS emergency */
     e_FM_DMA_EM_SOS                         /**< SOS emergency */
 } e_FmDmaEmergencyLevel;
 
@@ -688,34 +689,11 @@ t_Error FM_ConfigMaxNumOfOpenDmas(t_Handle h_Fm, uint8_t maxNumOfOpenDmas);
 t_Error FM_ConfigThresholds(t_Handle h_Fm, t_FmThresholds *p_FmThresholds);
 
 /**************************************************************************//**
- @Function      FM_ConfigTimeStamp
-
- @Description   This routine enables the FPM timeStamp and sets its frequency.
-                Calling this routine changes the internal driver data base
-                from its default configuration - by default time stamp is disabled.
-                The value selected here will be used for the non-Rx ports
-                rate-limit mechanism and for the policer profiles.
-                Note that rate-limiting may be done only for time
-                units larger than the timeStampPeriod specifies
-                here (i.e. select here the smallest time unit
-                required between all ports).
-
-
- @Param[in]     h_Fm                A handle to an FM Module.
- @Param[in]     timeStampPeriod    (in nano-seconds)
-
- @Return        E_OK on success; Error code otherwise.
-
- @Cautions      Allowed only following FM_Config() and before FM_Init().
-*//***************************************************************************/
-t_Error FM_ConfigTimeStamp(t_Handle h_Fm, uint32_t timeStampPeriod);
-
-/**************************************************************************//**
  @Function      FM_ConfigDmaBusProtect
 
  @Description   Calling this routine changes the internal driver data base
                 from its default FM threshold configuration
-                                  privilegeBusProtect:      [DEFAULT_secureBusProtect]
+                                  privilegeBusProtect:      [DEFAULT_privilegeBusProtect]
                                   busProtectType:           [DEFAULT_busProtectionType]
 
  @Param[in]     h_Fm                A handle to an FM Module.
@@ -1113,8 +1091,8 @@ t_Error FM_ConfigExternalEccRamsEnable(t_Handle h_Fm, bool enable);
 /**************************************************************************//**
  @Collection   General FM defines.
 *//***************************************************************************/
-#define NUM_OF_PORT_TYPES               e_FM_PORT_TYPE_DUMMY    /**< Number of port types */
-#define MAX_NUM_OF_PORTS_PER_TYPE       7                       /**< Max number of ports of the same type */
+#define FM_NUM_OF_PORT_TYPES               e_FM_PORT_TYPE_DUMMY    /**< Number of port types */
+#define FM_MAX_NUM_OF_PORTS_PER_TYPE       7                       /**< Max number of ports of the same type */
 /* @} */
 
 /**************************************************************************//**
@@ -1124,7 +1102,7 @@ t_Error FM_ConfigExternalEccRamsEnable(t_Handle h_Fm, bool enable);
                 Note that not all places in the array are valid e.g
                 array[e_FM_PORT_TYPE_TX_10G][1] is not a valid indexes pair.
 *//***************************************************************************/
-typedef uint8_t t_PortsParam[NUM_OF_PORT_TYPES][MAX_NUM_OF_PORTS_PER_TYPE];
+typedef uint8_t t_PortsParam[FM_NUM_OF_PORT_TYPES][FM_MAX_NUM_OF_PORTS_PER_TYPE];
 
 /**************************************************************************//**
  @Description   DMA Emergency control on MURAM
@@ -1221,8 +1199,8 @@ t_Error FM_SetPortsBandwidth(t_Handle h_Fm, t_PortsParam *p_PortsBandwidth);
 /**************************************************************************//**
  @Function      FM_EnableRamsEcc
 
- @Description   Enables ECC mechanism for the different FM RAM's - IRAM, MURAM,
-                Parser, Keygen and Policer.
+ @Description   Enables ECC mechanism for all the different FM RAM's; E.g. IRAM,
+                MURAM, Parser, Keygen, Policer, etc.
                 Note:
                 If FM_ConfigExternalEccRamsEnable was called to enable external
                 setting of ECC, this routine effects IRAM ECC only.
@@ -1240,8 +1218,8 @@ t_Error FM_EnableRamsEcc(t_Handle h_Fm);
 /**************************************************************************//**
  @Function      FM_DisableRamsEcc
 
- @Description   Disables ECC mechanism for the different FM RAM's - IRAM, MURAM,
-                Parser, Keygen and Policer.
+ @Description   Disables ECC mechanism for all the different FM RAM's; E.g. IRAM,
+                MURAM, Parser, Keygen, Policer, etc.
                 Note:
                 If FM_ConfigExternalEccRamsEnable was called to enable external
                 setting of ECC, this routine effects IRAM ECC only.
@@ -1289,7 +1267,7 @@ void  FM_GetRevision(t_Handle h_Fm, t_FmRevisionInfo *p_FmRevisionInfo);
 uint32_t  FM_GetCounter(t_Handle h_Fm, e_FmCounters counter);
 
 /**************************************************************************//**
- @Function      FM_SetCounter
+ @Function      FM_ModifyCounter
 
  @Description   Sets a value to an enabled counter. Use "0" to reset the counter.
 
@@ -1301,7 +1279,7 @@ uint32_t  FM_GetCounter(t_Handle h_Fm, e_FmCounters counter);
 
  @Cautions      Allowed only following FM_Init().
 *//***************************************************************************/
-t_Error  FM_SetCounter(t_Handle h_Fm, e_FmCounters counter, uint32_t val);
+t_Error  FM_ModifyCounter(t_Handle h_Fm, e_FmCounters counter, uint32_t val);
 
 /**************************************************************************//**
  @Function      FM_Resume
@@ -1313,19 +1291,6 @@ t_Error  FM_SetCounter(t_Handle h_Fm, e_FmCounters counter, uint32_t val);
  @Return        E_OK on success; Error code otherwise.
 *//***************************************************************************/
 void FM_Resume(t_Handle h_Fm);
-
-/**************************************************************************//**
- @Function      FM_GetTimeStamp
-
- @Description   Reads the current time stamp
-
- @Param[in]     h_Fm    A handle to an FM Module.
-
- @Return        TimeStamp integer at calling time.
-
- @Cautions      Allowed only following FM_Init().
-*//***************************************************************************/
-uint32_t FM_GetTimeStamp(t_Handle h_Fm);
 
 /**************************************************************************//**
  @Function      FM_SetDmaEmergency
@@ -1442,237 +1407,7 @@ t_Error FmDumpPortRegs(t_Handle h_Fm,uint8_t hardwarePortId);
 
 /** @} */ /* end of FM_lib_grp group */
 /** @} */ /* end of FM_grp group */
+/** @} */ /* end of DPAA_grp group */
 
-/*****************************************************/
-/*****************************************************/
-/****   Inter-module Routines and definitions     ****/
-/*****************************************************/
-/*****************************************************/
-#ifndef DOXYGEN_ONLY
-
-/**************************************************************************//**
-@Group         FM_InterModule_grp FM Inter-Module Unit
-
- @Description   FM Inter Module functions -
-                These are not User API routines but routines that may be called
-                from other modules.
-                Routines used by PCD module are always called directly by the PCD
-                module, since the PCD and FM modules always run on the same core.
-                As for routines used by other modules (FM-Port), They will be called directly
-                in a single core environment. In a multicore environment, some of the
-                other modules may be run by other cores and therefor these routines
-                may not be called directly and will be internally invoked using the
-                XX messeging mechanism.
-
- @{
-*//***************************************************************************/
-
-/**************************************************************************//**
- @Description   enum for defining MAC types
-*//***************************************************************************/
-typedef enum e_FmMacType {
-    e_FM_MAC_10G,               /**< 10G MAC */
-    e_FM_MAC_1G                 /**< 1G MAC */
-} e_FmMacType;
-
-/**************************************************************************//**
- @Description   Structure for port-FM communication during FM_PORT_Init.
-                Fields commented 'IN' are passed by the port module to be used
-                by the FM module.
-                Fields commented 'OUT' will be filled by FM before returning to port.
-                Some fields are optional (depending on configuration) and
-                will be analized by the port and FM modules accordingly.
-*//***************************************************************************/
-typedef struct t_FmInterModulePortInitParams {
-    uint8_t             hardwarePortId;       /**< IN. port Id */
-    e_FmPortType        portType;           /**< IN. Port type */
-    uint32_t            timeStampPeriod;    /**< OUT. Time stamp period in NanoSec */
-    bool                independentMode;    /**< IN. TRUE if FM Port operates in independent mode */
-    uint8_t             portPartition;      /**< IN. Port's requested resource */
-    uint8_t             numOfTasks;         /**< IN. Port's requested resource */
-    uint8_t             numOfExtraTasks;    /**< IN. Port's requested resource */
-    uint8_t             numOfOpenDmas;      /**< IN. Port's requested resource */
-    uint8_t             numOfExtraOpenDmas; /**< IN. Port's requested resource */
-    uint32_t            sizeOfFifo;         /**< IN. Port's requested resource */
-    uint32_t            extraSizeOfFifo;    /**< IN. Port's requested resource */
-    uint8_t             deqPipelineDepth;   /**< IN. Port's requested resource */
-    t_FmPhysAddr        fmMuramPhysBaseAddr;/**< OUT. FM-MURAM physical address*/
-} t_FmInterModulePortInitParams;
-
-/**************************************************************************//**
- @Description   Structure for port-FM communication during FM_PORT_Free.
-*//***************************************************************************/
-typedef struct t_FmInterModulePortFreeParams {
-    uint8_t             hardwarePortId;     /**< IN. port Id */
-    e_FmPortType        portType;           /**< IN. Port type */
-    uint8_t             deqPipelineDepth;   /**< IN. Port's requested resource */
-} t_FmInterModulePortFreeParams;
-
-/**************************************************************************//**
- @Function      FmGetPcdPrsBaseAddr
-
- @Description   Get the base address of the Parser from the FM module
-
- @Param[in]     h_Fm            A handle to an FM Module.
-
- @Return        Base address.
-*//***************************************************************************/
-uint64_t FmGetPcdPrsBaseAddr(t_Handle h_Fm);
-
-/**************************************************************************//**
- @Function      FmGetPcdKgBaseAddr
-
- @Description   Get the base address of the Keygen from the FM module
-
- @Param[in]     h_Fm            A handle to an FM Module.
-
- @Return        Base address.
-*//***************************************************************************/
-uint64_t FmGetPcdKgBaseAddr(t_Handle h_Fm);
-
-/**************************************************************************//**
- @Function      FmGetPcdPlcrBaseAddr
-
- @Description   Get the base address of the Policer from the FM module
-
- @Param[in]     h_Fm            A handle to an FM Module.
-
- @Return        Base address.
-*//***************************************************************************/
-uint64_t FmGetPcdPlcrBaseAddr(t_Handle h_Fm);
-
-/**************************************************************************//**
- @Function      FmGetMuramHandle
-
- @Description   Get the handle of the MURAM from the FM module
-
- @Param[in]     h_Fm            A handle to an FM Module.
-
- @Return        MURAM module handle.
-*//***************************************************************************/
-t_Handle FmGetMuramHandle(t_Handle h_Fm);
-
-/**************************************************************************//**
- @Function      FmGetPhysicalMuramBase
-
- @Description   Get the physical base address of the MURAM from the FM module
-
- @Param[in]     h_Fm            A handle to an FM Module.
- @Param[in]     fmPhysAddr      Physical MURAM base
-
- @Return        Physical base address.
-*//***************************************************************************/
-t_Error FmGetPhysicalMuramBase(t_Handle h_Fm, t_FmPhysAddr *fmPhysAddr);
-
-/**************************************************************************//**
- @Function      FmGetTimeStampPeriod
-
- @Description   Used internally by other modules in order to get the timeStamp
-                period as requested by the application.
-
- @Param[in]     h_Fm                    A handle to an FM Module.
-
- @Return        TimeStamp period in nanoseconds.
-
- @Cautions      Allowed only following FM_Init().
-*//***************************************************************************/
-uint32_t    FmGetTimeStampPeriod(t_Handle h_Fm);
-
-/**************************************************************************//**
- @Function      FmResumeStalledPort
-
- @Description   Used internally by FM port to release a stalled port.
-
- @Param[in]     h_Fm                            A handle to an FM Module.
- @Param[in]     hardwarePortId                    HW port id.
-
- @Return        E_OK on success; Error code otherwise.
-
- @Cautions      Allowed only following FM_Init().
-*//***************************************************************************/
-t_Error FmResumeStalledPort(t_Handle h_Fm, uint8_t hardwarePortId);
-
-/**************************************************************************//**
- @Function      FmIsPortStalled
-
- @Description   Used internally by FM port to read the port's status.
-
- @Param[in]     h_Fm                            A handle to an FM Module.
- @Param[in]     hardwarePortId                    HW port id.
-
- @Return        TRUE if port is stalled, FALSE otherwize
-
- @Cautions      Allowed only following FM_Init().
-*//***************************************************************************/
-bool FmIsPortStalled(t_Handle h_Fm, uint8_t hardwarePortId);
-
-/**************************************************************************//**
- @Function      FmResetMac
-
- @Description   Used by MAC driver to reset the MAC registers
-
- @Param[in]     h_Fm            A handle to an FM Module.
- @Param[in]     type            MAC type.
- @Param[in]     macId           MAC id - according to type.
-
- @Return        E_OK on success; Error code otherwise.
-
- @Cautions      Allowed only following FM_Init().
-*//***************************************************************************/
-t_Error FmResetMac(t_Handle h_Fm, e_FmMacType type, uint8_t macId);
-
-/**************************************************************************//**
- @Function      FmGetId
-
- @Description   Used by PCD driver to read rhe FM id
-
- @Param[in]     h_Fm            A handle to an FM Module.
-
- @Return        E_OK on success; Error code otherwise.
-
- @Cautions      Allowed only following FM_Init().
-*//***************************************************************************/
-uint8_t FmGetId(t_Handle h_Fm);
-
-/**************************************************************************//**
- @Function      FmGetSetPortParams
-
- @Description   Used by FM-PORT driver to pass and receive parameters between
-                PORT and FM modules.
-
- @Param[in]     h_Fm            A handle to an FM Module.
- @Param[in,out] p_PortParams    A structure of FM Port parameters.
-
- @Return        E_OK on success; Error code otherwise.
-
- @Cautions      Allowed only following FM_Init().
-*//***************************************************************************/
-t_Error FmGetSetPortParams(t_Handle h_Fm,t_FmInterModulePortInitParams *p_PortParams);
-
-/**************************************************************************//**
- @Function      FmFreePortParams
-
- @Description   Used by FM-PORT driver to free port's resources within the FM.
-
- @Param[in]     h_Fm            A handle to an FM Module.
- @Param[in,out] p_PortParams    A structure of FM Port parameters.
-
- @Return        None.
-
- @Cautions      Allowed only following FM_Init().
-*//***************************************************************************/
-void FmFreePortParams(t_Handle h_Fm,t_FmInterModulePortFreeParams *p_PortParams);
-
-#if (defined(CONFIG_MULTI_PARTITION_SUPPORT) && !defined(CONFIG_GUEST_PARTITION))
-t_Error     FmHandleIpcMsg(t_Handle h_Fm, uint32_t msgId, uint8_t msgBody[MSG_BODY_SIZE]);
-#endif /* (defined(CONFIG_MULTI_PARTITION_SUPPORT) && ... */
-void        FmRegisterPcd(t_Handle h_Fm, t_Handle h_FmPcd);
-t_Handle    FmGetPcdHandle(t_Handle h_Fm);
-bool        FmRamsEccIsExternalCtl(t_Handle h_Fm);
-
-
-/** @} */ /* end of FM_lib_grp group */
-
-#endif /* ! DOXYGEN_ONLY */
 
 #endif /* __FM_EXT */

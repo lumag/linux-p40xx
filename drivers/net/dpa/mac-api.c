@@ -121,8 +121,8 @@ static int __devinit __cold init(struct mac_device *mac_dev)
 	param.macId			= mac_dev->cell_index;
 	param.h_Fm 			= (t_Handle)mac_dev->fm;
 	param.mdioIrq		= NO_IRQ;
-	param.f_Exceptions	= mac_exception;
-	param.f_Events		= mac_exception;
+	param.f_Exception	= mac_exception;
+	param.f_Event		= mac_exception;
 	param.h_App			= mac_dev;
 
 	priv->mac = FM_MAC_Config(&param);

@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -41,11 +41,11 @@
 
 #include "std_ext.h"
 #include "xx_ext.h"
+#include "core_ext.h"
 
 #ifdef VC
 #define __FUNCTION__    ""
-#endif
-
+#endif /* VC */
 
 
 /**************************************************************************//**
@@ -303,41 +303,66 @@ typedef enum e_Event        /*   Comments / Associated Flags and Message Strings
 
 #define NO_MSG      ("")
 
+#ifndef DEBUG_GLOBAL_LEVEL
+#define DEBUG_GLOBAL_LEVEL  REPORT_LEVEL_WARNING
+#endif /* DEBUG_GLOBAL_LEVEL */
+
+#ifndef ERROR_GLOBAL_LEVEL
+#define ERROR_GLOBAL_LEVEL  DEBUG_GLOBAL_LEVEL
+#endif /* ERROR_GLOBAL_LEVEL */
+
 #ifndef EVENT_GLOBAL_LEVEL
 #define EVENT_GLOBAL_LEVEL  REPORT_LEVEL_MINOR
-#endif
+#endif /* EVENT_GLOBAL_LEVEL */
 
 #ifdef EVENT_LOCAL_LEVEL
 #define EVENT_DYNAMIC_LEVEL EVENT_LOCAL_LEVEL
 #else
 #define EVENT_DYNAMIC_LEVEL EVENT_GLOBAL_LEVEL
-#endif
+#endif /* EVENT_LOCAL_LEVEL */
 
-
-#ifndef DEBUG_GLOBAL_LEVEL
-#define DEBUG_GLOBAL_LEVEL  REPORT_LEVEL_WARNING
-#endif
 
 #ifndef DEBUG_DYNAMIC_LEVEL
-
 #define DEBUG_USING_STATIC_LEVEL
 
 #ifdef DEBUG_STATIC_LEVEL
 #define DEBUG_DYNAMIC_LEVEL DEBUG_STATIC_LEVEL
 #else
 #define DEBUG_DYNAMIC_LEVEL DEBUG_GLOBAL_LEVEL
-#endif
+#endif /* DEBUG_STATIC_LEVEL */
 
 #else /* DEBUG_DYNAMIC_LEVEL */
-
 #ifdef DEBUG_STATIC_LEVEL
 #error "Please use either DEBUG_STATIC_LEVEL or DEBUG_DYNAMIC_LEVEL (not both)"
 #else
 int DEBUG_DYNAMIC_LEVEL = DEBUG_GLOBAL_LEVEL;
 #endif /* DEBUG_STATIC_LEVEL */
+#endif /* !DEBUG_DYNAMIC_LEVEL */
 
-#endif /* DEBUG_DYNAMIC_LEVEL */
 
+#ifndef ERROR_DYNAMIC_LEVEL
+
+#ifdef ERROR_STATIC_LEVEL
+#define ERROR_DYNAMIC_LEVEL ERROR_STATIC_LEVEL
+#else
+#define ERROR_DYNAMIC_LEVEL ERROR_GLOBAL_LEVEL
+#endif /* ERROR_STATIC_LEVEL */
+
+#else /* ERROR_DYNAMIC_LEVEL */
+#ifdef ERROR_STATIC_LEVEL
+#error "Please use either ERROR_STATIC_LEVEL or ERROR_DYNAMIC_LEVEL (not both)"
+#else
+int ERROR_DYNAMIC_LEVEL = ERROR_GLOBAL_LEVEL;
+#endif /* ERROR_STATIC_LEVEL */
+#endif /* !ERROR_DYNAMIC_LEVEL */
+
+#ifdef NCSW_SMP
+#define PRINT_FORMAT        "[cpu%d, %s:%d %s]"
+#define PRINT_FMT_PARAMS    CORE_GetId(), __FILE__, __LINE__, __FUNCTION__
+#else
+#define PRINT_FORMAT        "[%s:%d %s]"
+#define PRINT_FMT_PARAMS    __FILE__, __LINE__, __FUNCTION__
+#endif /* NCSW_SMP */
 
 #if (!(defined(DEBUG_ERRORS)) || (DEBUG_ERRORS == 0))
 /* No debug/error/event messages at all */
@@ -381,10 +406,10 @@ extern const char *eventStrings[];
 #define DBG(_level, _vmsg) \
     do { \
         if (REPORT_LEVEL_##_level <= DEBUG_DYNAMIC_LEVEL) { \
-            XX_Print("> %s (%s) [%s:%d %s]: ", \
+            XX_Print("> %s (%s) " PRINT_FORMAT ": ", \
                      dbgLevelStrings[REPORT_LEVEL_##_level - 1], \
                      moduleStrings[__ERR_MODULE__ >> 16], \
-                     __FILE__, __LINE__, __FUNCTION__); \
+                     PRINT_FMT_PARAMS); \
             XX_Print _vmsg; \
             XX_Print("\r\n"); \
         } \
@@ -394,11 +419,11 @@ extern const char *eventStrings[];
 
 #define REPORT_ERROR(_level, _err, _vmsg) \
     do { \
-        if (REPORT_LEVEL_##_level <= DEBUG_DYNAMIC_LEVEL) { \
-            XX_Print("! %s %s Error [%s:%d %s]: %s; ", \
+        if (REPORT_LEVEL_##_level <= ERROR_DYNAMIC_LEVEL) { \
+            XX_Print("! %s %s Error " PRINT_FORMAT ": %s; ", \
                      dbgLevelStrings[REPORT_LEVEL_##_level - 1], \
                      moduleStrings[__ERR_MODULE__ >> 16], \
-                     __FILE__, __LINE__, __FUNCTION__, \
+                     PRINT_FMT_PARAMS, \
                      errTypeStrings[(GET_ERROR_TYPE(_err) - E_OK - 1)]); \
             XX_Print _vmsg; \
             XX_Print("\r\n"); \
@@ -418,10 +443,10 @@ extern const char *eventStrings[];
 #define REPORT_EVENT(_ev, _appId, _flg, _vmsg) \
     do { \
         if (_ev##_LEVEL <= EVENT_DYNAMIC_LEVEL) { \
-            XX_Print("~ %s %s Event [%s:%d %s]: %s (flags: 0x%04x); ", \
+            XX_Print("~ %s %s Event " PRINT_FORMAT ": %s (flags: 0x%04x); ", \
                      dbgLevelStrings[_ev##_LEVEL - 1], \
                      moduleStrings[__ERR_MODULE__ >> 16], \
-                     __FILE__, __LINE__, __FUNCTION__, \
+                     PRINT_FMT_PARAMS, \
                      eventStrings[((_ev) - EV_NO_EVENT - 1)], \
                      (uint16_t)(_flg)); \
             XX_Print _vmsg; \
@@ -453,8 +478,8 @@ extern const char *eventStrings[];
 #define ASSERT_COND(_cond) \
     do { \
         if (!(_cond)) { \
-            XX_Print("*** ASSERT_COND failed [%s:%d %s]\r\n", \
-                     __FILE__, __LINE__, __FUNCTION__); \
+            XX_Print("*** ASSERT_COND failed " PRINT_FORMAT "\r\n", \
+                    PRINT_FMT_PARAMS); \
             XX_Exit(1); \
         } \
     } while (0)

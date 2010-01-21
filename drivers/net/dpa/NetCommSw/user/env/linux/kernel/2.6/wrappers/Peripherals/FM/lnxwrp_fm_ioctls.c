@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -706,7 +706,7 @@ t_Error LnxwrpFmIOCTL(t_LnxWrpFmDev *p_LnxWrpFmDev, unsigned int cmd, unsigned l
                 return err;
             }
 
-            err = FM_SetCounter(p_LnxWrpFmDev->h_Dev, param->cnt, param->val);
+            err = FM_ModifyCounter(p_LnxWrpFmDev->h_Dev, param->cnt, param->val);
 
             XX_Free(param);
             return err;

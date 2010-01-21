@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -77,6 +77,19 @@
 
 
 #define PROC_PRINT(args...) offset += sprintf(buf+offset,args)
+
+#define ADD_ADV_CONFIG_NO_RET(_func, _param)    \
+    do {                                        \
+        if (i<max){                             \
+            p_Entry = &p_Entrys[i];             \
+            p_Entry->p_Function = _func;        \
+            _param                              \
+            i++;                                \
+        }                                       \
+        else                                    \
+            REPORT_ERROR(MAJOR, E_INVALID_VALUE,\
+                         ("Number of advanced-configuration entries exceeded"));\
+    } while (0)
 
 
 static t_LnxWrpFm   lnxWrpFm;
@@ -623,6 +636,7 @@ static t_Error FillRestFmInfo(t_LnxWrpFmDev *p_LnxWrpFmDev)
 {
 #define FM_BMI_PPIDS_OFFSET                 0x00080304
 #define FM_DMA_PLR_OFFSET                   0x000c2060
+#define FM_FPM_IP_REV_1_OFFSET              0x000c30c4
 #define DMA_HIGH_LIODN_MASK                 0x0FFF0000
 #define DMA_LOW_LIODN_MASK                  0x00000FFF
 #define DMA_LIODN_SHIFT                     16
@@ -635,12 +649,14 @@ typedef _Packed struct {
    volatile uint32_t   fmbm_ppid[63];
 } _PackedType t_Ppids;
 
-    t_Plr   *p_Plr;
-    t_Ppids *p_Ppids;
-    int     i;
-    uint8_t physRxPortId[] = {0x8,0x9,0xa,0xb,0x10};
-    uint8_t physOhPortId[] = {0x1,0x2,0x3,0x4,0x5, 0x6, 0x7};
+    t_Plr       *p_Plr;
+    t_Ppids     *p_Ppids;
+    int         i;
+    uint32_t    fmRev;
+    uint8_t     physRxPortId[] = {0x8,0x9,0xa,0xb,0x10};
+    uint8_t     physOhPortId[] = {0x1,0x2,0x3,0x4,0x5,0x6,0x7};
 
+    fmRev = (uint32_t)(*CAST_UINT64_TO_POINTER_TYPE(uint32_t, (p_LnxWrpFmDev->fmBaseAddr+FM_FPM_IP_REV_1_OFFSET)) & 0xffff);
     p_Plr = CAST_UINT64_TO_POINTER_TYPE(t_Plr, (p_LnxWrpFmDev->fmBaseAddr+FM_DMA_PLR_OFFSET));
 #ifdef MODULE
     for (i=0;i<FM_MAX_NUM_OF_PARTITIONS/2;i++)
@@ -648,25 +664,28 @@ typedef _Packed struct {
 #endif /* MODULE */
 
     for (i=0; i<FM_MAX_NUM_OF_PARTITIONS; i++)
-        p_LnxWrpFmDev->fmDevSettings.param.liodnPerPartition[i] = (i%2) ?
-            (p_Plr->plr[i/2] & DMA_LOW_LIODN_MASK) :
-            ((p_Plr->plr[i/2] & DMA_HIGH_LIODN_MASK) >> DMA_LIODN_SHIFT);
+        p_LnxWrpFmDev->fmDevSettings.param.liodnPerPartition[i] =
+            (uint16_t)((i%2) ?
+                       (p_Plr->plr[i/2] & DMA_LOW_LIODN_MASK) :
+                       ((p_Plr->plr[i/2] & DMA_HIGH_LIODN_MASK) >> DMA_LIODN_SHIFT));
 
     p_Ppids = CAST_UINT64_TO_POINTER_TYPE(t_Ppids, (p_LnxWrpFmDev->fmBaseAddr+FM_BMI_PPIDS_OFFSET));
 
     for (i=0; i<FM_MAX_NUM_OF_RX_PORTS; i++)
-        p_LnxWrpFmDev->rxPorts[i].settings.param.specificParams.rxParams.rxPartitionId =
-            p_Ppids->fmbm_ppid[physRxPortId[i]-1];
+            p_LnxWrpFmDev->rxPorts[i].settings.param.specificParams.rxParams.rxPartitionId =
+                p_Ppids->fmbm_ppid[physRxPortId[i]-1];
 
-#ifdef FM_OP_PARTITION_ERRATA
+#ifdef FM_OP_PARTITION_ERRATA_FMAN16
     for (i=0; i<FM_MAX_NUM_OF_OH_PORTS; i++)
     {
+        /* OH port #0 is host-command, don't need this workaround */
         if (i == 0)
             continue;
-        p_LnxWrpFmDev->opPorts[i-1].settings.param.specificParams.nonRxParams.opPartitionId =
-            p_Ppids->fmbm_ppid[physOhPortId[i]-1];
+        if (fmRev == 0x0100)
+            p_LnxWrpFmDev->opPorts[i-1].settings.param.specificParams.nonRxParams.opPartitionId =
+                p_Ppids->fmbm_ppid[physOhPortId[i]-1];
     }
-#endif  /* FM_OP_PARTITION_ERRATA */
+#endif  /* FM_OP_PARTITION_ERRATA_FMAN16 */
 
     return E_OK;
 }
@@ -945,24 +964,6 @@ static t_LnxWrpFmDev * ReadFmDevTreeNode (struct of_device *of_dev)
         of_node_put(fm_node);
     }
 
-    /* Loading the fman-controller code */
-    if (p_LnxWrpFmDev->ccActive) {
-        struct qe_firmware *fw = FindFmanMicrocode();
-
-        if (!fw)
-            /* We already reported an error, so just return NULL*/
-            return NULL;
-
-        p_LnxWrpFmDev->fmDevSettings.param.firmware.p_Code =
-            (void *) fw + fw->microcode[0].code_offset;
-        p_LnxWrpFmDev->fmDevSettings.param.firmware.size =
-            sizeof(u32) * fw->microcode[0].count;
-        DBG(INFO, ("Loading fman-controller code version %d.%d.%d",
-                   fw->microcode[0].major,
-                   fw->microcode[0].minor,
-                   fw->microcode[0].revision));
-    }
-
     p_LnxWrpFmDev->active = TRUE;
 
     return p_LnxWrpFmDev;
@@ -1004,14 +1005,14 @@ static t_LnxWrpFmPortDev * ReadFmPortDevTreeNode (struct of_device *of_dev)
         if (*uint32_prop == 0) {
             p_LnxWrpFmPortDev = &p_LnxWrpFmDev->hcPort;
             p_LnxWrpFmPortDev->id = 0;
-            p_LnxWrpFmPortDev->settings.param.portType = e_FM_PORT_TYPE_HOST_COMMAND;
+            p_LnxWrpFmPortDev->settings.param.portType = e_FM_PORT_TYPE_OH_HOST_COMMAND;
         }
         else {
             p_LnxWrpFmPortDev = &p_LnxWrpFmDev->opPorts[*uint32_prop-1];
             p_LnxWrpFmPortDev->id = *uint32_prop-1;
-            p_LnxWrpFmPortDev->settings.param.portType = e_FM_PORT_TYPE_OFFLINE_PARSING;
+            p_LnxWrpFmPortDev->settings.param.portType = e_FM_PORT_TYPE_OH_OFFLINE_PARSING;
         }
-        p_LnxWrpFmPortDev->settings.param.portId = p_LnxWrpFmPortDev->id;
+        p_LnxWrpFmPortDev->settings.param.portId = *uint32_prop;
 
         uint32_prop = (uint32_t *)of_get_property(port_node, "fsl,qman-channel-id", &lenp);
         if (uint32_prop == NULL) {
@@ -1201,7 +1202,7 @@ static t_Error ConfigureFmDev(t_LnxWrpFmDev  *p_LnxWrpFmDev)
     p_LnxWrpFmDev->fmDevSettings.param.fmId         = p_LnxWrpFmDev->id;
     p_LnxWrpFmDev->fmDevSettings.param.irq          = NO_IRQ;
     p_LnxWrpFmDev->fmDevSettings.param.errIrq       = NO_IRQ;
-    p_LnxWrpFmDev->fmDevSettings.param.f_Exceptions = LnxwrpFmDevExceptionsCb;
+    p_LnxWrpFmDev->fmDevSettings.param.f_Exception  = LnxwrpFmDevExceptionsCb;
     p_LnxWrpFmDev->fmDevSettings.param.f_BusError   = LnxwrpFmDevBusErrorCb;
     p_LnxWrpFmDev->fmDevSettings.param.h_App        = p_LnxWrpFmDev;
 
@@ -1245,9 +1246,9 @@ static t_Error InitFmPcdDev(t_LnxWrpFmDev  *p_LnxWrpFmDev)
         fmPcdParams.ccSupport   = p_LnxWrpFmDev->ccActive;
 
 #ifndef CONFIG_GUEST_PARTITION
-        fmPcdParams.f_FmPcdException   = LnxwrpFmPcdDevExceptionsCb;
+        fmPcdParams.f_Exception   = LnxwrpFmPcdDevExceptionsCb;
         if (fmPcdParams.kgSupport)
-            fmPcdParams.f_FmPcdIdException = LnxwrpFmPcdDevIndexedExceptionsCb;
+            fmPcdParams.f_ExceptionId  = LnxwrpFmPcdDevIndexedExceptionsCb;
         fmPcdParams.h_App              = p_LnxWrpFmDev;
 #endif /* !CONFIG_GUEST_PARTITION */
 
@@ -1282,7 +1283,7 @@ static t_Error InitFmPcdDev(t_LnxWrpFmDev  *p_LnxWrpFmDev)
         fmPcdParams.hc.confFqid = qman_fq_fqid(p_LnxWrpFmDev->hc_tx_conf_fq);
         fmPcdParams.hc.deqSubPortal = (p_LnxWrpFmPortDev->txCh & 0x1f);
         fmPcdParams.hc.enqFqid = qman_fq_fqid(p_LnxWrpFmDev->hc_tx_fq);
-        fmPcdParams.hc.f_QmEnqueueCB = QmEnqueueCB;
+        fmPcdParams.hc.f_QmEnqueue = QmEnqueueCB;
         fmPcdParams.hc.h_QmArg = (t_Handle)p_LnxWrpFmDev;
 
         p_LnxWrpFmDev->h_PcdDev = FM_PCD_Config(&fmPcdParams);
@@ -1294,10 +1295,10 @@ static t_Error InitFmPcdDev(t_LnxWrpFmDev  *p_LnxWrpFmDev)
             RETURN_ERROR(MAJOR, err, NO_MSG);
 
         if (p_LnxWrpFmDev->err_irq != 0) {
-            FM_PCD_SetException(p_LnxWrpFmDev->h_PcdDev,e_FM_PCD_KG_ERR_EXCEPTION_DOUBLE_ECC,FALSE);
-            FM_PCD_SetException(p_LnxWrpFmDev->h_PcdDev,e_FM_PCD_KG_ERR_EXCEPTION_KEYSIZE_OVERFLOW,FALSE);
-            FM_PCD_SetException(p_LnxWrpFmDev->h_PcdDev,e_FM_PCD_PLCR_ERR_EXCEPTION_INIT_ENTRY_ERROR,FALSE);
-            FM_PCD_SetException(p_LnxWrpFmDev->h_PcdDev,e_FM_PCD_PLCR_ERR_EXCEPTION_DOUBLE_ECC,FALSE);
+            FM_PCD_SetException(p_LnxWrpFmDev->h_PcdDev,e_FM_PCD_KG_EXCEPTION_DOUBLE_ECC,FALSE);
+            FM_PCD_SetException(p_LnxWrpFmDev->h_PcdDev,e_FM_PCD_KG_EXCEPTION_KEYSIZE_OVERFLOW,FALSE);
+            FM_PCD_SetException(p_LnxWrpFmDev->h_PcdDev,e_FM_PCD_PLCR_EXCEPTION_INIT_ENTRY_ERROR,FALSE);
+            FM_PCD_SetException(p_LnxWrpFmDev->h_PcdDev,e_FM_PCD_PLCR_EXCEPTION_DOUBLE_ECC,FALSE);
             FM_PCD_SetException(p_LnxWrpFmDev->h_PcdDev,e_FM_PCD_PRS_EXCEPTION_DOUBLE_ECC,FALSE);
             FM_PCD_SetException(p_LnxWrpFmDev->h_PcdDev,e_FM_PCD_PRS_EXCEPTION_ILLEGAL_ACCESS,FALSE);
             FM_PCD_SetException(p_LnxWrpFmDev->h_PcdDev,e_FM_PCD_PRS_EXCEPTION_PORT_ILLEGAL_ACCESS,FALSE);
@@ -1312,11 +1313,28 @@ static t_Error InitFmPcdDev(t_LnxWrpFmDev  *p_LnxWrpFmDev)
 
 static t_Error InitFmDev(t_LnxWrpFmDev  *p_LnxWrpFmDev)
 {
+    struct qe_firmware *fw;
+
     if (!p_LnxWrpFmDev->active)
         RETURN_ERROR(MAJOR, E_INVALID_STATE, ("FM not configured!!!"));
 
     if ((p_LnxWrpFmDev->h_MuramDev = FM_MURAM_ConfigAndInit(p_LnxWrpFmDev->fmMuramBaseAddr, p_LnxWrpFmDev->fmMuramMemSize)) == NULL)
         RETURN_ERROR(MAJOR, E_INVALID_HANDLE, ("FM-MURAM!"));
+
+    /* Loading the fman-controller code */
+    fw = FindFmanMicrocode();
+    if (!fw)
+        /* We already reported an error, so just return NULL*/
+        return ERROR_CODE(E_NULL_POINTER);
+
+    p_LnxWrpFmDev->fmDevSettings.param.firmware.p_Code =
+        (void *) fw + fw->microcode[0].code_offset;
+    p_LnxWrpFmDev->fmDevSettings.param.firmware.size =
+        sizeof(u32) * fw->microcode[0].count;
+    DBG(INFO, ("Loading fman-controller code version %d.%d.%d",
+               fw->microcode[0].major,
+               fw->microcode[0].minor,
+               fw->microcode[0].revision));
 
     p_LnxWrpFmDev->fmDevSettings.param.h_FmMuram = p_LnxWrpFmDev->h_MuramDev;
 
@@ -1337,38 +1355,14 @@ static t_Error InitFmDev(t_LnxWrpFmDev  *p_LnxWrpFmDev)
         FM_SetException(p_LnxWrpFmDev->h_Dev,e_FM_EX_IRAM_ECC,FALSE);
         FM_SetException(p_LnxWrpFmDev->h_Dev,e_FM_EX_MURAM_ECC,FALSE);
         FM_SetException(p_LnxWrpFmDev->h_Dev,e_FM_EX_QMI_DOUBLE_ECC,FALSE);
-        FM_SetException(p_LnxWrpFmDev->h_Dev,e_FM_EX_QMI_DEQ_FROM_DEFQ,FALSE);
+        FM_SetException(p_LnxWrpFmDev->h_Dev,e_FM_EX_QMI_DEQ_FROM_UNKNOWN_PORTID,FALSE);
         FM_SetException(p_LnxWrpFmDev->h_Dev,e_FM_EX_BMI_LIST_RAM_ECC,FALSE);
         FM_SetException(p_LnxWrpFmDev->h_Dev,e_FM_EX_BMI_PIPELINE_ECC,FALSE);
         FM_SetException(p_LnxWrpFmDev->h_Dev,e_FM_EX_BMI_STATISTICS_RAM_ECC, FALSE);
     }
 
-#ifdef BUP_FM_HALT_SIG_ERRATA
-    /* Workaround for silicon! not relevant for simulator */
-    if (FM_ConfigHaltOnExternalActivation(p_LnxWrpFmDev->h_Dev, FALSE) != E_OK)
-        RETURN_ERROR(MAJOR, E_INVALID_STATE, ("FM"));
-    if (FM_ConfigHaltOnUnrecoverableEccError(p_LnxWrpFmDev->h_Dev, FALSE) != E_OK)
-        RETURN_ERROR(MAJOR, E_INVALID_STATE, ("FM"));
-#endif /* BUP_FM_HALT_SIG_ERRATA */
-
-    {
-        t_FmDmaEmergency    emergency;
-
-        emergency.emergencyBusSelect = FM_DMA_MURAM_READ_EMERGENCY | FM_DMA_MURAM_WRITE_EMERGENCY | FM_DMA_EXT_BUS_EMERGENCY;
-        emergency.emergencyLevel = e_FM_DMA_EM_SOS;
-
-        if (FM_ConfigDmaAidMode(p_LnxWrpFmDev->h_Dev, e_FM_DMA_AID_OUT_TNUM) != E_OK)
-            RETURN_ERROR(MAJOR, E_INVALID_STATE, ("FM"));
-    }
-
     if (FM_Init(p_LnxWrpFmDev->h_Dev) != E_OK)
         RETURN_ERROR(MAJOR, E_INVALID_STATE, ("FM"));
-
-#ifdef FM_MURAM_ERR_IRQ_ERRATA
-        FM_SetException(p_LnxWrpFmDev->h_Dev, e_FM_EX_BMI_LIST_RAM_ECC, FALSE);
-        FM_SetException(p_LnxWrpFmDev->h_Dev, e_FM_EX_MURAM_ECC, FALSE);
-        FM_SetException(p_LnxWrpFmDev->h_Dev, e_FM_EX_IRAM_ECC, FALSE);
-#endif /* FM_MURAM_ERR_IRQ_ERRATA */
 
 //    return InitFmPcdDev(p_LnxWrpFmDev);
     return E_OK;
@@ -1508,31 +1502,13 @@ static t_Error InitFmPortDev(t_LnxWrpFmPortDev *p_LnxWrpFmPortDev)
     if ((p_LnxWrpFmPortDev->h_Dev = FM_PORT_Config(&p_LnxWrpFmPortDev->settings.param)) == NULL)
         RETURN_ERROR(MAJOR, E_INVALID_HANDLE, ("FM-port"));
 
-    if ((p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_RX_10G) ||
-        (p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_RX))
-    {
-        t_Error         errCode;
-        if ((errCode = FM_PORT_ConfigDmaWriteOptimize(p_LnxWrpFmPortDev->h_Dev, TRUE)) != E_OK)
-             RETURN_ERROR(MAJOR, errCode, NO_MSG);
-    }
-    else if ((p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_TX_10G) ||
+    if ((p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_TX_10G) ||
              (p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_TX))
     {
-        t_FmPortRsrc    portRsrc;
         t_Error         errCode;
-
-        portRsrc.num = 6;
-        portRsrc.extra = 6;
-
-        if ((p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_TX_10G) &&
-            (errCode = FM_PORT_ConfigNumOfOpenDmas(p_LnxWrpFmPortDev->h_Dev, &portRsrc)) != E_OK)
-             RETURN_ERROR(MAJOR, errCode, NO_MSG);
         if ((errCode = FM_PORT_ConfigDeqHighPriority(p_LnxWrpFmPortDev->h_Dev, TRUE)) != E_OK)
              RETURN_ERROR(MAJOR, errCode, NO_MSG);
         if ((errCode = FM_PORT_ConfigDeqPrefetchOption(p_LnxWrpFmPortDev->h_Dev, e_FM_PORT_DEQ_FULL_PREFETCH)) != E_OK)
-             RETURN_ERROR(MAJOR, errCode, NO_MSG);
-        if ((p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_TX_10G) &&
-            (errCode = FM_PORT_ConfigTxFifoDeqPipelineDepth(p_LnxWrpFmPortDev->h_Dev, 8)) != E_OK)
              RETURN_ERROR(MAJOR, errCode, NO_MSG);
     }
 
@@ -1906,7 +1882,7 @@ static int /*__devinit*/ fm_port_probe(struct of_device *of_dev, const struct of
 
     dev_set_drvdata(dev, p_LnxWrpFmPortDev);
 
-    if ((p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_HOST_COMMAND) &&
+    if ((p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_OH_HOST_COMMAND) &&
         (InitFmPcdDev((t_LnxWrpFmDev *)p_LnxWrpFmPortDev->h_LnxWrpFmDev) != E_OK))
         return -EIO;
 
@@ -1932,12 +1908,12 @@ static int /*__devinit*/ fm_port_probe(struct of_device *of_dev, const struct of
         Sprint (p_LnxWrpFmPortDev->name, "%s-port-tx%d", p_LnxWrpFmDev->name, p_LnxWrpFmPortDev->id+FM_MAX_NUM_OF_1G_TX_PORTS);
         p_LnxWrpFmPortDev->minor = p_LnxWrpFmPortDev->id + FM_MAX_NUM_OF_1G_TX_PORTS + DEV_FM_TX_PORTS_MINOR_BASE;
     }
-    else if (p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_HOST_COMMAND)
+    else if (p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_OH_HOST_COMMAND)
     {
         Sprint (p_LnxWrpFmPortDev->name, "%s-port-oh%d", p_LnxWrpFmDev->name, p_LnxWrpFmPortDev->id);
         p_LnxWrpFmPortDev->minor = p_LnxWrpFmPortDev->id + DEV_FM_OH_PORTS_MINOR_BASE;
     }
-    else if (p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_OFFLINE_PARSING)
+    else if (p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_OH_OFFLINE_PARSING)
     {
         Sprint (p_LnxWrpFmPortDev->name, "%s-port-oh%d", p_LnxWrpFmDev->name, p_LnxWrpFmPortDev->id+1);
         p_LnxWrpFmPortDev->minor = p_LnxWrpFmPortDev->id + 1 + DEV_FM_OH_PORTS_MINOR_BASE;
@@ -2074,9 +2050,9 @@ t_Handle LNXWRP_FM_Init(void)
 #endif /* !NO_OF_SUPPORT */
 
 #ifdef CONFIG_FSL_FMAN_TEST
-	/* Seed the QMan allocator so we'll have enough queues to run PCD with
-	   dinamically fqid-range allocation */
-	qman_release_fqid_range(0x100, 0x100);
+    /* Seed the QMan allocator so we'll have enough queues to run PCD with
+       dinamically fqid-range allocation */
+    qman_release_fqid_range(0x100, 0x100);
 #endif /* CONFIG_FSL_FMAN_TEST */
 
     return &lnxWrpFm;
@@ -2185,10 +2161,11 @@ void fm_set_rx_port_params(struct fm_port *port, struct fm_port_rx_params *param
 
     p_LnxWrpFmPortDev->buffPrefixContent.privDataSize     = params->priv_data_size;
     p_LnxWrpFmPortDev->buffPrefixContent.passPrsResult    = params->parse_results;
+    p_LnxWrpFmPortDev->buffPrefixContent.passHashResult   = params->hash_results;
 
     ADD_ADV_CONFIG_START(p_LnxWrpFmPortDev->settings.advConfig, FM_MAX_NUM_OF_ADV_SETTINGS)
 
-    ADD_ADV_CONFIG(FM_PORT_ConfigBufferPrefixContent,   ARGS(1, (&p_LnxWrpFmPortDev->buffPrefixContent)));
+    ADD_ADV_CONFIG_NO_RET(FM_PORT_ConfigBufferPrefixContent,   ARGS(1, (&p_LnxWrpFmPortDev->buffPrefixContent)));
 
     ADD_ADV_CONFIG_END
 
@@ -2214,10 +2191,11 @@ void fm_set_tx_port_params(struct fm_port *port, struct fm_port_non_rx_params *p
 
     p_LnxWrpFmPortDev->buffPrefixContent.privDataSize     = params->priv_data_size;
     p_LnxWrpFmPortDev->buffPrefixContent.passPrsResult    = params->parse_results;
+    p_LnxWrpFmPortDev->buffPrefixContent.passHashResult   = params->hash_results;
 
     ADD_ADV_CONFIG_START(p_LnxWrpFmPortDev->settings.advConfig, FM_MAX_NUM_OF_ADV_SETTINGS)
 
-    ADD_ADV_CONFIG(FM_PORT_ConfigBufferPrefixContent,   ARGS(1, (&p_LnxWrpFmPortDev->buffPrefixContent)));
+    ADD_ADV_CONFIG_NO_RET(FM_PORT_ConfigBufferPrefixContent,   ARGS(1, (&p_LnxWrpFmPortDev->buffPrefixContent)));
 
     ADD_ADV_CONFIG_END
 

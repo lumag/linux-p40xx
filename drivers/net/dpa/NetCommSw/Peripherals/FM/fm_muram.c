@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -38,21 +38,32 @@
 #include "error_ext.h"
 #include "std_ext.h"
 #include "mm_ext.h"
-#include "fm_common.h"
 #include "fm_muram_ext.h"
+
+
+#define __ERR_MODULE__  MODULE_FM_MURAM
 
 
 t_Handle FM_MURAM_ConfigAndInit(uint64_t baseAddress, uint32_t size)
 {
     t_Handle h_Mem;
 
-
     if(!baseAddress)
     {
         REPORT_ERROR(MAJOR, E_INVALID_VALUE, ("baseAddress 0 is not supported"));
         return NULL;
-
     }
+
+    if(baseAddress%4)
+    {
+        REPORT_ERROR(MAJOR, E_INVALID_VALUE, ("baseAddress not 4 bytes aligned!"));
+        return NULL;
+    }
+
+#ifndef VERIFICATION_SUPPORT
+    IOMemSet32(CAST_UINT64_TO_POINTER(baseAddress), 0, size);
+#endif /* VERIFICATION_SUPPORT */
+
     if (MM_Init(&h_Mem, baseAddress, size) != E_OK)
         return NULL;
     if (!h_Mem)

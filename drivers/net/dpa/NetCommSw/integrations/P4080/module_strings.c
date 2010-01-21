@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -42,8 +42,15 @@ const char *moduleStrings[] =
     ,"P4080-Pltaform"           /* MODULE_P4080_PLTFRM */
     ,"MMU"                      /* MODULE_MMU */
     ,"MPIC"                     /* MODULE_MPIC */
-    ,"FM"                       /* MODULE_FM */
+    ,"DUART"                    /* MODULE_DUART */
+    ,"SerDes"                   /* MODULE_SERDES */
+    ,"PIO"                      /* MODULE_PIO */
     ,"QM"                       /* MODULE_QM */
     ,"BM"                       /* MODULE_BM */
-    ,"DUART"                    /* MODULE_DUART */
+    ,"FM"                       /* MODULE_FM */
+    ,"FM-MURAM"                 /* MODULE_FM_MURAM */
+    ,"FM-PCD"                   /* MODULE_FM_PCD */
+    ,"FM-RTC"                   /* MODULE_FM_RTC */
+    ,"FM-MAC"                   /* MODULE_FM_MAC */
+    ,"FM-Port"                  /* MODULE_FM_PORT */
 };

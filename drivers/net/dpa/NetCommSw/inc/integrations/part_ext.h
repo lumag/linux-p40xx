@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -50,8 +50,12 @@
       defined(MPC837x) || \
       defined(MPC8568) || \
       defined(MPC8569) || \
-      defined(P4080)   || \
+      defined(P1020)   || \
+      defined(P1021)   || \
+      defined(P1022)   || \
+      defined(SC1023)  || \
       defined(P2020)   || \
+      defined(P4080)   || \
       defined(MSC814x))
 #error "unable to proceed without chip-definition"
 #endif /* !(defined(MPC834x) || ... */

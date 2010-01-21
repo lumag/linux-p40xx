@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -183,6 +183,7 @@ t_Handle PLATFORM_Init(struct t_PlatformParam *p_PlatformParam);
 
 t_Error  PLATFORM_Free(t_Handle h_Platform);
 
+t_Error  PLATFORM_ConnectExternalRequest(t_Handle h_Platform, e_SysModule module,uint8_t extReqNum);
 
 t_Error  PLATFORM_GetChipRevInfo(t_Handle h_Platform, t_ChipRevInfo *p_ChipRevInfo);
 

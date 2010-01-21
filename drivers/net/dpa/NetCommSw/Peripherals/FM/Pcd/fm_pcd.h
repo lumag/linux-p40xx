@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -46,6 +46,9 @@
 #include "fm_common.h"
 
 
+#define __ERR_MODULE__  MODULE_FM_PCD
+
+
 /**************************************************************************//**
  @Group         FM_PCD_Runtime_grp FM PCD Runtime Unit
  @{
@@ -55,14 +58,22 @@
 /* General defines          */
 /****************************/
 
-#define GET_FM_PCD_PORTID_FROM_GLOBAL_PORTID(pcdPortId, pcdPortsTable, hardwarePortId)\
-    pcdPortId = 0;\
-    while((hardwarePortId != pcdPortsTable[pcdPortId]) && (pcdPortId<PCD_MAX_NUM_OF_PORTS))\
-        pcdPortId++;
-
 #define PCD_PORTS_TABLE                     {1,2,3,4,5,6,7,8,9,10,11,16}
-#define GET_GLOBAL_PORTID_FROM_PCD_PORTS_TABLE(hardwarePortId, pcdPortsTable,i)\
-    hardwarePortId = pcdPortsTable[i]
+
+#define SET_FM_PCD_PORTID_FROM_GLOBAL_PORTID(pcdPortId, hardwarePortId) \
+do {                                                                    \
+    uint8_t pcdPortsTable[] = PCD_PORTS_TABLE;                          \
+    pcdPortId = 0;                                                      \
+    while((hardwarePortId != pcdPortsTable[pcdPortId]) &&               \
+          (pcdPortId<PCD_MAX_NUM_OF_PORTS))                             \
+        pcdPortId++;                                                    \
+} while (0)
+
+#define GET_GLOBAL_PORTID_FROM_PCD_PORTS_TABLE(hardwarePortId, i)       \
+do {                                                                    \
+    uint8_t pcdPortsTable[] = PCD_PORTS_TABLE;                          \
+    hardwarePortId = pcdPortsTable[i];                                  \
+} while (0)
 
 
 #define ILLEGAL_PCD_PORTID                  0xFF
@@ -70,7 +81,7 @@
 
 #define GET_PCD_PORTID_BY_RELATIVE(portId,type,id)      \
 switch(type) {                              \
-    case(e_FM_PORT_TYPE_OFFLINE_PARSING):   \
+    case(e_FM_PORT_TYPE_OH_OFFLINE_PARSING):   \
         if (id > (LAST_HO_PORTID-BASE_HO_PORTID))       \
             portId = ILLEGAL_PCD_PORTID;    \
         else                                \
@@ -79,21 +90,21 @@ switch(type) {                              \
         if (id > (LAST_RX_PORTID-BASE_RX_PORTID))       \
             portId = ILLEGAL_PCD_PORTID;    \
         else                                \
-            portId = id+MAX_NUM_OF_OP_PORTS;\
+            portId = id+FM_MAX_NUM_OF_OH_PORTS;\
         break;                              \
       case(e_FM_PORT_TYPE_RX_10G):          \
         if (id > (LAST_RX10_PORTID-BASE_RX10_PORTID))   \
             portId = ILLEGAL_PCD_PORTID;    \
         else                                \
-            portId = id+MAX_NUM_OF_OP_PORTS + MAX_NUM_OF_RX_1G_PORTS;    \
+            portId = id+FM_MAX_NUM_OF_OH_PORTS + FM_MAX_NUM_OF_1G_RX_PORTS;    \
         break;                              \
       default:                              \
         portId = ILLEGAL_PCD_PORTID;        \
 }
 
 #define IS_PRIVATE_HEADER(hdr)              ((hdr == HEADER_TYPE_USER_DEFINED_SHIM1 ) ||   \
-                                            (hdr == HEADER_TYPE_USER_DEFINED_SHIM2) ||    \
-                                            (hdr == HEADER_TYPE_USER_DEFINED_SHIM3))
+                                             (hdr == HEADER_TYPE_USER_DEFINED_SHIM2) ||    \
+                                             (hdr == HEADER_TYPE_USER_DEFINED_SHIM3))
 
 /****************************/
 /* Error defines           */
@@ -113,13 +124,13 @@ switch(type) {                              \
 
 #define GET_FM_PCD_EXCEPTION_FLAG(bitMask, exception)               \
 switch(exception){                                                  \
-    case e_FM_PCD_KG_ERR_EXCEPTION_DOUBLE_ECC:                      \
+    case e_FM_PCD_KG_EXCEPTION_DOUBLE_ECC:                      \
         bitMask = FM_PCD_EX_KG_DOUBLE_ECC; break;                   \
-    case e_FM_PCD_PLCR_ERR_EXCEPTION_DOUBLE_ECC:                    \
+    case e_FM_PCD_PLCR_EXCEPTION_DOUBLE_ECC:                    \
         bitMask = FM_PCD_EX_PLCR_DOUBLE_ECC; break;                 \
-    case e_FM_PCD_KG_ERR_EXCEPTION_KEYSIZE_OVERFLOW:                \
+    case e_FM_PCD_KG_EXCEPTION_KEYSIZE_OVERFLOW:                \
         bitMask = FM_PCD_EX_KG_KEYSIZE_OVERFLOW; break;             \
-    case e_FM_PCD_PLCR_ERR_EXCEPTION_INIT_ENTRY_ERROR:              \
+    case e_FM_PCD_PLCR_EXCEPTION_INIT_ENTRY_ERROR:              \
         bitMask = FM_PCD_EX_PLCR_INIT_ENTRY_ERROR; break;           \
     case e_FM_PCD_PLCR_EXCEPTION_PRAM_SELF_INIT_COMPLETE:           \
         bitMask = FM_PCD_EX_PLCR_PRAM_SELF_INIT_COMPLETE; break;    \
@@ -139,6 +150,7 @@ switch(exception){                                                  \
 /***********************************************************************/
 /*          SW parser L4 shells patch                                  */
 /***********************************************************************/
+#ifdef FM_PRS_L4_SHELL_ERRATA
 #define SW_PRS_L4_PATCH                         \
 {   0x31,0x92,0x02,0x1f,0x00,0x32,0x00,0x78,    \
     0x00,0x34,0x32,0xf0,0x00,0x50,0x00,0x0c,    \
@@ -157,6 +169,7 @@ switch(exception){                                                  \
     0x1b,0xff,0x00,0x00,0x00,0x00,0x00,0x00};
 
 #define SW_PRS_L4_PATCH_SIZE                120
+#endif /* FM_PRS_L4_SHELL_ERRATA */
 
 /****************************/
 /* Parser defines           */
@@ -416,6 +429,8 @@ typedef struct {
 
 #define CC_PC_GENERIC_WITHOUT_MASK          0x27
 #define CC_PC_GENERIC_WITH_MASK             0x28
+#define CC_PC_GENERIC_IC_GMASK              0x2B
+#define CC_PC_GENERIC_IC_HASH_INDEXED       0x2C
 
 #define CC_PR_OFFSET                        0x25
 #define CC_PR_WITHOUT_OFFSET                0x26
@@ -456,6 +471,9 @@ typedef struct {
 #define FM_PCD_AD_TYPE_MASK                 0xc0000000
 #define FM_PCD_AD_PROFILEID_FOR_CNTRL_SHIFT 16
 
+#define GLBL_MASK_FOR_HASH_INDEXED          0xfff00000
+#define CC_GLBL_MASK_SIZE                   4
+
 /****************************/
 /* Defaults                 */
 /****************************/
@@ -473,16 +491,14 @@ typedef struct {
 /***********************************************************************/
 /*          Memory map                                                 */
 /***********************************************************************/
-#ifdef __MWERKS__
+#if defined(__MWERKS__) && !defined(__GNUC__)
 #pragma pack(push,1)
-#endif /*__MWERKS__ */
+#endif /* defined(__MWERKS__) && ... */
 #define MEM_MAP_START
-
 
 typedef _Packed struct {
    volatile uint32_t kgoe_sp;
    volatile uint32_t kgoe_cpp;
-
 } _PackedType t_FmPcdKgPortConfigRegs;
 
 typedef _Packed struct {
@@ -490,9 +506,9 @@ typedef _Packed struct {
 } _PackedType t_FmPcdKgClsPlanRegs;
 
 typedef _Packed union {
-    t_FmPcdKgInterModuleSchemeRegs     schemeRegs;
-    t_FmPcdKgPortConfigRegs portRegs;
-    t_FmPcdKgClsPlanRegs    clsPlanRegs;
+    t_FmPcdKgInterModuleSchemeRegs  schemeRegs;
+    t_FmPcdKgPortConfigRegs         portRegs;
+    t_FmPcdKgClsPlanRegs            clsPlanRegs;
 } _PackedType u_FmPcdKgIndirectAccessRegs;
 
 typedef _Packed struct {
@@ -607,9 +623,9 @@ typedef _Packed union {
 } _PackedType t_Ad;
 
 #define MEM_MAP_END
-#ifdef __MWERKS__
+#if defined(__MWERKS__) && !defined(__GNUC__)
 #pragma pack(pop)
-#endif /* __MWERKS__ */
+#endif /* defined(__MWERKS__) && ... */
 
 /***********************************************************************/
 /*  Driver's internal structures                                        */
@@ -697,7 +713,7 @@ typedef struct {
 #endif /* CONFIG_MULTI_PARTITION_SUPPORT */
     uint8_t             baseEntry;
     uint16_t            sizeOfGrp;
-    protocolOpt_t       optArray[MAX_NUM_OF_OPTIONS];
+    protocolOpt_t       optArray[FM_PCD_MAX_NUM_OF_OPTIONS];
 } t_FmPcdKgClsPlanGrp;
 
 typedef struct {
@@ -710,6 +726,7 @@ typedef struct {
     bool                nextRelativePlcrProfile;
     uint16_t            relativeProfileId;
     uint16_t            numOfProfiles;
+    t_FmPcdKgKeyOrder   orderedArray;
 } t_FmPcdKgScheme;
 
 #ifndef CONFIG_GUEST_PARTITION
@@ -797,7 +814,7 @@ typedef struct {
 
 typedef struct {
     uint8_t             netEnvId;
-    t_Handle            p_CcBaseTree;
+    uint64_t            ccTreeBaseAddr;
     uint8_t             numOfGrps;
     t_FmPcdCcGroupParam fmPcdGroupParam[8];
     t_List              ccNextNodesLst;
@@ -807,17 +824,16 @@ typedef struct {
 } t_FmPcdCcTree;
 
 #if 0
-typedef struct
-{
+typedef struct {
     uint32_t nextCcNodeInfo;
     t_List   h_Node;
-}t_CcNodeInfo;
-#endif
-typedef struct
-{
+} t_CcNodeInfo;
+#endif /* 0 */
+
+typedef struct {
    e_FmPcdEngine  fmPcdEngine;
    uint32_t       additionalInfo;
-}t_NextEngineParamsInfo;
+} t_NextEngineParamsInfo;
 
 typedef struct {
     t_FmPcdCcTree   *p_FmPcdCcTree;
@@ -828,8 +844,8 @@ typedef struct {
 
 typedef struct {
     t_Handle               h_FmMuram;
-    t_FmPcdCcNodeArray     ccNodeArrayEntry[MAX_NUM_OF_PCD_CC_NODES];
-    t_FmPcdCcTreeArray     ccTreeArrayEntry[MAX_NUM_OF_PCD_CC_TREES];
+    t_FmPcdCcNodeArray     ccNodeArrayEntry[FM_PCD_MAX_NUM_OF_CC_NODES];
+    t_FmPcdCcTreeArray     ccTreeArrayEntry[FM_PCD_MAX_NUM_OF_CC_TREES];
     uint64_t               physicalMuramBase;
 } t_FmPcdCc;
 
@@ -861,6 +877,9 @@ typedef struct {
     bool                        enabled;
 #ifdef CONFIG_MULTI_PARTITION_SUPPORT
     uint8_t                     partitionId;            /**< Guest Partition Id */
+#ifdef FM_MASTER_PARTITION
+    uint8_t                     numOfEnabledGuestPartitionsPcds;
+#endif /* FM_MASTER_PARTITION */
 #endif /* CONFIG_MULTI_PARTITION_SUPPORT */
     char                        fmPcdModuleName[MODULE_NAME_SIZE];
 
@@ -874,8 +893,8 @@ typedef struct {
 
 #ifndef CONFIG_GUEST_PARTITION
     uint32_t                    exceptions;
-    t_FmPcdException            *f_FmPcdException;
-    t_FmPcdIdException          *f_FmPcdIndexedException;
+    t_FmPcdExceptionCallback    *f_Exception;
+    t_FmPcdIdExceptionCallback  *f_FmPcdIndexedException;
     t_Handle                    h_App;
 #endif /* !CONFIG_GUEST_PARTITION */
 
@@ -917,9 +936,11 @@ bool        PcdNetEnvIsUnitWithoutOpts(t_FmPcd *p_FmPcd, uint8_t netEnvId, uint3
 
 t_Handle    KgConfig( t_FmPcd *p_FmPcd, t_FmPcdParams *p_FmPcdParams);
 t_Error     KgInit(t_FmPcd *p_FmPcd);
+t_Error     KgFree(t_FmPcd *p_FmPcd);
 void        KgSetClsPlan(t_Handle h_FmPcd, t_FmPcdKgInterModuleClsPlanSet *p_Set);
 bool        KgIsSchemeAlwaysDirect(t_Handle h_FmPcd, uint8_t schemeId);
 t_Error     KgEnable(t_FmPcd *p_FmPcd);
+t_Error     KgDisable(t_FmPcd *p_FmPcd);
 
 #ifdef CONFIG_MULTI_PARTITION_SUPPORT
 t_Error     FmPcdKgAllocSchemes(t_Handle h_FmPcd, uint8_t numOfSchemes, uint8_t partitionId, uint8_t *p_SchemesIds);
@@ -932,7 +953,9 @@ t_Error     KgBindPortToSchemes(t_Handle h_FmPcd , uint8_t hardwarePortId, uint3
 
 t_Handle    PlcrConfig(t_FmPcd *p_FmPcd, t_FmPcdParams *p_FmPcdParams);
 t_Error     PlcrInit(t_FmPcd *p_FmPcd);
+t_Error     PlcrFree(t_FmPcd *p_FmPcd);
 t_Error     PlcrEnable(t_FmPcd *p_FmPcd);
+t_Error     PlcrDisable(t_FmPcd *p_FmPcd);
 t_Error     PlcrFreeProfiles(t_FmPcd *p_FmPcd, uint8_t hardwarePortId, uint16_t num, uint16_t base);
 t_Error     PlcrAllocProfiles(t_FmPcd *p_FmPcd, uint8_t hardwarePortId, uint16_t numOfProfiles, uint16_t *p_Base);
 t_Error     PlcrAllocSharedProfiles(t_FmPcd *p_FmPcd, uint16_t numOfProfiles, uint16_t *profilesIds);
@@ -941,6 +964,8 @@ void        PlcrFreeSharedProfiles(t_FmPcd *p_FmPcd, uint16_t numOfProfiles, uin
 t_Handle    PrsConfig(t_FmPcd *p_FmPcd,t_FmPcdParams *p_FmPcdParams);
 t_Error     PrsInit(t_FmPcd *p_FmPcd);
 t_Error     PrsEnable(t_FmPcd *p_FmPcd);
+t_Error     PrsDisable(t_FmPcd *p_FmPcd);
+void        PrsFree(t_FmPcd *p_FmPcd );
 
 t_Handle    CcConfig(t_FmPcd *p_FmPcd, t_FmPcdParams *p_FmPcdParams);
 void        CcFree(t_FmPcdCc *p_FmPcdCc);

@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -122,55 +122,25 @@ static t_FmTest fmTest;
 static t_Error Set1GMacIntLoopback(t_FmTestPort *p_FmTestPort, bool en)
 {
 #define FM_1GMAC0_OFFSET                0x000e0000
-#define FM_1GMAC1_OFFSET                0x000e2000
-#define FM_1GMAC2_OFFSET                0x000e4000
-#define FM_1GMAC3_OFFSET                0x000e6000
 #define FM_1GMAC_CMD_CONF_CTRL_OFFSET   0x100
 #define MACCFG1_LOOPBACK                0x00000100
 
-    uint64_t    tmpAddr = p_FmTestPort->fmPhysBaseAddr;
+    uint64_t    baseAddr, regAddr;
     uint32_t    tmpVal;
 
-    if (p_FmTestPort->portType == e_IOC_FMT_PORT_T_RXTX)
-    switch (p_FmTestPort->id)
-    {
-        case 0:
-            tmpAddr += FM_1GMAC0_OFFSET;
-            break;
-        case 1:
-            tmpAddr += FM_1GMAC1_OFFSET;
-            break;
-        case 2:
-            tmpAddr += FM_1GMAC2_OFFSET;
-            break;
-        case 3:
-            tmpAddr += FM_1GMAC3_OFFSET;
-            break;
-        default:
-            RETURN_ERROR(MINOR, E_INVALID_VALUE, ("fm-port-test id!"));
-    }
+    baseAddr = p_FmTestPort->fmPhysBaseAddr + (FM_1GMAC0_OFFSET + (p_FmTestPort->id*0x2000));
 
-    tmpAddr = CAST_POINTER_TO_UINT64(ioremap(tmpAddr, 0x1000));
+    baseAddr = CAST_POINTER_TO_UINT64(ioremap(baseAddr, 0x1000));
 
-    switch (p_FmTestPort->id)
-    {
-        case 0:
-        case 1:
-        case 2:
-        case 3:
-            tmpAddr += FM_1GMAC_CMD_CONF_CTRL_OFFSET;
-            tmpVal = GET_UINT32(*CAST_UINT64_TO_POINTER_TYPE(uint32_t,tmpAddr));
-            if (en)
-                tmpVal |= MACCFG1_LOOPBACK;
-            else
-                tmpVal &= ~MACCFG1_LOOPBACK;
-            WRITE_UINT32(*CAST_UINT64_TO_POINTER_TYPE(uint32_t,tmpAddr), tmpVal);
-            break;
-        default:
-            break;
-    }
+    regAddr = baseAddr + FM_1GMAC_CMD_CONF_CTRL_OFFSET;
+    tmpVal = GET_UINT32(*CAST_UINT64_TO_POINTER_TYPE(uint32_t,regAddr));
+    if (en)
+        tmpVal |= MACCFG1_LOOPBACK;
+    else
+        tmpVal &= ~MACCFG1_LOOPBACK;
+    WRITE_UINT32(*CAST_UINT64_TO_POINTER_TYPE(uint32_t,regAddr), tmpVal);
 
-    iounmap(CAST_UINT64_TO_POINTER(tmpAddr));
+    iounmap(CAST_UINT64_TO_POINTER(baseAddr));
 
     return E_OK;
 }
@@ -182,37 +152,22 @@ static t_Error Set10GMacIntLoopback(t_FmTestPort *p_FmTestPort, bool en)
 #define FM_10GMAC_CMD_CONF_CTRL_OFFSET  0x8
 #define CMD_CFG_LOOPBACK_EN             0x00000400
 
-    uint64_t    tmpAddr = p_FmTestPort->fmPhysBaseAddr;
+    uint64_t    baseAddr, regAddr;
     uint32_t    tmpVal;
 
-    if (p_FmTestPort->portType == e_IOC_FMT_PORT_T_RXTX)
-        switch (p_FmTestPort->id)
-        {
-            case 4:
-                tmpAddr += FM_10GMAC0_OFFSET;
-                break;
-            default:
-                RETURN_ERROR(MINOR, E_INVALID_VALUE, ("fm-port-test id!"));
-        }
+    baseAddr = p_FmTestPort->fmPhysBaseAddr + (FM_10GMAC0_OFFSET + ((p_FmTestPort->id-4)*0x2000));
 
-    tmpAddr = CAST_POINTER_TO_UINT64(ioremap(tmpAddr, 0x1000));
+    baseAddr = CAST_POINTER_TO_UINT64(ioremap(baseAddr, 0x1000));
 
-    switch (p_FmTestPort->id)
-    {
-        case 4:
-            tmpAddr += FM_10GMAC_CMD_CONF_CTRL_OFFSET;
-            tmpVal = GET_UINT32(*CAST_UINT64_TO_POINTER_TYPE(uint32_t,tmpAddr));
-            if (en)
-                tmpVal |= CMD_CFG_LOOPBACK_EN;
-            else
-                tmpVal &= ~CMD_CFG_LOOPBACK_EN;
-            WRITE_UINT32(*CAST_UINT64_TO_POINTER_TYPE(uint32_t,tmpAddr), tmpVal);
-            break;
-        default:
-            break;
-    }
+    regAddr = baseAddr + FM_10GMAC_CMD_CONF_CTRL_OFFSET;
+    tmpVal = GET_UINT32(*CAST_UINT64_TO_POINTER_TYPE(uint32_t,regAddr));
+    if (en)
+        tmpVal |= CMD_CFG_LOOPBACK_EN;
+    else
+        tmpVal &= ~CMD_CFG_LOOPBACK_EN;
+    WRITE_UINT32(*CAST_UINT64_TO_POINTER_TYPE(uint32_t,regAddr), tmpVal);
 
-    iounmap(CAST_UINT64_TO_POINTER(tmpAddr));
+    iounmap(CAST_UINT64_TO_POINTER(baseAddr));
 
     return E_OK;
 }
@@ -509,6 +464,7 @@ bool is_fman_test (void     *mac_dev,
 
     if (fman_test_flag)
     {
+        DBG(TRACE, ("Port %d got FMUC frame\n", p_FmTestPort->id));
         dataOffset = FM_PORT_GetBufferDataOffset(p_FmTestPort->h_RxFmPortDev);
         p_FmTestFrame = (t_FmTestFrame *)XX_Malloc(sizeof(t_FmTestFrame));
         memset(p_FmTestFrame, 0, sizeof(t_FmTestFrame));
@@ -547,10 +503,8 @@ void fman_test_ip_manip (void *mac_dev, uint8_t *data)
     for (i=0; i<IOC_FMT_MAX_NUM_OF_PORTS; i++)
         if (mac_dev == p_FmTest->ports[i].h_Mac)
             p_FmTestPort = &p_FmTest->ports[i];
-#ifdef SIMULATOR
     if (!p_FmTestPort || !p_FmTestPort->ip_header_manip)
         return;
-#endif /* SIMULATOR */
 
     iph = (struct iphdr *)p_Data;
     saddr = iph->saddr;
@@ -575,14 +529,10 @@ void fman_test_ip_manip (void *mac_dev, uint8_t *data)
          (int)((daddr & 0x0000ff00) >> 8),
          (int)((daddr & 0x000000ff) >> 0)));
 
-#ifdef SIMULATOR
     if ((p_FmTestPort->diag == e_IOC_DIAG_MODE_CTRL_LOOPBACK) ||
         (p_FmTestPort->diag == e_IOC_DIAG_MODE_CHIP_LOOPBACK) ||
         (p_FmTestPort->diag == e_IOC_DIAG_MODE_PHY_LOOPBACK) ||
         (p_FmTestPort->diag == e_IOC_DIAG_MODE_LINE_LOOPBACK))
-#else
-    if (true)
-#endif /* SIMULATOR */
     {
         net   = saddr;
         saddr = daddr;

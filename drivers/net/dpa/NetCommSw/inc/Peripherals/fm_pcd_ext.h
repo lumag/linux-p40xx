@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -87,7 +87,7 @@ typedef uint32_t fmPcdEngines_t; /**< options as defined below: */
 #define FM_PCD_PRS_NUM_OF_HDRS                      16                  /**< Number of headers supported by HW parser */
 #define FM_PCD_MAX_NUM_OF_DISTINCTION_UNITS         (32 - FM_PCD_MAX_NUM_OF_PRIVATE_HDRS)
                                                                         /**< Maximum number of netenv distinction units */
-#define MAX_NUM_OF_OPTIONS                          8                   /**< Maximum number of netenv distinction units options */
+#define FM_PCD_MAX_NUM_OF_OPTIONS                   8                   /**< Maximum number of netenv distinction units options */
 #define FM_PCD_MAX_NUM_OF_INTERCHANGABLE_HDRS       4                   /**< Maximum number of interchangable headers in a distinction unit */
 #define FM_PCD_KG_NUM_OF_GENERIC_REGS               8                   /**< Total number of generic KG registers */
 #define FM_PCD_KG_MAX_NUM_OF_EXTRACTS_PER_KEY       35                  /**< Max number allowed on any configuration.
@@ -99,12 +99,12 @@ typedef uint32_t fmPcdEngines_t; /**< options as defined below: */
 #define FM_PCD_KG_NUM_OF_DEFAULT_GROUPS             16                  /**< Number of default value logical groups */
 
 #define FM_PCD_PRS_NUM_OF_LABELS                    32                  /**< Max number of SW parser label */
-#define FM_SW_PRS_SIZE                              0x00000800          /**< Total size of sw parser area */
-#define PRS_SW_OFFSET                               0x00000040          /**< Size of illegal addresses at the beginning
+#define FM_PCD_SW_PRS_SIZE                          0x00000800          /**< Total size of sw parser area */
+#define FM_PCD_PRS_SW_OFFSET                        0x00000040          /**< Size of illegal addresses at the beginning
                                                                              of the SW parser area */
-#define PRS_SW_TAIL_SIZE                            4                   /**< Number of bytes that must be cleared at
+#define FM_PCD_PRS_SW_TAIL_SIZE                     4                   /**< Number of bytes that must be cleared at
                                                                              the end of the SW parser area */
-#define FM_SW_PRS_MAX_IMAGE_SIZE                    (FM_SW_PRS_SIZE-PRS_SW_OFFSET-PRS_SW_TAIL_SIZE)
+#define FM_SW_PRS_MAX_IMAGE_SIZE                    (FM_PCD_SW_PRS_SIZE-FM_PCD_PRS_SW_OFFSET-FM_PCD_PRS_SW_TAIL_SIZE)
                                                                         /**< Max possible size of SW parser code */
 /* @} */
 
@@ -150,10 +150,10 @@ typedef enum e_FmPcdCounters {
  @Description   PCD interrupts
 *//***************************************************************************/
 typedef enum e_FmPcdExceptions {
-    e_FM_PCD_KG_ERR_EXCEPTION_DOUBLE_ECC,                   /**< Keygen ECC error */
-    e_FM_PCD_PLCR_ERR_EXCEPTION_DOUBLE_ECC,                 /**< Read Buffer ECC error */
-    e_FM_PCD_KG_ERR_EXCEPTION_KEYSIZE_OVERFLOW,             /**< Write Buffer ECC error on system side */
-    e_FM_PCD_PLCR_ERR_EXCEPTION_INIT_ENTRY_ERROR,           /**< Write Buffer ECC error on FM side */
+    e_FM_PCD_KG_EXCEPTION_DOUBLE_ECC,                   /**< Keygen ECC error */
+    e_FM_PCD_PLCR_EXCEPTION_DOUBLE_ECC,                 /**< Read Buffer ECC error */
+    e_FM_PCD_KG_EXCEPTION_KEYSIZE_OVERFLOW,             /**< Write Buffer ECC error on system side */
+    e_FM_PCD_PLCR_EXCEPTION_INIT_ENTRY_ERROR,           /**< Write Buffer ECC error on FM side */
     e_FM_PCD_PLCR_EXCEPTION_PRAM_SELF_INIT_COMPLETE,        /**< Self init complete */
     e_FM_PCD_PLCR_EXCEPTION_ATOMIC_ACTION_COMPLETE,         /**< Atomic action complete */
     e_FM_PCD_PRS_EXCEPTION_DOUBLE_ECC,                      /**< Parser ECC error */
@@ -164,28 +164,28 @@ typedef enum e_FmPcdExceptions {
 
 
 /**************************************************************************//**
- @Description   t_FmPcdExceptions - Exceptions user callback routine, will be called upon an
+ @Description   Exceptions user callback routine, will be called upon an
                 exception passing the exception identification.
 
  @Param[in]     h_App      - User's application descriptor.
  @Param[in]     exception  - The exception.
   *//***************************************************************************/
-typedef void (t_FmPcdException) ( t_Handle h_App, e_FmPcdExceptions exception);
+typedef void (t_FmPcdExceptionCallback) (t_Handle h_App, e_FmPcdExceptions exception);
 
 /**************************************************************************//**
- @Description   t_FmPcdSchemeErrorExceptionsCallback - Exceptions user callback routine,
-                will be called upon an exception passing the exception identification.
+ @Description   Exceptions user callback routine, will be called upon an exception
+                passing the exception identification.
 
  @Param[in]     h_App           - User's application descriptor.
  @Param[in]     exception       - The exception.
  @Param[in]     index           - id of the relevant source (may be scheme or profile id).
  *//***************************************************************************/
-typedef void (t_FmPcdIdException) ( t_Handle           h_App,
-                                    e_FmPcdExceptions  exception,
-                                    uint16_t           index);
+typedef void (t_FmPcdIdExceptionCallback) ( t_Handle           h_App,
+                                            e_FmPcdExceptions  exception,
+                                            uint16_t           index);
 
 /**************************************************************************//**
- @Description   t_FmPcdQmEnqueueCB - A callback for enquing frame onto a QM queue.
+ @Description   A callback for enquing frame onto a QM queue.
 
  @Param[in]     h_App           - User's application descriptor.
  @Param[in]     fqid            - Frame queue ID on which frame should be enqueued.
@@ -193,7 +193,7 @@ typedef void (t_FmPcdIdException) ( t_Handle           h_App,
 
  @Return        E_OK on success; Error code otherwise.
  *//***************************************************************************/
-typedef t_Error (t_FmPcdQmEnqueueCB) ( t_Handle h_QmArg, uint32_t fqid, void *p_Fd);
+typedef t_Error (t_FmPcdQmEnqueueCallback) ( t_Handle h_QmArg, uint32_t fqid, void *p_Fd);
 
 /**************************************************************************//**
  @Description   A structure for Host-Command
@@ -205,17 +205,17 @@ typedef t_Error (t_FmPcdQmEnqueueCB) ( t_Handle h_QmArg, uint32_t fqid, void *p_
  *//***************************************************************************/
 typedef struct t_FmPcdHcParams {
 #ifndef CONFIG_GUEST_PARTITION
-    uint64_t                portBaseAddr;       /**< Host-Command Port Virtual Address of
-                                                     memory mapped registers.*/
-    uint8_t                 portId;             /**< Host-Command Port Id (0-6 relative
-                                                     to Host-Command/Offline parsing ports) */
-    uint32_t                errFqid;            /**< Host-Command Port Error Queue Id. */
-    uint32_t                confFqid;           /**< Host-Command Port Confirmation queue Id. */
-    uint8_t                 deqSubPortal;       /**< Host-Command Port Subportal for dequeue. */
+    uint64_t                    portBaseAddr;       /**< Host-Command Port Virtual Address of
+                                                         memory mapped registers.*/
+    uint8_t                     portId;             /**< Host-Command Port Id (0-6 relative
+                                                         to Host-Command/Offline parsing ports) */
+    uint32_t                    errFqid;            /**< Host-Command Port Error Queue Id. */
+    uint32_t                    confFqid;           /**< Host-Command Port Confirmation queue Id. */
+    uint8_t                     deqSubPortal;       /**< Host-Command Port Subportal for dequeue. */
 #endif /* !CONFIG_GUEST_PARTITION */
-    uint32_t                enqFqid;            /**< Host-Command enqueue Queue Id. */
-    t_FmPcdQmEnqueueCB      *f_QmEnqueueCB;     /**< Call back routine for enquing a frame to the QM */
-    t_Handle                h_QmArg;            /**< A handle of the QM module */
+    uint32_t                    enqFqid;            /**< Host-Command enqueue Queue Id. */
+    t_FmPcdQmEnqueueCallback    *f_QmEnqueue;       /**< Call back routine for enquing a frame to the QM */
+    t_Handle                    h_QmArg;            /**< A handle of the QM module */
 } t_FmPcdHcParams;
 
 /**************************************************************************//**
@@ -243,8 +243,8 @@ typedef struct t_FmPcdParams {
     t_FmPcdHcParams             hc;                     /**< Host Command parameters */
 
 #ifndef CONFIG_GUEST_PARTITION
-    t_FmPcdException            *f_FmPcdException;      /**< Callback routine to be called of PCD exception */
-    t_FmPcdIdException          *f_FmPcdIdException;    /**< Callback routine to be used for a single scheme and
+    t_FmPcdExceptionCallback    *f_Exception;           /**< Callback routine to be called of PCD exception */
+    t_FmPcdIdExceptionCallback  *f_ExceptionId;         /**< Callback routine to be used for a single scheme and
                                                              profile exceptions */
     t_Handle                    h_App;                  /**< A handle to an application layer object; This handle will
                                                              be passed by the driver upon calling the above callbacks */
@@ -435,6 +435,7 @@ typedef struct t_FmPcdPrsSwParams {
                                                              umOfLabels entries */
 } t_FmPcdPrsSwParams;
 
+
 /**************************************************************************//**
  @Function      FM_PCD_Enable
 
@@ -587,7 +588,7 @@ t_Error FM_PCD_KgSetAdditionalDataAfterParsing(t_Handle h_FmPcd, uint8_t payload
 t_Error FM_PCD_SetException(t_Handle h_FmPcd, e_FmPcdExceptions exception, bool enable);
 
 /**************************************************************************//**
- @Function      FM_PCD_SetCounter
+ @Function      FM_PCD_ModifyCounter
 
  @Description   Sets a value to an enabled counter. Use "0" to reset the counter.
 
@@ -599,7 +600,7 @@ t_Error FM_PCD_SetException(t_Handle h_FmPcd, e_FmPcdExceptions exception, bool 
 
  @Cautions      Allowed only following PCD_Init().
 *//***************************************************************************/
-t_Error FM_PCD_SetCounter(t_Handle h_FmPcd, e_FmPcdCounters counter, uint32_t value);
+t_Error FM_PCD_ModifyCounter(t_Handle h_FmPcd, e_FmPcdCounters counter, uint32_t value);
 
 /**************************************************************************//**
  @Function      FM_PCD_SetPlcrStatistics
@@ -615,7 +616,7 @@ t_Error FM_PCD_SetCounter(t_Handle h_FmPcd, e_FmPcdCounters counter, uint32_t va
 t_Error FM_PCD_SetPlcrStatistics(t_Handle h_FmPcd, bool enable);
 
 /**************************************************************************//**
- @Function      FM_PCD_PrsStatistics
+ @Function      FM_PCD_SetPrsStatistics
 
  @Description   Defines whether to gather parser statistics including all ports.
 
@@ -626,7 +627,7 @@ t_Error FM_PCD_SetPlcrStatistics(t_Handle h_FmPcd, bool enable);
 
  @Cautions      Allowed only following PCD_Init().
 *//***************************************************************************/
-void FM_PCD_PrsStatistics(t_Handle h_FmPcd, bool enable);
+void FM_PCD_SetPrsStatistics(t_Handle h_FmPcd, bool enable);
 #endif /* !CONFIG_GUEST_PARTITION */
 
 /**************************************************************************//**
@@ -699,6 +700,20 @@ t_Error FM_PCD_KgDumpRegs(t_Handle h_FmPcd);
 t_Error FM_PCD_PlcrDumpRegs(t_Handle h_FmPcd);
 
 /**************************************************************************//**
+ @Function      FM_PCD_PlcrDumpRegs
+
+ @Description   Dumps all PCD Plcr registers
+
+ @Param[in]     h_FmPcd         A handle to an FM PCD Module.
+ @Param[in]     h_Profile       A handle to a profile.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_PCD_Init().
+*//***************************************************************************/
+t_Error FM_PCD_PlcrProfileDumpRegs(t_Handle h_FmPcd, t_Handle h_Profile);
+
+/**************************************************************************//**
  @Function      FM_PCD_PrsDumpRegs
 
  @Description   Dumps all PCD Prs registers
@@ -763,12 +778,12 @@ uint32_t     FM_PCD_BackdoorGet(t_Handle h_FmPcd, e_ModuleId moduleId, uint32_t 
                 parameters as required by keygen (when coarse classification
                 is the next engine after this scheme).
 *//***************************************************************************/
-#define         MAX_NUM_OF_PCD_CC_NODES     255
-#define         MAX_NUM_OF_PCD_CC_TREES     8
-#define         MAX_NUM_OF_PCD_CC_GROUPS    16
-#define         MAX_NUM_OF_CC_UNITS         4
-#define         MAX_NUM_OF_KEYS             256
-#define         MAX_SIZE_OF_KEY             56
+#define FM_PCD_MAX_NUM_OF_CC_NODES      255
+#define FM_PCD_MAX_NUM_OF_CC_TREES      8
+#define FM_PCD_MAX_NUM_OF_CC_GROUPS     16
+#define FM_PCD_MAX_NUM_OF_CC_UNITS      4
+#define FM_PCD_MAX_NUM_OF_KEYS          256
+#define FM_PCD_MAX_SIZE_OF_KEY          56
 /* @} */
 
 /**************************************************************************//**
@@ -836,7 +851,10 @@ typedef enum e_FmPcdExtractFrom {
     e_FM_PCD_EXTRACT_FROM_FRAME_START,          /**< Extract from beginning of frame */
     e_FM_PCD_KG_EXTRACT_FROM_DFLT_VALUE,        /**< Extract from a default value */
     e_FM_PCD_KG_EXTRACT_FROM_PARSE_RESULT,      /**< Extract from the parser result */
-    e_FM_PCD_KG_EXTRACT_FROM_CURR_END_OF_PARSE  /**< Extract from the point where parsing had finished */
+    e_FM_PCD_KG_EXTRACT_FROM_CURR_END_OF_PARSE, /**< Extract from the point where parsing had finished */
+    e_FM_PCD_EXTRACT_FROM_IC_KEY,               /**< Extract from Internal Context where extracted Key by Keygen is saved*/
+    e_FM_PCD_EXTRACT_FROM_IC_HASH_EXACT_MATCH,  /**< Extract from Internal Context where Hash Value calculated by Keygen is saved. Mechanism of the exact match by CC is used.*/
+    e_FM_PCD_EXTRACT_FROM_IC_HASH_INDEXED_MATCH /**< Extract from Internal Context where Hash Value calculated by Keygen is saved. Mechanism of the indexed match by CC is used.*/
 } e_FmPcdExtractFrom;
 
 /**************************************************************************//**
@@ -892,20 +910,20 @@ typedef enum e_FmPcdKgKnownFieldsDfltTypes {
  @Description   enum for defining header index when headers may repeat
 *//***************************************************************************/
 typedef enum e_FmPcdHdrIndex {
-    e_FM_PCD_HDR_INDEX_NONE     =   0,      /**< used when multiple headers not used, also
-                                                 to specify regular IP (not tunneled). */
-    e_FM_PCD_HDR_INDEX_1,                   /**< may be used for VLAN, MPLS, tunneled IP */
-    e_FM_PCD_HDR_INDEX_2,                   /**< may be used for MPLS, tunneled IP */
-    e_FM_PCD_HDR_INDEX_3,                   /**< may be used for MPLS */
-    e_FM_PCD_HDR_INDEX_LAST     =   0xFF    /**< may be used for VLAN, MPLS */
+    e_FM_PCD_HDR_INDEX_NONE = 0,        /**< used when multiple headers not used, also
+                                             to specify regular IP (not tunneled). */
+    e_FM_PCD_HDR_INDEX_1,               /**< may be used for VLAN, MPLS, tunneled IP */
+    e_FM_PCD_HDR_INDEX_2,               /**< may be used for MPLS, tunneled IP */
+    e_FM_PCD_HDR_INDEX_3,               /**< may be used for MPLS */
+    e_FM_PCD_HDR_INDEX_LAST = 0xFF      /**< may be used for VLAN, MPLS */
 } e_FmPcdHdrIndex;
 
 /**************************************************************************//**
  @Description   A structure for selcting the policer profile functional type
 *//***************************************************************************/
 typedef enum e_FmPcdProfileTypeSelection {
-    e_FM_PCD_PLCR_PORT_PRIVATE,             /**< Port dedicated profile */
-    e_FM_PCD_PLCR_SHARED                    /**< Shared profile (shared within partition) */
+    e_FM_PCD_PLCR_PORT_PRIVATE,         /**< Port dedicated profile */
+    e_FM_PCD_PLCR_SHARED                /**< Shared profile (shared within partition) */
 } e_FmPcdProfileTypeSelection;
 
 /**************************************************************************//**
@@ -970,7 +988,7 @@ typedef enum e_FmPcdPlcrDoneAction {
 } e_FmPcdPlcrDoneAction;
 
 /**************************************************************************//**
- @Description   A structure for selcting the policer counter
+ @Description   A structure for selecting the policer counter
 *//***************************************************************************/
 typedef enum e_FmPcdPlcrProfileCounters {
     e_FM_PCD_PLCR_PROFILE_GREEN_PACKET_TOTAL_COUNTER,               /**< Green packets counter */
@@ -979,7 +997,6 @@ typedef enum e_FmPcdPlcrProfileCounters {
     e_FM_PCD_PLCR_PROFILE_RECOLOURED_YELLOW_PACKET_TOTAL_COUNTER,   /**< Recolored yellow packets counter */
     e_FM_PCD_PLCR_PROFILE_RECOLOURED_RED_PACKET_TOTAL_COUNTER       /**< Recolored red packets counter */
 } e_FmPcdPlcrProfileCounters;
-
 
 /**************************************************************************//**
  @Description   A Union of protocol dependent special options
@@ -1113,6 +1130,9 @@ typedef struct t_FmPcdKgKeyExtractAndHashParams {
     t_FmPcdExtractEntry         extractArray [FM_PCD_KG_MAX_NUM_OF_EXTRACTS_PER_KEY]; /**< An array of extractions definition. */
     uint8_t                     numOfUsedDflts;              /**< defines the valid size of the following array */
     t_FmPcdKgExtractDflt        dflts[FM_PCD_KG_NUM_OF_DEFAULT_GROUPS];
+                                                             /**< For each extraction used in this scheme, specify the required
+                                                                  default register to be used when header is not found.
+                                                                  types not specified in this array will get undefined value. */
     uint8_t                     numOfUsedMasks;              /**< defines the valid size of the following array */
     t_FmPcdKgExtractMask        masks[FM_PCD_KG_NUM_OF_EXTRACT_MASKS];
     uint8_t                     hashShift;                   /**< Select the 24 bits out of the 64 hash result */
@@ -1234,13 +1254,6 @@ typedef struct t_FmPcdKgSchemeParams {
     } kgNextEngineParams;
     t_FmPcdKgSchemeCounter              schemeCounter;          /**< IN: A strcucture of parameters for updating
                                                                      the scheme counter */
-    t_FmPcdKgKeyOrder                   orderedArray;           /**< OUT: A structure holding the order of the key extraction.
-                                                                     Relevant only is 'useHash' is TRUE. each value in this
-                                                                     array represents the index of the
-                                                                     extraction command as defined by the application in
-                                                                     the initialization extraction array.
-                                                                     The valid size of this array is the application define number of extractions
-                                                                     required (also marked by the second '0' in this array).*/
 } t_FmPcdKgSchemeParams;
 
 /**************************************************************************//**
@@ -1329,12 +1342,14 @@ typedef struct t_KeysParams {
                                                      the type FULL_FIELD keySize has to be as standard size of the relevant
                                                      key. In the another type of extraction keySize has to be as size of extraction. */
 
-    uint8_t                     *p_GlblMask;                /**< optional and can be initialized if:
-                                                                 keySize <=4 or  maskForKey is not initialized */
-    t_FmPcdCcKeyParams          keyParams[MAX_NUM_OF_KEYS];               /**< it's array with numOfKeys entries each entry in
-                                                                 the array of the type t_FmPcdCcKeyParams */
-    t_FmPcdCcNextEngineParams   ccNextEngineParamsForMiss;  /**< parameters for the next step of
-                                                                 unfound (or undefined)  key */
+    uint8_t                     *p_GlblMask;    /**< optional and can be initialized if:
+                                                     keySize <=4 or  maskForKey is not initialized */
+    t_FmPcdCcKeyParams          keyParams[FM_PCD_MAX_NUM_OF_KEYS];
+                                                /**< it's array with numOfKeys entries each entry in
+                                                     the array of the type t_FmPcdCcKeyParams */
+    t_FmPcdCcNextEngineParams   ccNextEngineParamsForMiss;
+                                                /**< parameters for the next step of
+                                                      unfound (or undefined)  key */
 } t_KeysParams;
 
 /**************************************************************************//**
@@ -1367,20 +1382,21 @@ typedef struct t_FmPcdCcNodeParams {
                                                         unit 1 - found; unit 3 - found;
 *//***************************************************************************/
 typedef struct t_FmPcdCcGrpParams {
-        uint8_t                     numOfDistinctionUnits;          /**< up to 4 */
-        uint8_t                     unitIds[MAX_NUM_OF_CC_UNITS];   /**< Indexes of the units as defined in
-                                                                         FM_PCD_SetNetEnvCharacteristics() */
-        t_FmPcdCcNextEngineParams   *p_NextEnginePerEntriesInGrp;   /**< Max size is 16 - if only one group used */
+    uint8_t                     numOfDistinctionUnits;          /**< up to 4 */
+    uint8_t                     unitIds[FM_PCD_MAX_NUM_OF_CC_UNITS];
+                                                                /**< Indexes of the units as defined in
+                                                                     FM_PCD_SetNetEnvCharacteristics() */
+    t_FmPcdCcNextEngineParams   *p_NextEnginePerEntriesInGrp;   /**< Max size is 16 - if only one group used */
 } t_FmPcdCcGrpParams;
 
 /**************************************************************************//**
  @Description   A structure for defining the CC tree groups
 *//***************************************************************************/
 typedef struct t_FmPcdCcTreeParams {
-        t_Handle                h_NetEnv;                               /**< A handle to the Network environment as returned
+    t_Handle                h_NetEnv;                                   /**< A handle to the Network environment as returned
                                                                              by FM_PCD_SetNetEnvCharacteristics() */
-        uint8_t                 numOfGrps;                              /**< Number of CC groups within the CC tree */
-        t_FmPcdCcGrpParams      ccGrpParams[MAX_NUM_OF_PCD_CC_GROUPS];  /**< Parameters for each group. */
+    uint8_t                 numOfGrps;                                  /**< Number of CC groups within the CC tree */
+    t_FmPcdCcGrpParams      ccGrpParams[FM_PCD_MAX_NUM_OF_CC_GROUPS];   /**< Parameters for each group. */
 } t_FmPcdCcTreeParams;
 
 /**************************************************************************//**
@@ -1417,9 +1433,9 @@ typedef struct t_FmPcdPlcrNonPassthroughAlgParams {
     e_FmPcdPlcrRateMode              rateMode;                       /**< Byte / Packet */
     t_FmPcdPlcrByteRateModeParams    byteModeParams;                 /**< Valid for Byte NULL for Packet */
     uint32_t                         comittedInfoRate;               /**< KBits/Sec or Packets/Sec */
-    uint32_t                         comittedBurstSize;              /**< KBits or Packets */
+    uint32_t                         comittedBurstSize;              /**< Bytes/Packets */
     uint32_t                         peakOrAccessiveInfoRate;        /**< KBits/Sec or Packets/Sec */
-    uint32_t                         peakOrAccessiveBurstSize;       /**< KBits or Packets */
+    uint32_t                         peakOrAccessiveBurstSize;       /**< Bytes/Packets */
 } t_FmPcdPlcrNonPassthroughAlgParams;
 
 /**************************************************************************//**
@@ -1433,7 +1449,7 @@ typedef union u_FmPcdPlcrNextEngineParams {
 } u_FmPcdPlcrNextEngineParams;
 
 /**************************************************************************//**
- @Description   A structure for selcting the policer profile entry parameters
+ @Description   A structure for selecting the policer profile entry parameters
 *//***************************************************************************/
 typedef struct t_FmPcdPlcrProfileParams {
     bool                                modify;                     /**< TRUE to change an existing profile */
@@ -1882,5 +1898,6 @@ t_Error FM_PCD_PlcrSetProfileCounter(t_Handle h_FmPcd, t_Handle h_Profile, e_FmP
 /** @} */ /* end of FM_PCD_Runtime_grp group */
 /** @} */ /* end of FM_PCD_grp group */
 /** @} */ /* end of FM_grp group */
+
 
 #endif /* __FM_PCD_EXT */

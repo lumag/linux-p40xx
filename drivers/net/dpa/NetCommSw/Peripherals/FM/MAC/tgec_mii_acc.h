@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -42,14 +42,23 @@
 #define MIIMCOM_SCAN_CYCLE          0x00000800
 #define MIIMCOM_PREAMBLE_DISABLE    0x00000400
 
+#define MIIMCOM_MDIO_HOLD_1_REG_CLK 0
+#define MIIMCOM_MDIO_HOLD_2_REG_CLK 1
+#define MIIMCOM_MDIO_HOLD_3_REG_CLK 2
+#define MIIMCOM_MDIO_HOLD_4_REG_CLK 3
+
+#define MIIMCOM_DIV_MASK            0x0000ff00
+#define MIIMCOM_DIV_SHIFT           8
+
 /* MII Management Indicator Register */
 #define MIIMIND_BUSY                0x00000001
 #define MIIMIND_READ_ERROR          0x00000002
 
+#define MIIDATA_BUSY                0x80000000
 
-#ifdef __MWERKS__
+#if defined(__MWERKS__) && !defined(__GNUC__)
 #pragma pack(push,1)
-#endif /*__MWERKS__ */
+#endif /* defined(__MWERKS__) && ... */
 #define MEM_MAP_START
 
 /*----------------------------------------------------*/
@@ -64,9 +73,9 @@ typedef _Packed struct t_TgecMiiAccessMemMap
 } _PackedType t_TgecMiiAccessMemMap ;
 
 #define MEM_MAP_END
-#ifdef __MWERKS__
+#if defined(__MWERKS__) && !defined(__GNUC__)
 #pragma pack(pop)
-#endif /* __MWERKS__ */
+#endif /* defined(__MWERKS__) && ... */
 
 
 #endif /* __TGEC_MII_ACC_H */

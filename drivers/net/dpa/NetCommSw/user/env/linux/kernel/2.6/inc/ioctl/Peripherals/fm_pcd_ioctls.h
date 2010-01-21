@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -170,10 +170,10 @@ typedef enum ioc_fm_pcd_counters {
  @Description   PCD interrupts
 *//***************************************************************************/
 typedef enum ioc_fm_pcd_exceptions {
-    e_IOC_FM_PCD_KG_ERR_EXCEPTION_DOUBLE_ECC,                   /**< Keygen ECC error */
-    e_IOC_FM_PCD_PLCR_ERR_EXCEPTION_DOUBLE_ECC,                 /**< Read Buffer ECC error */
-    e_IOC_FM_PCD_KG_ERR_EXCEPTION_KEYSIZE_OVERFLOW,             /**< Write Buffer ECC error on system side */
-    e_IOC_FM_PCD_PLCR_ERR_EXCEPTION_INIT_ENTRY_ERROR,           /**< Write Buffer ECC error on FM side */
+    e_IOC_FM_PCD_KG_EXCEPTION_DOUBLE_ECC,                   /**< Keygen ECC error */
+    e_IOC_FM_PCD_PLCR_EXCEPTION_DOUBLE_ECC,                 /**< Read Buffer ECC error */
+    e_IOC_FM_PCD_KG_EXCEPTION_KEYSIZE_OVERFLOW,             /**< Write Buffer ECC error on system side */
+    e_IOC_FM_PCD_PLCR_EXCEPTION_INIT_ENTRY_ERROR,           /**< Write Buffer ECC error on FM side */
     e_IOC_FM_PCD_PLCR_EXCEPTION_PRAM_SELF_INIT_COMPLETE,        /**< Self init complete */
     e_IOC_FM_PCD_PLCR_EXCEPTION_ATOMIC_ACTION_COMPLETE,         /**< Atomic action complete */
     e_IOC_FM_PCD_PRS_EXCEPTION_DOUBLE_ECC,                      /**< Parser ECC error */

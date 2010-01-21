@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -30,19 +30,36 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+/**************************************************************************//**
+ @File          core_std_ext.h
 
-#include "std_ext.h"
-#include "error_ext.h"
-#include "sys_ext.h"
+ @Description   TODO
+*//***************************************************************************/
+#ifndef __CORE_EXT_H
+#define __CORE_EXT_H
 
 
-/*****************************************************************************/
-void SYS_Init(void)
-{
+#ifdef NCSW_PPC_CORE
+#include "ppc_ext.h"
+#else
+#error "Core is not defined!"
+#endif /* NCSW_CORE */
 
-}
+#if (!defined(CORE_IS_LITTLE_ENDIAN) && !defined(CORE_IS_BIG_ENDIAN))
+#error "Must define core as little-endian or big-endian!"
+#endif /* (!defined(CORE_IS_LITTLE_ENDIAN) && ... */
 
-void SYS_Free(void)
-{
 
-}
+/**************************************************************************//**
+ @Function      CORE_MemoryBarrier
+
+ @Description   This routine will cause the core to stop executing any commands
+                until all previous memory read/write commands are completely out
+                of the core's pipeline.
+
+ @Return        None.
+*//***************************************************************************/
+void CORE_MemoryBarrier(void);
+
+
+#endif /* __CORE_EXT_H */

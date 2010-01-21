@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -64,6 +64,9 @@ t_Error TGEC_MII_WritePhyReg(t_Handle   h_Tgec,
 
     WRITE_UINT32(p_MiiAccess->mdio_data, data);
 
+    while ((GET_UINT32(p_MiiAccess->mdio_data)) & MIIDATA_BUSY)
+        XX_UDelay (1);
+
     return E_OK;
 }
 
@@ -75,6 +78,7 @@ t_Error TGEC_MII_ReadPhyReg(t_Handle h_Tgec,
 {
     t_Tgec                  *p_Tgec = (t_Tgec *)h_Tgec;
     t_TgecMiiAccessMemMap   *p_MiiAccess;
+    uint32_t                cfg_status;
 
     SANITY_CHECK_RETURN_ERROR(p_Tgec, E_INVALID_HANDLE);
     SANITY_CHECK_RETURN_ERROR(p_Tgec->p_MiiMemMap, E_INVALID_HANDLE);
@@ -96,10 +100,17 @@ t_Error TGEC_MII_ReadPhyReg(t_Handle h_Tgec,
     while ((GET_UINT32(p_MiiAccess->mdio_cfg_status)) & MIIMIND_BUSY)
         XX_UDelay (1);
 
+    cfg_status  = GET_UINT32(p_MiiAccess->mdio_cfg_status);
+
+    while ((GET_UINT32(p_MiiAccess->mdio_data)) & MIIDATA_BUSY)
+        XX_UDelay (1);
+
     *p_Data =  (uint16_t)GET_UINT32(p_MiiAccess->mdio_data);
 
-    if (*p_Data == 0xffff)
-        RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("Read wrong data (0xffff): phyAddr 0x%x, reg 0x%x", phyAddr, reg));
+    if (cfg_status & MIIMIND_READ_ERROR)
+        RETURN_ERROR(MINOR, E_INVALID_VALUE,
+                     ("Read Error: phyAddr 0x%x, dev 0x%x, reg 0x%x, cfg_status 0x%x",
+                      ((phyAddr & 0xe0)>>5), (phyAddr & 0x1f), reg, cfg_status));
 
     return E_OK;
 }

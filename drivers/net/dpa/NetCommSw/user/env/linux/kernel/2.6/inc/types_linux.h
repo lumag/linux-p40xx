@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -61,6 +61,8 @@ typedef double              double_t;   /* Double precision floating point  */
 
 #define _Packed
 #define _PackedType __attribute__ ((packed))
+
+typedef  phys_addr_t physAddress_t;
 
 #define UINT8_MAX   0xFF
 #define UINT8_MIN   0

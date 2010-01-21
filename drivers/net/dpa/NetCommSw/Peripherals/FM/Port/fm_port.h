@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -45,7 +45,12 @@
 #include "fm_common.h"
 
 
+#define __ERR_MODULE__  MODULE_FM_PORT
+
+
 #define MIN_EXT_BUF_SIZE                                64
+#define DATA_ALIGNMENT                                  64
+
 /**************************************************************************//**
  @Description       Memory Map defines
 *//***************************************************************************/
@@ -56,20 +61,25 @@
 /**************************************************************************//**
  @Description       defaults
 *//***************************************************************************/
-
-#define DEFAULT_PORT_deqHighPriority                    FALSE
+#define DEFAULT_PORT_deqHighPriority                    TRUE
 #define DEFAULT_PORT_deqType                            e_FM_PORT_DEQ_TYPE1
-#define DEFAULT_PORT_deqPrefetchOption                  e_FM_PORT_DEQ_NO_PREFETCH
+#define DEFAULT_PORT_deqPrefetchOption                  e_FM_PORT_DEQ_FULL_PREFETCH
+#define DEFAULT_PORT_deqPrefetchOption_HC               e_FM_PORT_DEQ_NO_PREFETCH
 #define DEFAULT_PORT_deqByteCnt                         2000
 #define DEFAULT_PORT_bufferPrefixContent_privDataSize   0
-#define DEFAULT_PORT_bufferPrefixContent_passPrsResult  TRUE
+#define DEFAULT_PORT_bufferPrefixContent_passPrsResult  FALSE
 #define DEFAULT_PORT_bufferPrefixContent_passTimeStamp  FALSE
-
+#define DEFAULT_PORT_bufferPrefixContent_allOtherPCDInfo    FALSE
+#if (defined(DEBUG_ERRORS) && (DEBUG_ERRORS > 0))
+#define DEFAULT_PORT_bufferPrefixContent_debugInfo      FALSE
+#endif /*(defined(DEBUG_ERRORS) && (DEBUG_ERRORS > 0))*/
+#define DEFAULT_PORT_bufferPrefixContent_dataAlign      DATA_ALIGNMENT
 #define DEFAULT_PORT_cheksumLastBytesIgnore             0
 #define DEFAULT_PORT_cutBytesFromEnd                    4
 #define DEFAULT_PORT_txFifoMinFillLevel                 0
-#define DEFAULT_PORT_txFifoDeqPipelineDepth_1G          1
-#define DEFAULT_PORT_txFifoDeqPipelineDepth_10G         4
+#define DEFAULT_PORT_txFifoDeqPipelineDepth_IM          1
+#define DEFAULT_PORT_txFifoDeqPipelineDepth_1G          2
+#define DEFAULT_PORT_txFifoDeqPipelineDepth_10G         8
 #define DEFAULT_PORT_txFifoLowComfLevel                 (5*KILOBYTE)
 #define DEFAULT_PORT_rxFifoPriElevationLevel            (160*KILOBYTE)
 #define DEFAULT_PORT_rxFifoThreshold                    (128*KILOBYTE)
@@ -78,19 +88,14 @@
 #define DEFAULT_PORT_dmaIntContextCacheAttr             e_FM_PORT_DMA_NO_STASH
 #define DEFAULT_PORT_dmaHeaderCacheAttr                 e_FM_PORT_DMA_NO_STASH
 #define DEFAULT_PORT_dmaScatterGatherCacheAttr          e_FM_PORT_DMA_NO_STASH
-#define DEFAULT_PORT_dmaReadOptimize                    FALSE
-#define DEFAULT_PORT_dmaWriteOptimize                   FALSE
+#define DEFAULT_PORT_dmaWriteOptimize                   TRUE
 #define DEFAULT_PORT_forwardIntContextReuse             FALSE
 #define DEFAULT_PORT_l4Checksum                         TRUE
 #define DEFAULT_PORT_BufMargins_startMargins            32
 #define DEFAULT_PORT_BufMargins_endMargins              0
-#ifdef FM_PORT_SYNC_ERRATA
-#define DEFAULT_PORT_syncReq                            FALSE
-#else
 #define DEFAULT_PORT_syncReq                            TRUE
-#endif /* FM_PORT_SYNC_ERRATA */
 #define DEFAULT_PORT_color                              e_FM_PORT_COLOR_GREEN
-#define DEFAULT_PORT_errorsToDiscard                    0
+#define DEFAULT_PORT_errorsToDiscard                    FM_PORT_FRM_ERR_CLS_DISCARD
 
 /* Host command port MUST NOT be changed to more than 1 !!! */
 #define DEFAULT_PORT_numOfTasks(type)                   \
@@ -98,14 +103,14 @@
                 (type == e_FM_PORT_TYPE_TX_10G)) ? 16 : \
                (((type == e_FM_PORT_TYPE_RX) ||         \
                  (type == e_FM_PORT_TYPE_TX) ||         \
-                 (type == e_FM_PORT_TYPE_OFFLINE_PARSING)) ? 3 : 1))
+                 (type == e_FM_PORT_TYPE_OH_OFFLINE_PARSING)) ? 3 : 1))
 
 #define DEFAULT_PORT_extraNumOfTasks(type)              \
     (uint32_t)(((type == e_FM_PORT_TYPE_RX_10G) ||      \
                 (type == e_FM_PORT_TYPE_TX_10G)) ? 8 :  \
                (((type == e_FM_PORT_TYPE_RX) ||         \
                  (type == e_FM_PORT_TYPE_TX) ||         \
-                 (type == e_FM_PORT_TYPE_OFFLINE_PARSING)) ? 2 : 0))
+                 (type == e_FM_PORT_TYPE_OH_OFFLINE_PARSING)) ? 2 : 0))
 
 #define DEFAULT_PORT_numOfOpenDmas(type)                \
     (uint32_t)(((type == e_FM_PORT_TYPE_RX_10G) ||      \
@@ -116,33 +121,32 @@
                 (type == e_FM_PORT_TYPE_TX_10G)) ? 8 :  \
                (((type == e_FM_PORT_TYPE_RX) ||         \
                  (type == e_FM_PORT_TYPE_TX) ||         \
-                 (type == e_FM_PORT_TYPE_OFFLINE_PARSING)) ? 1 : 0))
+                 (type == e_FM_PORT_TYPE_OH_OFFLINE_PARSING)) ? 1 : 0))
 
 #define DEFAULT_PORT_sizeOfFifo(type)                               \
     (uint32_t)(((type == e_FM_PORT_TYPE_RX_10G) ||                  \
                 (type == e_FM_PORT_TYPE_TX_10G)) ? (16*KILOBYTE) :  \
                (((type == e_FM_PORT_TYPE_RX) ||                     \
                  (type == e_FM_PORT_TYPE_TX) ||                     \
-                 (type == e_FM_PORT_TYPE_OFFLINE_PARSING)) ? (4*KILOBYTE) : (1*KILOBYTE)))
+                 (type == e_FM_PORT_TYPE_OH_OFFLINE_PARSING)) ? (4*KILOBYTE) : (1*KILOBYTE)))
 
 #define DEFAULT_PORT_extraSizeOfFifo(type)              \
     (uint32_t)(((type == e_FM_PORT_TYPE_RX_10G) ||      \
                 (type == e_FM_PORT_TYPE_RX)) ? (16*KILOBYTE) : 0)
 
-#define DEFAULT_PORT_ImMaxRxBufLength               1024
 #define DEFAULT_PORT_txBdRingLength                 16
 #define DEFAULT_PORT_rxBdRingLength                 128
 #define DEFAULT_PORT_ImfwExtStructsMemId            0
 #define DEFAULT_PORT_Im_fwExtStructsMemAttr         MEMORY_ATTR_CACHEABLE
 
-
+#define OH_PIPELINE_DEPTH                           2
 /**************************************************************************//**
  @Description       Memory Mapped Registers
 *//***************************************************************************/
 
-#ifdef __MWERKS__
+#if defined(__MWERKS__) && !defined(__GNUC__)
 #pragma pack(push,1)
-#endif /*__MWERKS__ */
+#endif /* defined(__MWERKS__) && ... */
 #define MEM_MAP_START
 
 typedef _Packed struct
@@ -162,7 +166,7 @@ typedef _Packed struct
     volatile uint32_t   fmbm_rpp;       /**< Rx Policer Profile  */
     volatile uint32_t   fmbm_rccb;      /**< Rx Coarse Classification Base */
     volatile uint32_t   reserved1[2];   /**< (0x038 0x03F) */
-    volatile uint32_t   fmbm_rprai[PRS_RESULT_NUM_OF_WORDS];
+    volatile uint32_t   fmbm_rprai[FM_PORT_PRS_RESULT_NUM_OF_WORDS];
                                         /**< Rx Parse Results Array Initialization*/
     volatile uint32_t   fmbm_rfqid;     /**< Rx Frame Queue ID*/
     volatile uint32_t   fmbm_refqid;    /**< Rx Error Frame Queue ID*/
@@ -249,7 +253,7 @@ typedef _Packed struct
     volatile uint32_t   fmbm_occb;      /**< O/H Coarse Classification base */
     volatile uint32_t   fmbm_oim;       /**< O/H Internal margins*/
     volatile uint32_t   reserved0[4];   /**< (0x030 - 0x03F) */
-    volatile uint32_t   fmbm_oprai[PRS_RESULT_NUM_OF_WORDS];
+    volatile uint32_t   fmbm_oprai[FM_PORT_PRS_RESULT_NUM_OF_WORDS];
                                         /**< O/H Parse Results Array Initialization  */
     volatile uint32_t   fmbm_ofqid;     /**< O/H Frame Queue ID  */
     volatile uint32_t   fmbm_oefqid;    /**< O/H Error Frame Queue ID  */
@@ -307,11 +311,11 @@ typedef _Packed struct
 
 typedef _Packed struct
 {
-    struct
+    _Packed struct
     {
         volatile uint32_t   softSeqAttach;  /**<   Soft Sequence Attachment */
         volatile uint32_t   lcv;            /**<   Line-up Enable Confirmation Mask */
-    } hdrs[FM_PCD_PRS_NUM_OF_HDRS];
+    } _PackedType hdrs[FM_PCD_PRS_NUM_OF_HDRS];
     volatile uint8_t    reserved0[0x378];
     volatile uint32_t   pcac;               /**<   Parse Internal Memory Configuration Access Control Register */
     volatile uint32_t   pctpid;             /**<   Parse Internal Memory Configured TPID Register */
@@ -325,17 +329,19 @@ typedef _Packed struct
     volatile uint16_t       status;
     volatile uint16_t       length;
     volatile uint8_t        reserved0[0x6];
+    volatile uint8_t        reserved1[0x1];
     volatile t_FmPhysAddr   buff;
 } _PackedType t_FmImBd;
 
 typedef _Packed struct
 {
     volatile uint16_t       gen;                /**< tbd */
+    volatile uint8_t        reserved0[0x1];
     volatile t_FmPhysAddr   bdRingBase;         /**< tbd */
     volatile uint16_t       bdRingSize;         /**< tbd */
     volatile uint16_t       offsetIn;           /**< tbd */
     volatile uint16_t       offsetOut;          /**< tbd */
-    volatile uint8_t        reserved0[0x12];    /**< 0x0e - 0x1f */
+    volatile uint8_t        reserved1[0x12];    /**< 0x0e - 0x1f */
 } _PackedType t_FmPortImQd;
 
 typedef _Packed struct
@@ -352,9 +358,9 @@ typedef _Packed struct
 } _PackedType t_FmPortImPram;
 
 #define MEM_MAP_END
-#ifdef __MWERKS__
+#if defined(__MWERKS__) && !defined(__GNUC__)
 #pragma pack(pop)
-#endif /* __MWERKS__ */
+#endif /* defined(__MWERKS__) && ... */
 
 
 /**************************************************************************//**
@@ -369,7 +375,6 @@ typedef _Packed struct
 #define BMI_PORT_CFG_IM                         0x01000000
 #define BMI_PORT_STATUS_BSY                     0x80000000
 #define BMI_COUNTERS_EN                         0x80000000
-#define BMI_DMA_ATTR_READ_OPTIMIZE              0x00400000
 #define BMI_DMA_ATTR_WRITE_OPTIMIZE             0x00100000
 #define BMI_PORT_RFNE_FRWD_DCL4C                0x10000000
 #define BMI_PORT_RFNE_FRWD_RPD                  0x40000000
@@ -411,24 +416,22 @@ typedef _Packed struct
 #define BMI_PRS_RESULT_HIGH                     0x00000000
 #define BMI_PRS_RESULT_LOW                      0xFFFFFFFF
 
-#define RX_ERRS_TO_ENQ                      (FM_PORT_FRM_ERR_DMA             |\
-                                                         FM_PORT_FRM_ERR_PHYSICAL        |\
-                                                         FM_PORT_FRM_ERR_SIZE            |\
-                                                         FM_PORT_FRM_ERR_CLS_DISCARD     |\
-                                                         FM_PORT_FRM_ERR_EXTRACTION      |\
-                                                         FM_PORT_FRM_ERR_NO_SCHEME       |\
-                                                         FM_PORT_FRM_ERR_COLOR_RED       |\
-                                                         FM_PORT_FRM_ERR_ILL_PLCR        |\
-                                                         FM_PORT_FRM_ERR_PLCR_FRAME_LEN  |\
-                                                         FM_PORT_FRM_ERR_PRS_TIMEOUT     |\
-                                                         FM_PORT_FRM_ERR_PRS_ILL_INSTRUCT|\
-                                                         FM_PORT_FRM_ERR_PRS_HDR_ERR     |\
-                                                         FM_PORT_FRM_ERR_PROCESS_TIMEOUT |\
-                                                         FM_PORT_FRM_ERR_KEYSIZE_OVERFLOW)
+#define RX_ERRS_TO_ENQ                          (FM_PORT_FRM_ERR_DMA             |\
+                                                 FM_PORT_FRM_ERR_PHYSICAL        |\
+                                                 FM_PORT_FRM_ERR_SIZE            |\
+                                                 FM_PORT_FRM_ERR_EXTRACTION      |\
+                                                 FM_PORT_FRM_ERR_NO_SCHEME       |\
+                                                 FM_PORT_FRM_ERR_ILL_PLCR        |\
+                                                 FM_PORT_FRM_ERR_PLCR_FRAME_LEN  |\
+                                                 FM_PORT_FRM_ERR_PRS_TIMEOUT     |\
+                                                 FM_PORT_FRM_ERR_PRS_ILL_INSTRUCT|\
+                                                 FM_PORT_FRM_ERR_PRS_HDR_ERR     |\
+                                                 FM_PORT_FRM_ERR_PROCESS_TIMEOUT |\
+                                                 FM_PORT_FRM_ERR_KEYSIZE_OVERFLOW)
 
-#define OP_ERRS_TO_ENQ                      (RX_ERRS_TO_ENQ      |\
-                                                         FM_PORT_FRM_ERR_LENGTH          |\
-                                                         FM_PORT_FRM_ERR_UNSUPPORTED_FORMAT)
+#define OP_ERRS_TO_ENQ                          (RX_ERRS_TO_ENQ      |\
+                                                 FM_PORT_FRM_ERR_LENGTH          |\
+                                                 FM_PORT_FRM_ERR_UNSUPPORTED_FORMAT)
 
 /* shifts */
 #define BMI_DMA_ATTR_SWP_SHIFT                  30
@@ -483,7 +486,7 @@ typedef _Packed struct
 #define MAX_EXT_OFFSET                          496
 #define MAX_EXT_BUFFER_OFFSET                   511
 #define MAX_INT_OFFSET                          240
-#define MIN_TX_INT_OFFSET                       32
+#define MIN_TX_INT_OFFSET                       16
 #define MAX_IC_SIZE                             256
 #define MAX_FRAME_OFFSET                        64
 #define MAX_FIFO_PIPELINE_DEPTH                 8
@@ -606,10 +609,14 @@ typedef _Packed struct
 
 /* masks */
 #define IM_MODE_GBL                             0x20000000
+#define IM_MODE_BO_MASK                         0x18000000
+#define IM_MODE_BO_SHIFT                        3
+#define IM_MODE_GRC_STP                         0x00800000
+
+#define IM_MODE_SET_BO(val)                     (uint32_t)((val << (31-IM_MODE_BO_SHIFT)) & IM_MODE_BO_MASK)
 
 
 typedef struct {
-    t_Handle                    h_App;
     t_Handle                    h_FmMuram;
     t_FmPortImPram              *p_FmPortImPram;
     uint8_t                     fwExtStructsMemId;
@@ -626,11 +633,11 @@ typedef struct {
     t_BufferPoolInfo            rxPool;
     uint16_t                    mrblr;
     uint16_t                    rxFrameAccumLength;
-    t_FmPortImRxStoreFunction   *f_RxStoreCB;
+    t_FmPortImRxStoreCallback   *f_RxStore;
 
     /* Tx port parameters */
     uint32_t                    txFirstBdStatus;
-    t_FmPortImTxConfFunction    *f_TxConfCB;
+    t_FmPortImTxConfCallback    *f_TxConf;
 } t_FmMacIm;
 
 /**************************************************************************//**
@@ -659,7 +666,12 @@ typedef struct{
     uint32_t      dataOffset;
     uint32_t      prsResultOffset;
     uint32_t      timeStampOffset;
-} t_FmPortBufferOffsets;
+    uint32_t      hashResultOffset;
+    uint32_t      pcdInfoOffset;
+#if (defined(DEBUG_ERRORS) && (DEBUG_ERRORS > 0))
+    uint32_t      debugOffset;
+#endif /*(defined(DEBUG_ERRORS) && (DEBUG_ERRORS > 0))*/
+    } t_FmPortBufferOffsets;
 
 typedef struct
 {
@@ -681,7 +693,7 @@ typedef struct
     bool                        enRateLimit;
     t_FmPortRateLimit           rateLimit;
     bool                        enBufPoolDepletion;
-    uint8_t                     partitionId;
+    uint16_t                    partitionId;
     t_FmPortRxExtPools          rxExtBufPools;
     t_FmPortRsrc                openDmas;
     t_FmPortRsrc                tasks;
@@ -702,7 +714,8 @@ typedef struct
     e_FmPortColor               color;
     fmPortFrameErrSelect_t      errorsToDiscard;
     fmPortFrameErrSelect_t      errorsToEnq;
-    uint32_t                    timeStampPeriod;
+//    uint32_t                    timeStampPeriod;
+    uint8_t                     count1MicroBit;
     uint64_t                    fmMuramPhysBaseAddr;
     bool                        forwardReuseIntContext;
     bool                        l4Checksum;
@@ -718,6 +731,7 @@ typedef struct
     t_Handle                    h_FmPcd;
     uint8_t                     portId;
     e_FmPortType                portType;
+    char                        name[MODULE_NAME_SIZE];
     uint8_t                     hardwarePortId;
     uint16_t                    fmClkFreq;
     t_FmPortQmiRegs             *p_FmPortQmiRegs;
@@ -726,7 +740,7 @@ typedef struct
     fmPcdEngines_t              pcdEngines;
     uint32_t                    savedBmiNia;
     uint8_t                     netEnvId;
-    uint32_t                    optArray[MAX_NUM_OF_OPTIONS];
+    uint32_t                    optArray[FM_PCD_MAX_NUM_OF_OPTIONS];
     uint32_t                    lcvs[FM_PCD_PRS_NUM_OF_HDRS];
     uint8_t                     privateInfo;
     uint32_t                    schemesPerPortVector;
@@ -742,6 +756,8 @@ typedef struct
     uint8_t                     txFifoDeqPipelineDepth;
     t_FmPortDriverParam         *p_FmPortDriverParam;
     volatile bool               lock;
+    t_FmPortExceptionCallback   *f_Exception;
+    t_Handle                    h_App;
 } t_FmPort;
 
 #ifndef CONFIG_MULTI_PARTITION_SUPPORT
@@ -755,24 +771,28 @@ t_Error FmPortImCheckInitParameters(t_FmPort *p_FmPort);
 t_Error FmPortImInit(t_FmPort *p_FmPort);
 void    FmPortImFree(t_FmPort *p_FmPort);
 
-t_Error FmPortImRx  (t_FmPort *p_FmPort);
+t_Error FmPortImEnable  (t_FmPort *p_FmPort);
+t_Error FmPortImDisable (t_FmPort *p_FmPort);
+t_Error FmPortImRx      (t_FmPort *p_FmPort);
 
 
 static __inline__ uint8_t * BD_BUFFER (t_FmImBd *p_Bd)
 {
-/* TODO - complete */
-    return XX_PhysToVirt(CAST_UINT32_TO_POINTER(GET_UINT32(p_Bd->buff.low)));
+    uint64_t    physAddr = (uint64_t)((uint64_t)GET_UINT16(p_Bd->buff.high) << 32);
+    physAddr |= GET_UINT32(p_Bd->buff.low);
+
+    return (uint8_t *)XX_PhysToVirt((physAddress_t)(physAddr));
 }
 
 static __inline__ void SET_ADDR(volatile t_FmPhysAddr *fmPhysAddr, uint64_t value)
 {
-    WRITE_UINT16(fmPhysAddr->high,(uint16_t)((value & 0x0000ffff00000000LL) >> 32));
+    WRITE_UINT8(fmPhysAddr->high,(uint8_t)((value & 0x000000ff00000000LL) >> 32));
     WRITE_UINT32(fmPhysAddr->low,(uint32_t)value);
 }
 
 static __inline__ void BD_BUFFER_SET(t_FmImBd *p_Bd, uint8_t *p_Buffer)
 {
-    uint64_t    physAddr = CAST_POINTER_TO_UINT64(XX_VirtToPhys(p_Buffer));
+    uint64_t    physAddr = (uint64_t)(XX_VirtToPhys(p_Buffer));
     SET_ADDR(&p_Bd->buff, physAddr);
 }
 

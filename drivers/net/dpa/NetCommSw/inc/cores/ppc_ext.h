@@ -31,112 +31,106 @@
  */
 
 /**************************************************************************//**
- @File          FM_muram_ext.h
+ @File          ppc_ext.h
 
- @Description   FM MURAM Application Programming Interface.
+ @Description   TODO
 *//***************************************************************************/
-#ifndef __FM_MURAM_EXT
-#define __FM_MURAM_EXT
+#ifndef __PPC_EXT_H
+#define __PPC_EXT_H
 
-#include "error_ext.h"
-#include "std_ext.h"
+#include "part_ext.h"
+
+
+#define CORE_IS_BIG_ENDIAN
 
 
 /**************************************************************************//**
- @Group         FM_grp Frame Manager API
+ @Function      CORE_GetId
 
- @Description   FM API functions, definitions and enums
+ @Description   Returns the core ID in the system.
 
- @{
+ @Return        Core ID.
 *//***************************************************************************/
+uint32_t CORE_GetId(void);
 
 /**************************************************************************//**
- @Group         FM_muram_grp FM MURAM
+ @Function      CORE_TestAndSet
 
- @Description   FM MURAM API functions, definitions and enums
+ @Description   This routine tries to atomically test-and-set an integer
+                in memory to a non-zero value.
 
- @{
+                The memory will be set only if it is tested as zero, in which
+                case the routine retunrs the new non-zero value; otherwise the
+                routine returns zero.
+
+ @Param[in]     p - pointer to a volatile int in memory, on which test-and-set
+                    operation should be made.
+
+ @Retval        Zero        - Operation failed - memory was already set.
+ @Retval        Non-zero    - Operation succeeded - memory has been set.
 *//***************************************************************************/
+int CORE_TestAndSet(volatile int *p);
 
 /**************************************************************************//**
- @Group         FM_muram_init_grp FM MURAM Initialization
+ @Function      CORE_InstructionSync
 
- @Description   FM MURAM initialization API functions, definitions and enums
+ @Description   This routine will cause the core to wait for previous instructions
+                (including any interrupts they generate) to complete before the
+                synchronization command executes, which purges all instructions
+                from the processor's pipeline and refetches the next instruction.
 
- @{
+ @Return        None.
 *//***************************************************************************/
+void CORE_InstructionSync(void);
 
 /**************************************************************************//**
- @Function      FM_MURAM_ConfigAndInit
+ @Function      CORE_DCacheEnable
 
- @Description   Creates partition in the MURAM.
+ @Description   Enables the data cache for memory pages that are
+                not cache inhibited.
 
-                The routine returns a handle (descriptor) to the MURAM partition.
-                This descriptor must be passed as first parameter to all other
-                FM-MURAM function calls.
-
-                No actual initialization or configuration of FM_MURAM hardware is
-                done by this routine.
-
- @Param[in]     baseAddress - Pointer to base of memory mapped FM-MURAM.
- @Param[in]     size        - Size of the FM-MURAM partition.
-
- @Return        Handle to FM-MURAM object, or NULL for Failure.
+ @Return        None.
 *//***************************************************************************/
-t_Handle FM_MURAM_ConfigAndInit(uint64_t baseAddress, uint32_t size);
+void CORE_DCacheEnable(void);
 
 /**************************************************************************//**
- @Function      FM_MURAM_Free
+ @Function      CORE_ICacheEnable
 
- @Description   Frees all resources that were assigned to FM-MURAM module.
+ @Description   Enables the instruction cache for memory pages that are
+                not cache inhibited.
 
-                Calling this routine invalidates the descriptor.
-
- @Param[in]     h_FmMuram - FM-MURAM module descriptor.
-
- @Return        E_OK on success; Error code otherwise.
+ @Return        None.
 *//***************************************************************************/
-t_Error  FM_MURAM_Free(t_Handle h_FmMuram);
-
-/** @} */ /* end of FM_muram_init_grp group */
-
+void CORE_ICacheEnable(void);
 
 /**************************************************************************//**
- @Group         FM_muram_ctrl_grp FM MURAM Control
+ @Function      CORE_DCacheDisable
 
- @Description   FM MURAM control API functions, definitions and enums
+ @Description   Disables the data cache.
 
- @{
+ @Return        None.
 *//***************************************************************************/
+void CORE_DCacheDisable(void);
 
 /**************************************************************************//**
- @Function      FM_MURAM_AllocMem
+ @Function      CORE_ICacheDisable
 
- @Description   Allocate some memory from FM-MURAM partition.
+ @Description   Disables the instruction cache.
 
- @Param[in]     h_FmMuram - FM-MURAM module descriptor.
- @Param[in]     size      - size of the memory to be allocated.
- @Param[in]     align     - Alignment of the memory.
-
- @Return        address of the allocated memory; NULL otherwise.
+ @Return        None.
 *//***************************************************************************/
-void  * FM_MURAM_AllocMem(t_Handle h_FmMuram, uint32_t size, uint32_t align);
-
-/**************************************************************************//**
- @Function      FM_MURAM_FreeMem
-
- @Description   Free an allocated memory from FM-MURAM partition.
-
- @Param[in]     h_FmMuram - FM-MURAM module descriptor.
- @Param[in]     ptr       - A pointer to an allocated memory.
-
- @Return        E_OK on success; Error code otherwise.
-*//***************************************************************************/
-t_Error FM_MURAM_FreeMem(t_Handle h_FmMuram, void *ptr);
-
-/** @} */ /* end of FM_muram_ctrl_grp group */
-/** @} */ /* end of FM_muram_grp group */
-/** @} */ /* end of FM_grp group */
+void CORE_ICacheDisable(void);
 
 
-#endif /* __FM_MURAM_EXT */
+
+
+#if defined(CORE_E300)
+#include "e300_ext.h"
+#elif defined(CORE_E500V2) || defined(CORE_E500MC)
+#include "e500v2_ext.h"
+#else
+#error "Core not defined!"
+#endif
+
+
+#endif /* __PPC_EXT_H */

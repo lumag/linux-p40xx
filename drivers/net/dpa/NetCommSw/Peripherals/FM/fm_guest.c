@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -81,7 +81,7 @@ t_Error FmGetSetPortParams(t_Handle h_Fm,t_FmInterModulePortInitParams *p_PortPa
 {
     SANITY_CHECK_RETURN_ERROR(h_Fm, E_INVALID_HANDLE);
 
-    return XX_SendMessage(((t_Fm*)h_Fm)->fmModuleName, FM_GET_SET_PORT_PARAMS, (uint8_t*)p_PortParams, NULL, NULL);
+    return XX_SendMessage(((t_Fm*)h_Fm)->fmMasterModuleName, FM_GET_SET_PORT_PARAMS, (uint8_t*)p_PortParams, NULL, NULL);
 }
 
 void FmFreePortParams(t_Handle h_Fm,t_FmInterModulePortFreeParams *p_PortParams)
@@ -90,7 +90,7 @@ void FmFreePortParams(t_Handle h_Fm,t_FmInterModulePortFreeParams *p_PortParams)
 
     SANITY_CHECK_RETURN(h_Fm, E_INVALID_HANDLE);
 
-    err = XX_SendMessage(((t_Fm*)h_Fm)->fmModuleName, FM_FREE_PORT, (uint8_t*)p_PortParams, NULL, NULL);
+    err = XX_SendMessage(((t_Fm*)h_Fm)->fmMasterModuleName, FM_FREE_PORT, (uint8_t*)p_PortParams, NULL, NULL);
     if(err)
         REPORT_ERROR(MINOR, err, NO_MSG);
 }
@@ -104,7 +104,7 @@ bool FmIsPortStalled(t_Handle h_Fm, uint8_t hardwarePortId)
     SANITY_CHECK_RETURN_VALUE(h_Fm, E_INVALID_HANDLE, FALSE);
 
     isStalled.hardwarePortId = hardwarePortId;
-    err = XX_SendMessage(((t_Fm*)h_Fm)->fmModuleName, FM_IS_PORT_STALLED, (uint8_t*)&isStalled, NULL, NULL);
+    err = XX_SendMessage(((t_Fm*)h_Fm)->fmMasterModuleName, FM_IS_PORT_STALLED, (uint8_t*)&isStalled, NULL, NULL);
     if(err)
         REPORT_ERROR(MINOR, err, NO_MSG);
 
@@ -115,7 +115,7 @@ t_Error FmResumeStalledPort(t_Handle h_Fm, uint8_t hardwarePortId)
 {
     SANITY_CHECK_RETURN_ERROR(h_Fm, E_INVALID_HANDLE);
 
-    return XX_SendMessage(((t_Fm*)h_Fm)->fmModuleName, FM_RESUME_STALLED_PORT, (uint8_t*)&hardwarePortId, NULL, NULL);
+    return XX_SendMessage(((t_Fm*)h_Fm)->fmMasterModuleName, FM_RESUME_STALLED_PORT, (uint8_t*)&hardwarePortId, NULL, NULL);
 }
 
 t_Error FmResetMac(t_Handle h_Fm, e_FmMacType type, uint8_t macId)
@@ -127,24 +127,31 @@ t_Error FmResetMac(t_Handle h_Fm, e_FmMacType type, uint8_t macId)
     macReset.id = macId;
     macReset.type = (e_FmIpcMacType)type;
 
-    return XX_SendMessage(((t_Fm*)h_Fm)->fmModuleName, FM_RESET_MAC, (uint8_t*)&macReset, NULL, NULL);
+    return XX_SendMessage(((t_Fm*)h_Fm)->fmMasterModuleName, FM_RESET_MAC, (uint8_t*)&macReset, NULL, NULL);
 }
 
-uint32_t    FmGetTimeStampPeriod(t_Handle h_Fm)
+uint16_t FmGetClockFreq(t_Handle h_Fm)
+{
+    SANITY_CHECK_RETURN_ERROR(h_Fm, E_INVALID_HANDLE);
+
+    return ((t_Fm*)h_Fm)->fmClkFreq;
+}
+
+uint32_t FmGetTimeStampPeriod(t_Handle h_Fm)
 {
     uint32_t                timeStampPeriod;
     t_Error                 err;
 
     SANITY_CHECK_RETURN_VALUE(h_Fm, E_INVALID_HANDLE, 0);
 
-    err = XX_SendMessage(((t_Fm*)h_Fm)->fmModuleName, FM_GET_TIMESTAMP_PERIOD, (uint8_t*)&timeStampPeriod, NULL, NULL);
+    err = XX_SendMessage(((t_Fm*)h_Fm)->fmMasterModuleName, FM_GET_TIMESTAMP_PERIOD, (uint8_t*)&timeStampPeriod, NULL, NULL);
     if(err )
         REPORT_ERROR(MINOR, err, NO_MSG);
 
     return timeStampPeriod;
 }
 
-t_Error     FmHandleIpcMsg(t_Handle h_Fm, uint32_t msgId, uint8_t msgBody[MSG_BODY_SIZE])
+t_Error FmHandleIpcMsg(t_Handle h_Fm, uint32_t msgId, uint8_t msgBody[MSG_BODY_SIZE])
 {
     t_Fm    *p_Fm = (t_Fm*)h_Fm;
 
@@ -176,7 +183,7 @@ void FmRegisterIntr(t_Handle h_Fm,
     t_FmIpcRegisterIntr *fmIpcRegisterIntr;
 
     /* register in local FM structure */
-    GET_MODULE_EVENT(module, modId,err, event);
+    GET_FM_MODULE_EVENT(module, modId,err, event);
     ASSERT_COND(event != e_FM_EV_DUMMY_LAST);
     p_Fm->intrMng[event].f_Isr = f_Isr;
     p_Fm->intrMng[event].h_SrcHandle = h_Arg;
@@ -184,7 +191,7 @@ void FmRegisterIntr(t_Handle h_Fm,
     /* register in Master FM structure */
     fmIpcRegisterIntr.event = event;
     fmIpcRegisterIntr.partitionId = p_Fm->partitionId;
-    return XX_SendMessage(((t_Fm*)h_Fm)->fmModuleName, FM_REGISTER_INTR, (uint8_t*)&fmIpcRegisterIntr, NULL, NULL);
+    return XX_SendMessage(((t_Fm*)h_Fm)->fmMasterModuleName, FM_REGISTER_INTR, (uint8_t*)&fmIpcRegisterIntr, NULL, NULL);
 }
 
 #if (defined(DEBUG_ERRORS) && (DEBUG_ERRORS > 0))
@@ -192,7 +199,7 @@ t_Error FmDumpPortRegs (t_Handle h_Fm,uint8_t hardwarePortId)
 {
     SANITY_CHECK_RETURN_ERROR(h_Fm, E_INVALID_HANDLE);
 
-    return XX_SendMessage(((t_Fm*)h_Fm)->fmModuleName, FM_DUMP_PORT_REGS, (uint8_t*)&hardwarePortId, NULL, NULL);
+    return XX_SendMessage(((t_Fm*)h_Fm)->fmMasterModuleName, FM_DUMP_PORT_REGS, (uint8_t*)&hardwarePortId, NULL, NULL);
 }
 #endif /* (defined(DEBUG_ERRORS) && (DEBUG_ERRORS > 0)) */
 
@@ -215,11 +222,22 @@ t_Handle FM_Config(t_FmParams *p_FmParam)
 
     /* Initialize FM parameters which will be kept by the driver */
     p_Fm->fmId              = p_FmParam->fmId;
+    p_Fm->partitionId              = p_FmParam->partitionId;
     for(i = 0;i<FM_MAX_NUM_OF_PORTS;i++)
         p_Fm->portsTypes[i] = e_FM_PORT_TYPE_DUMMY;
-    /* register to inter-core messaging mechanism */
+
+    /* build the FM guest partition IPC address */
     memset(p_Fm->fmModuleName, 0, MODULE_NAME_SIZE);
     if(Sprint (p_Fm->fmModuleName, "FM-%d-%d",p_Fm->fmId, p_Fm->partitionId) != (p_Fm->partitionId<10 ? 6:7))
+    {
+        XX_Free(p_Fm);
+        REPORT_ERROR(MAJOR, E_INVALID_STATE, ("Sprint failed"));
+        return NULL;
+    }
+
+    /* build the FM master partition IPC address */
+    memset(p_Fm->fmMasterModuleName, 0, MODULE_NAME_SIZE);
+    if(Sprint (p_Fm->fmMasterModuleName, "FM-%d-Master",p_Fm->fmId) != 11)
     {
         XX_Free(p_Fm);
         REPORT_ERROR(MAJOR, E_INVALID_STATE, ("Sprint failed"));
@@ -241,10 +259,15 @@ t_Handle FM_Config(t_FmParams *p_FmParam)
 t_Error FM_Init(t_Handle h_Fm)
 {
     t_Fm                    *p_Fm = (t_Fm*)h_Fm;
+    t_Error                 err;
     int                     i;
 
     for(i=0;i<e_FM_EV_DUMMY_LAST;i++)
         p_Fm->intrMng[i].f_Isr = UnimplementedIsr;
+
+    err = XX_SendMessage(((t_Fm*)h_Fm)->fmMasterModuleName, FM_GET_CLK_FREQ, (uint8_t*)&(p_Fm->fmClkFreq), NULL, NULL);
+    if(err )
+        REPORT_ERROR(MINOR, err, NO_MSG);
 
     err = XX_RegisterMessageHandler(p_Fm->fmModuleName, FmHandleIpcMsg, p_Fm);
     if(err)
@@ -295,23 +318,10 @@ void FM_GetRevision(t_Handle h_Fm, t_FmRevisionInfo *p_FmRevisionInfo)
     t_Error err;
 
     SANITY_CHECK_RETURN(h_Fm, E_INVALID_HANDLE);
-    err = XX_SendMessage(((t_Fm*)h_Fm)->fmModuleName, FM_GET_REV, (uint8_t*)p_FmRevisionInfo, NULL, NULL);
+
+    err = XX_SendMessage(((t_Fm*)h_Fm)->fmMasterModuleName, FM_GET_REV, (uint8_t*)p_FmRevisionInfo, NULL, NULL);
     if(err )
         REPORT_ERROR(MINOR, err, NO_MSG);
-}
-
-uint32_t FM_GetTimeStamp(t_Handle h_Fm)
-{
-    uint32_t    timeStamp;
-    t_Error     err;
-
-    SANITY_CHECK_RETURN_VALUE(h_Fm, E_INVALID_HANDLE, 0);
-
-    err = XX_SendMessage(((t_Fm*)h_Fm)->fmModuleName, FM_GET_TIMESTAMP, (uint8_t*)&timeStamp, NULL, NULL);
-    if(err )
-        REPORT_ERROR(MINOR, err, NO_MSG);
-
-    return timeStamp;
 }
 
 uint32_t  FM_GetCounter(t_Handle h_Fm, e_FmCounters counter)
@@ -322,7 +332,7 @@ uint32_t  FM_GetCounter(t_Handle h_Fm, e_FmCounters counter)
     SANITY_CHECK_RETURN_VALUE(h_Fm, E_INVALID_HANDLE, 0);
 
     counterParams.id = (e_FmIpcCounters)counter;
-    err = XX_SendMessage(((t_Fm*)h_Fm)->fmModuleName, FM_GET_COUNTER, (uint8_t*)&counterParams, NULL, NULL);
+    err = XX_SendMessage(((t_Fm*)h_Fm)->fmMasterModuleName, FM_GET_COUNTER, (uint8_t*)&counterParams, NULL, NULL);
     if(err )
         REPORT_ERROR(MINOR, err, NO_MSG);
 
@@ -379,6 +389,6 @@ t_Error FM_DumpRegs(t_Handle h_Fm)
 {
     SANITY_CHECK_RETURN_ERROR(h_Fm, E_INVALID_HANDLE);
 
-    return XX_SendMessage(((t_Fm*)h_Fm)->fmModuleName, FM_DUMP_REGS, NULL, NULL, NULL);
+    return XX_SendMessage(((t_Fm*)h_Fm)->fmMasterModuleName, FM_DUMP_REGS, NULL, NULL, NULL);
 }
 #endif /* (defined(DEBUG_ERRORS) && ... */

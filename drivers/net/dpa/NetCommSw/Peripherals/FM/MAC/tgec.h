@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -43,6 +43,7 @@
 #include "list_ext.h"
 #include "tgec_mii_acc.h"
 #include "fm_mac.h"
+
 
 /* Interrupt Mask Register (IMASK) */
 #define IMASK_MDIO_SCAN_EVENTMDIO   0x00010000  /* MDIO_SCAN_EVENTMDIO scan event interrupt mask.
@@ -114,6 +115,23 @@
                                                  * 1 enabled
                                                  */
 
+#define EVENTS_MASK                 ((uint32_t)(IMASK_MDIO_SCAN_EVENTMDIO |  \
+                                                IMASK_MDIO_CMD_CMPL       |  \
+                                                IMASK_REM_FAULT           |  \
+                                                IMASK_LOC_FAULT           |  \
+                                                IMASK_1TX_ECC_ER          |  \
+                                                IMASK_TX_FIFO_UNFL        |  \
+                                                IMASK_TX_FIFO_OVFL        |  \
+                                                IMASK_TX_ER               |  \
+                                                IMASK_RX_FIFO_OVFL        |  \
+                                                IMASK_RX_ECC_ER           |  \
+                                                IMASK_RX_JAB_FRM          |  \
+                                                IMASK_RX_OVRSZ_FRM        |  \
+                                                IMASK_RX_RUNT_FRM         |  \
+                                                IMASK_RX_FRAG_FRM         |  \
+                                                IMASK_RX_LEN_ER           |  \
+                                                IMASK_RX_CRC_ER           |  \
+                                                IMASK_RX_ALIGN_ER))
 
 #define GET_EXCEPTION_FLAG(bitMask, exception)       switch(exception){ \
     case e_FM_MAC_EX_10G_MDIO_SCAN_EVENTMDIO:                                    \
@@ -168,7 +186,6 @@
 #define DEFAULT_rxErrorDiscard              FALSE
 #define DEFAULT_phyTxenaOn                  FALSE
 #define DEFAULT_sendIdleEnable              FALSE
-/* TODO - change it back to check length!!! */
 #define DEFAULT_noLengthCheckEnable         TRUE
 #define DEFAULT_lgthCheckNostdr             FALSE
 #define DEFAULT_timeStampEnable             FALSE
@@ -185,40 +202,21 @@
 #define DEFAULT_pauseTime                   0xf000
 #define DEFAULT_imask                       0xf000
 
-#define DEFAULT_exceptions         ((uint32_t)(IMASK_MDIO_SCAN_EVENTMDIO |  \
-                                               IMASK_REM_FAULT           |  \
-                                               IMASK_LOC_FAULT           |  \
-                                               IMASK_1TX_ECC_ER          |  \
-                                               IMASK_TX_FIFO_UNFL        |  \
-                                               IMASK_TX_FIFO_OVFL        |  \
-                                               IMASK_TX_ER               |  \
-                                               IMASK_RX_FIFO_OVFL        |  \
-                                               IMASK_RX_ECC_ER           |  \
-                                               IMASK_RX_JAB_FRM          |  \
-                                               IMASK_RX_OVRSZ_FRM        |  \
-                                               IMASK_RX_RUNT_FRM         |  \
-                                               IMASK_RX_FRAG_FRM         |  \
-                                               IMASK_RX_LEN_ER           |  \
-                                               IMASK_RX_CRC_ER           |  \
-                                               IMASK_RX_ALIGN_ER))
-
-
-#define EVENTS_MASK         ((uint32_t)(IMASK_MDIO_SCAN_EVENTMDIO |  \
-                                        IMASK_REM_FAULT           |  \
-                                        IMASK_LOC_FAULT           |  \
-                                        IMASK_1TX_ECC_ER          |  \
-                                        IMASK_TX_FIFO_UNFL        |  \
-                                        IMASK_TX_FIFO_OVFL        |  \
-                                        IMASK_TX_ER               |  \
-                                        IMASK_RX_FIFO_OVFL        |  \
-                                        IMASK_RX_ECC_ER           |  \
-                                        IMASK_RX_JAB_FRM          |  \
-                                        IMASK_RX_OVRSZ_FRM        |  \
-                                        IMASK_RX_RUNT_FRM         |  \
-                                        IMASK_RX_FRAG_FRM         |  \
-                                        IMASK_RX_LEN_ER           |  \
-                                        IMASK_RX_CRC_ER           |  \
-                                        IMASK_RX_ALIGN_ER))
+#define DEFAULT_exceptions          ((uint32_t)(IMASK_MDIO_SCAN_EVENTMDIO |  \
+                                                IMASK_REM_FAULT           |  \
+                                                IMASK_LOC_FAULT           |  \
+                                                IMASK_1TX_ECC_ER          |  \
+                                                IMASK_TX_FIFO_UNFL        |  \
+                                                IMASK_TX_FIFO_OVFL        |  \
+                                                IMASK_TX_ER               |  \
+                                                IMASK_RX_FIFO_OVFL        |  \
+                                                IMASK_RX_ECC_ER           |  \
+                                                IMASK_RX_JAB_FRM          |  \
+                                                IMASK_RX_OVRSZ_FRM        |  \
+                                                IMASK_RX_RUNT_FRM         |  \
+                                                IMASK_RX_FRAG_FRM         |  \
+                                                IMASK_RX_CRC_ER           |  \
+                                                IMASK_RX_ALIGN_ER))
 
 #define MAX_PACKET_ALIGNMENT        31
 #define MAX_INTER_PACKET_GAP        0x7f
@@ -333,7 +331,7 @@
                                                  * 0 disabled
                                                  * 1 enabled
                                                  */
-#define HASH_ADDR_MASK              0x000001ff  /* 23–31 HASH_ADDR Hash table address code.
+#define HASH_ADDR_MASK              0x000001ff  /* 23-31 HASH_ADDR Hash table address code.
                                                  */
 
 /* Transmit Inter-Packet Gap Length Register (TX_IPG_LENGTH) */
@@ -341,9 +339,9 @@
 
 
 
-#ifdef __MWERKS__
+#if defined(__MWERKS__) && !defined(__GNUC__)
 #pragma pack(push,1)
-#endif /*__MWERKS__ */
+#endif /* defined(__MWERKS__) && ... */
 #define MEM_MAP_START
 
 /*
@@ -419,9 +417,9 @@ typedef _Packed struct {
 } _PackedType t_TgecMemMap;
 
 #define MEM_MAP_END
-#ifdef __MWERKS__
+#if defined(__MWERKS__) && !defined(__GNUC__)
 #pragma pack(pop)
-#endif /* __MWERKS__ */
+#endif /* defined(__MWERKS__) && ... */
 
 
 typedef struct {
@@ -454,8 +452,8 @@ typedef struct {
                                         If cleared (default) the MAC */
     uint32_t txIpgLength;           /*Transmit Inter-Packet-Gap (IPG) value.
                                       A 6-bit value: Depending on LAN or WAN mode of operation (see COMMAND_CONFIG, 19.2.1 page 91) the value has the following meaning:
-                                        • LAN Mode: Number of octets in steps of 4. Valid values are 8, 12, 16, ... 100. DIC is fully supported (see 10.6.1 page 49) for any setting. A default of 12 (reset value) must be set to conform to IEEE802.3ae. Warning: When set to 8, PCS layers may not be able to perform clock rate compensation.
-                                        • WAN Mode: Stretch factor. Valid values are 4..15. The stretch factor is calculated as (value+1)*8. A default of 12 (reset value) must be set to conform to IEEE 802.3ae (i.e. 13*8=104). A larger value shrinks the IPG (increasing bandwidth). */
+                                        - LAN Mode: Number of octets in steps of 4. Valid values are 8, 12, 16, ... 100. DIC is fully supported (see 10.6.1 page 49) for any setting. A default of 12 (reset value) must be set to conform to IEEE802.3ae. Warning: When set to 8, PCS layers may not be able to perform clock rate compensation.
+                                        - WAN Mode: Stretch factor. Valid values are 4..15. The stretch factor is calculated as (value+1)*8. A default of 12 (reset value) must be set to conform to IEEE 802.3ae (i.e. 13*8=104). A larger value shrinks the IPG (increasing bandwidth). */
 /*.. */
     bool        statisticsEnable;
     uint16_t    maxFrameLength;
@@ -474,9 +472,9 @@ typedef struct {
     t_TgecMiiAccessMemMap       *p_MiiMemMap;                       /**< pointer to MII memory mapped registers.          */
     uint64_t                    addr;                               /**< MAC address of device; */
     e_EnetMode                  enetMode;                           /**< Ethernet physical interface  */
-    t_FmMacExceptionCallback    *f_Exceptions;
+    t_FmMacExceptionCallback    *f_Exception;
     int                         mdioIrq;
-    t_FmMacExceptionCallback    *f_Events;
+    t_FmMacExceptionCallback    *f_Event;
     bool                        indAddrRegUsed[TGEC_NUM_OF_PADDRS]; /**< Whether a particular individual address recognition register is being used */
     uint64_t                    paddr[TGEC_NUM_OF_PADDRS];          /**< MAC address for particular individual address recognition register */
     uint8_t                     numOfIndAddrInRegs;                 /**< Number of individual addresses in registers for this station. */

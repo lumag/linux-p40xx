@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -101,7 +101,7 @@ t_Error DTSEC_MII_ReadPhyReg(t_Handle h_Dtsec,
     /* Dummy read to make sure MIIMCOM is written */
     tmpReg = GET_UINT32(p_MiiAccess->miimcom);
 
-    /* Wait till MII management write is complete */
+    /* Wait till MII management read is complete */
     while ((GET_UINT32(p_MiiAccess->miimind)) & MIIMIND_BUSY) ;
 
     /* Read MII management status  */
@@ -112,7 +112,9 @@ t_Error DTSEC_MII_ReadPhyReg(t_Handle h_Dtsec,
     tmpReg = GET_UINT32(p_MiiAccess->miimcom);
 
     if (*p_Data == 0xffff)
-        RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("Read wrong data (0xffff): phyAddr 0x%x, reg 0x%x", phyAddr, reg));
+        RETURN_ERROR(MINOR, E_NO_DEVICE,
+                     ("Read wrong data (0xffff): phyAddr 0x%x, reg 0x%x",
+                      phyAddr, reg));
 
     return E_OK;
 }
