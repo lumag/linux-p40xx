@@ -1,4 +1,4 @@
-/* Copyright (c) 2008, 2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -85,7 +85,7 @@ static int retire_complete, sdqcr_complete;
 /* Helpers for initialising and "incrementing" a frame descriptor */
 static void fd_init(struct qm_fd *__fd)
 {
-	__fd->addr_hi = 0xabba;		/* high 16-bits */
+	__fd->addr_hi = 0xab;		/* high 16-bits */
 	__fd->addr_lo = 0xdeadbeef;	/* low 32-bits */
 	__fd->format = qm_fd_contig_big;
 	__fd->length29 = 0x0000ffff;
