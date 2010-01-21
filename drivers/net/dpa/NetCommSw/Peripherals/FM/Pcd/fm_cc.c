@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -184,7 +184,7 @@ static t_CcNodeInfo * FindNodeInfoAccIdAndAddToRetLst(t_List *p_List, uint16_t n
 
 static void  UpdateNodeOwner(t_FmPcd  *p_FmPcd, uint16_t nodeId, bool add)
 {
-    ASSERT_COND(nodeId < MAX_NUM_OF_PCD_CC_NODES);
+    ASSERT_COND(nodeId < FM_PCD_MAX_NUM_OF_CC_NODES);
     if(add)
         p_FmPcd->p_FmPcdCc->ccNodeArrayEntry[nodeId].owners++;
     else
@@ -196,7 +196,7 @@ static void  UpdateNodeOwner(t_FmPcd  *p_FmPcd, uint16_t nodeId, bool add)
 
 static t_Handle GetNodeHandler(t_FmPcd *p_FmPcd, uint16_t nodeId)
 {
-    ASSERT_COND(nodeId < MAX_NUM_OF_PCD_CC_NODES);
+    ASSERT_COND(nodeId < FM_PCD_MAX_NUM_OF_CC_NODES);
     return p_FmPcd->p_FmPcdCc->ccNodeArrayEntry[nodeId].p_FmPcdCcNode;
 
 }
@@ -212,7 +212,7 @@ static void SetNodeHandler(t_Handle h_FmPcdCc, uint16_t nodeId, t_Handle p_FmPcd
 static t_Handle FmPcdCcGetTreeHandler(t_Handle h_FmPcd, uint8_t treeId)
 {
 
-    ASSERT_COND(treeId < MAX_NUM_OF_PCD_CC_TREES);
+    ASSERT_COND(treeId < FM_PCD_MAX_NUM_OF_CC_TREES);
     return ((t_FmPcd*)h_FmPcd)->p_FmPcdCc->ccTreeArrayEntry[treeId].p_FmPcdCcTree;
 }
 
@@ -227,13 +227,13 @@ static void SetTreeHandler(t_Handle h_FmPcdCc, uint8_t treeId, t_Handle p_FmPcdC
 
 static uint8_t GetTreeOwners(t_FmPcd *p_FmPcd, uint8_t treeId)
 {
-    ASSERT_COND(treeId < MAX_NUM_OF_PCD_CC_TREES);
+    ASSERT_COND(treeId < FM_PCD_MAX_NUM_OF_CC_TREES);
     return p_FmPcd->p_FmPcdCc->ccTreeArrayEntry[treeId].owners;
 }
 
 static uint8_t GetNodeOwners(t_FmPcd *p_FmPcd, uint16_t nodeId)
 {
-    ASSERT_COND(nodeId < MAX_NUM_OF_PCD_CC_NODES);
+    ASSERT_COND(nodeId < FM_PCD_MAX_NUM_OF_CC_NODES);
     return p_FmPcd->p_FmPcdCc->ccNodeArrayEntry[nodeId].owners;
 }
 
@@ -243,7 +243,7 @@ static t_Error OccupyNodeId(t_FmPcd *p_FmPcd, uint16_t *nodeId)
     uint16_t i = 0;
 
     TRY_LOCK_RET_ERR(p_FmPcd->lock);
-    for(i = 0; i < MAX_NUM_OF_PCD_CC_NODES; i++)
+    for(i = 0; i < FM_PCD_MAX_NUM_OF_CC_NODES; i++)
     {
         if(!p_FmPcd->p_FmPcdCc->ccNodeArrayEntry[i].occupied && !p_FmPcd->p_FmPcdCc->ccNodeArrayEntry[i].p_FmPcdCcNode)
         {
@@ -263,7 +263,7 @@ static t_Error OccupyTreeId(t_FmPcd *p_FmPcd, uint8_t *treeId)
     uint16_t i = 0;
 
     TRY_LOCK_RET_ERR(p_FmPcd->lock);
-    for(i = 0; i < MAX_NUM_OF_PCD_CC_NODES; i++)
+    for(i = 0; i < FM_PCD_MAX_NUM_OF_CC_NODES; i++)
     {
         if(!p_FmPcd->p_FmPcdCc->ccTreeArrayEntry[i].occupied && !p_FmPcd->p_FmPcdCc->ccTreeArrayEntry[i].p_FmPcdCcTree)
         {
@@ -284,7 +284,7 @@ static bool CcNodeIsValid(t_FmPcd *p_FmPcd, uint16_t nodeId)
 {
     t_FmPcdCc *p_FmPcdCc = p_FmPcd->p_FmPcdCc;
 
-    ASSERT_COND(nodeId < MAX_NUM_OF_PCD_CC_NODES);
+    ASSERT_COND(nodeId < FM_PCD_MAX_NUM_OF_CC_NODES);
 
     if(!p_FmPcdCc->ccNodeArrayEntry[nodeId].occupied ||
         !p_FmPcdCc->ccNodeArrayEntry[nodeId].p_FmPcdCcNode)
@@ -510,10 +510,10 @@ static void ReleaseTreeHandler(t_FmPcdCcTree *p_FmPcdTreeNode, t_FmPcdCc *p_FmPc
 
     if(p_FmPcdTreeNode)
     {
-        if(p_FmPcdTreeNode->p_CcBaseTree)
+        if(p_FmPcdTreeNode->ccTreeBaseAddr)
         {
-            FM_MURAM_FreeMem(p_FmPcdCc->h_FmMuram,p_FmPcdTreeNode->p_CcBaseTree);
-            p_FmPcdTreeNode->p_CcBaseTree = NULL;
+            FM_MURAM_FreeMem(p_FmPcdCc->h_FmMuram, CAST_UINT64_TO_POINTER(p_FmPcdTreeNode->ccTreeBaseAddr));
+            p_FmPcdTreeNode->ccTreeBaseAddr = 0;
         }
 
 
@@ -627,6 +627,17 @@ static uint8_t GetGenParseCode(e_FmPcdExtractFrom src, uint32_t offset, bool glb
             else
                 return CC_PR_WITHOUT_OFFSET;
         break;
+        case(e_FM_PCD_EXTRACT_FROM_IC_KEY) :
+            *parseArrayOffset = 0x50;
+            return CC_PC_GENERIC_IC_GMASK;
+            break;
+        case(e_FM_PCD_EXTRACT_FROM_IC_HASH_EXACT_MATCH) :
+            *parseArrayOffset = 0x48;
+            return CC_PC_GENERIC_IC_GMASK;
+            break;
+        case(e_FM_PCD_EXTRACT_FROM_IC_HASH_INDEXED_MATCH) :
+            return CC_PC_GENERIC_IC_HASH_INDEXED;
+             break;
         default:
             REPORT_ERROR(MAJOR, E_INVALID_VALUE, ("Illegal 'extract from' src"));
             return CC_PC_ILLEGAL;
@@ -1055,14 +1066,14 @@ static void FillAdOfTypeContLookup(t_Handle p_Ad,  t_Handle h_FmPcd, t_Handle p_
     tmpReg32 = 0;
     tmpReg32 |= FM_PCD_AD_CONT_LOOKUP_TYPE;
     tmpReg32 |= p_Node->sizeOfExtraction ? ((p_Node->sizeOfExtraction - 1) << 24) : 0;
-    tmpReg32 |= (uint32_t)(CAST_POINTER_TO_UINT64(XX_VirtToPhys(p_Node->h_AdTable)) - (((t_FmPcd*)h_FmPcd)->p_FmPcdCc)->physicalMuramBase);
+    tmpReg32 |= (uint32_t)((uint64_t)(XX_VirtToPhys(p_Node->h_AdTable)) - (((t_FmPcd*)h_FmPcd)->p_FmPcdCc)->physicalMuramBase);
     WRITE_UINT32(p_AdContLookup->ccAdBase, tmpReg32);
 
     tmpReg32 = 0;
     tmpReg32 |= p_Node->numOfKeys << 24;
     tmpReg32 |= (p_Node->lclMask ? FM_PCD_AD_CONT_LOOKUP_LCL_MASK : 0);
     tmpReg32 |= p_Node->h_KeysMatchTable ?
-                    (uint32_t)(CAST_POINTER_TO_UINT64(XX_VirtToPhys(p_Node->h_KeysMatchTable)) - (((t_FmPcd*)h_FmPcd)->p_FmPcdCc)->physicalMuramBase) : 0;
+                    (uint32_t)((uint64_t)(XX_VirtToPhys(p_Node->h_KeysMatchTable)) - (((t_FmPcd*)h_FmPcd)->p_FmPcdCc)->physicalMuramBase) : 0;
     WRITE_UINT32(p_AdContLookup->matchTblPtr, tmpReg32);
 
     tmpReg32 = 0;
@@ -1274,7 +1285,7 @@ static t_Error BuildNewNodeAddKey(t_Handle h_FmPcd ,t_FmPcdCcNode *p_FmPcdCcNode
 
     p_AdditionalInfo->numOfKeys = (uint8_t)(p_FmPcdCcNode->numOfKeys + 1);
 
-    err = BuildNewNodeCommonPart(h_FmPcd, p_FmPcdCcNode, &size, (p_KeyParams->p_Mask ? TRUE : FALSE), p_AdditionalInfo);
+    err = BuildNewNodeCommonPart(h_FmPcd, p_FmPcdCcNode, &size, (bool)(p_KeyParams->p_Mask ? TRUE : FALSE), p_AdditionalInfo);
     if(err)
         RETURN_ERROR(MAJOR, err, NO_MSG);
 
@@ -1340,7 +1351,7 @@ static t_Error BuildNewNodeRemoveKey(t_Handle h_FmPcd  ,t_FmPcdCcNode *p_FmPcdCc
 
     p_AdditionalInfo->numOfKeys = (uint16_t)(p_FmPcdCcNode->numOfKeys - 1);
 
-    err = BuildNewNodeCommonPart(h_FmPcd, p_FmPcdCcNode, &size, (p_FmPcdCcNode->lclMask ? TRUE : FALSE), p_AdditionalInfo);
+    err = BuildNewNodeCommonPart(h_FmPcd, p_FmPcdCcNode, &size, (bool)(p_FmPcdCcNode->lclMask ? TRUE : FALSE), p_AdditionalInfo);
     if(err)
         RETURN_ERROR(MAJOR, err, NO_MSG);
 
@@ -1385,7 +1396,7 @@ static t_Error BuildNewNodeModifyKey(t_Handle h_FmPcd ,t_FmPcdCcNode *p_FmPcdCcN
 
     p_AdditionalInfo->numOfKeys =  p_FmPcdCcNode->numOfKeys;
 
-    err = BuildNewNodeCommonPart(h_FmPcd, p_FmPcdCcNode, &size, (p_Mask ? TRUE : FALSE), p_AdditionalInfo);
+    err = BuildNewNodeCommonPart(h_FmPcd, p_FmPcdCcNode, &size, (bool)(p_Mask ? TRUE : FALSE), p_AdditionalInfo);
     if(err)
         RETURN_ERROR(MAJOR, err, NO_MSG);
 
@@ -1452,7 +1463,7 @@ static t_Error BuildNewNodeModifyKeyAndNextEngine(t_Handle h_FmPcd ,t_FmPcdCcNod
 
     p_AdditionalInfo->numOfKeys = p_FmPcdCcNode->numOfKeys;
 
-    err = BuildNewNodeCommonPart(h_FmPcd, p_FmPcdCcNode, &size, (p_KeyParams->p_Mask ? TRUE : FALSE), p_AdditionalInfo);
+    err = BuildNewNodeCommonPart(h_FmPcd, p_FmPcdCcNode, &size, (bool)(p_KeyParams->p_Mask ? TRUE : FALSE), p_AdditionalInfo);
     if(err)
         RETURN_ERROR(MAJOR, err, NO_MSG);
 
@@ -1579,7 +1590,7 @@ static t_Error ModifyWithTreeDataStructure(t_FmPcd *p_FmPcd,uint16_t nodeId, t_F
         LIST_FOR_EACH(p_Pos1, &p_List)
         {
             p_CcNodeInfo = CC_NEXT_NODE_F_OBJECT(p_Pos1);
-            CreateNodeInfo(h_OldLst, (uint32_t)((uint32_t)(p_FmPcdCcTreePrev->p_CcBaseTree) + FM_PCD_CC_AD_ENTRY_SIZE * (p_CcNodeInfo->nextCcNodeInfo >> 16)));
+            CreateNodeInfo(h_OldLst, (uint32_t)(p_FmPcdCcTreePrev->ccTreeBaseAddr + FM_PCD_CC_AD_ENTRY_SIZE * (p_CcNodeInfo->nextCcNodeInfo >> 16)));
         }
     }
     ReleaseLst(&p_List);
@@ -1636,7 +1647,8 @@ t_Error FmPcdCcModifyNextEngineParamTree(t_Handle h_FmPcd, t_Handle h_FmPcdCcTre
         RETURN_ERROR(MAJOR, err, NO_MSG);
 
     p_CcOldModifyAdditionalParams = *h_OldPointer;
-    p_CcOldModifyAdditionalParams->p_Ad = (t_Handle)((uint32_t)p_FmPcdCcTree->p_CcBaseTree + FM_PCD_CC_AD_ENTRY_SIZE* (p_FmPcdCcTree->fmPcdGroupParam[grpId].baseGroupEntry + index));
+    p_CcOldModifyAdditionalParams->p_Ad =
+        CAST_UINT64_TO_POINTER(p_FmPcdCcTree->ccTreeBaseAddr + FM_PCD_CC_AD_ENTRY_SIZE* (p_FmPcdCcTree->fmPcdGroupParam[grpId].baseGroupEntry + index));
     p_CcOldModifyAdditionalParams->isTree = TRUE;
     p_CcOldModifyAdditionalParams->h_Node = p_FmPcdCcTree;
     p_CcNewModifyAdditionalParams  = *h_NewPointer;
@@ -1702,7 +1714,7 @@ t_Error FmPcdCcAddKey(t_Handle h_FmPcd, t_Handle h_FmPcdCcNode, uint8_t keyIndex
     if(keyIndex > p_FmPcdCcNode->numOfKeys)
         RETURN_ERROR(MAJOR, E_INVALID_STATE, ("keyIndex > previousely cleared last index + 1"));
 
-    if((p_FmPcdCcNode->numOfKeys + 1) > MAX_NUM_OF_PCD_CC_NODES)
+    if((p_FmPcdCcNode->numOfKeys + 1) > FM_PCD_MAX_NUM_OF_CC_NODES)
         RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("numOfKeys with new key can not be larger than 255"));
 
     err = BuildNewNodeAddKey (h_FmPcd, p_FmPcdCcNode, keyIndex, p_FmPcdCcKeyParams, p_FmPcdModifyCcKeyAdditionalParams);
@@ -1949,7 +1961,7 @@ t_Error FmPcdCcReleaseModifiedOnlyNextEngine(t_Handle h_FmPcd, t_Handle h_FmPcdO
     uint16_t                         numOfReplec;
     t_Error                          err = E_OK;
     t_List                          *p_Pos;
-    uint16_t                        ccArray[MAX_NUM_OF_PCD_CC_NODES];
+    uint16_t                        ccArray[FM_PCD_MAX_NUM_OF_CC_NODES];
 
     SANITY_CHECK_RETURN_ERROR(h_FmPcd,E_INVALID_HANDLE);
     SANITY_CHECK_RETURN_ERROR(p_FmPcd->p_FmPcdCc,E_INVALID_HANDLE);
@@ -1978,7 +1990,7 @@ t_Error FmPcdCcReleaseModifiedOnlyNextEngine(t_Handle h_FmPcd, t_Handle h_FmPcdO
                         }
                         else
                             CreateNodeInfo(&p_NodeForAdd->ccTreeIdLst, (uint32_t)((uint32_t)p_CurrentTree->treeId | ((uint32_t)1<<16)));
-                        memset(ccArray, 0, sizeof(uint16_t) * MAX_NUM_OF_PCD_CC_NODES);
+                        memset(ccArray, 0, sizeof(uint16_t) * FM_PCD_MAX_NUM_OF_CC_NODES);
                         err = UpdateNodesWithTree(h_FmPcd, &p_NodeForAdd->ccNextNodesLst, ccArray, p_CurrentTree->treeId);
                         if(err)
                             RETURN_ERROR(MAJOR, err, NO_MSG);
@@ -2028,7 +2040,7 @@ t_Error FmPcdCcReleaseModifiedOnlyNextEngine(t_Handle h_FmPcd, t_Handle h_FmPcdO
                         LIST_FOR_EACH(p_Pos, &p_CurrentNode->ccTreesLst)
                         {
                             p_CcNodeInfo = CC_NEXT_NODE_F_OBJECT(p_Pos);
-                            memset(ccArray, 0, sizeof(uint16_t)*MAX_NUM_OF_PCD_CC_NODES);
+                            memset(ccArray, 0, sizeof(uint16_t)*FM_PCD_MAX_NUM_OF_CC_NODES);
                             err = UpdateNodesWithTree(p_FmPcd, &p_NodeForAdd->ccNextNodesLst, ccArray, (uint8_t)p_CcNodeInfo->nextCcNodeInfo);
                             if(err)
                                 RETURN_ERROR(MAJOR, err, NO_MSG);
@@ -2089,7 +2101,7 @@ t_Error FmPcdCcReleaseModifiedKey(t_Handle h_FmPcd, t_List *h_FmPcdOldPointersLs
     uint32_t                        numOfReplec;
     t_List                          *p_Pos;
     t_Error                         err = E_OK;
-    uint16_t                        ccArray[MAX_NUM_OF_PCD_CC_NODES];
+    uint16_t                        ccArray[FM_PCD_MAX_NUM_OF_CC_NODES];
 
     UNUSED(numOfGoodChanges);
 
@@ -2122,7 +2134,7 @@ t_Error FmPcdCcReleaseModifiedKey(t_Handle h_FmPcd, t_List *h_FmPcdOldPointersLs
                 LIST_FOR_EACH(p_Pos, &p_CurrentNode->ccTreesLst)
                 {
                     p_CcNodeInfo = CC_NEXT_NODE_F_OBJECT(p_Pos);
-                    memset(ccArray, 0, sizeof(uint16_t)*MAX_NUM_OF_PCD_CC_NODES);
+                    memset(ccArray, 0, sizeof(uint16_t)*FM_PCD_MAX_NUM_OF_CC_NODES);
                     err = UpdateNodesWithTree(p_FmPcd, &p_NodeForAdd->ccNextNodesLst, ccArray, (uint8_t)p_CcNodeInfo->nextCcNodeInfo);
                     if(err)
                         RETURN_ERROR(MAJOR, err, NO_MSG);
@@ -2186,7 +2198,7 @@ uint32_t FmPcdCcGetNodeAddrOffset(t_Handle h_FmPcd, t_Handle h_Pointer)
     SANITY_CHECK_RETURN_VALUE(h_FmPcd,E_INVALID_HANDLE, (uint32_t)ILLEGAL_BASE);
     SANITY_CHECK_RETURN_VALUE(p_FmPcd->p_FmPcdCc,E_INVALID_HANDLE, (uint32_t)ILLEGAL_BASE);
 
-    return (uint32_t)(CAST_POINTER_TO_UINT64(XX_VirtToPhys(((t_FmPcdModifyCcAdditionalParams *)h_Pointer)->p_Ad)) -
+    return (uint32_t)((uint64_t)(XX_VirtToPhys(((t_FmPcdModifyCcAdditionalParams *)h_Pointer)->p_Ad)) -
                      p_FmPcd->p_FmPcdCc->physicalMuramBase);
 }
 
@@ -2199,7 +2211,7 @@ uint32_t FmPcdCcGetNodeAddrOffsetFromNodeInfo(t_Handle h_FmPcd, t_Handle h_Point
     SANITY_CHECK_RETURN_VALUE(p_FmPcd->p_FmPcdCc,E_INVALID_HANDLE, (uint32_t)ILLEGAL_BASE);
 
     p_CcNodeInfo = CC_NEXT_NODE_F_OBJECT(h_Pointer);
-    return (uint32_t)(CAST_POINTER_TO_UINT64(XX_VirtToPhys(CAST_UINT32_TO_POINTER(p_CcNodeInfo->nextCcNodeInfo))) -
+    return (uint32_t)((uint64_t)(XX_VirtToPhys(CAST_UINT32_TO_POINTER(p_CcNodeInfo->nextCcNodeInfo))) -
                       p_FmPcd->p_FmPcdCc->physicalMuramBase);
 }
 
@@ -2212,7 +2224,7 @@ static t_Error  FmPcdCcUpdateTreeOwner(t_Handle h_FmPcd, uint8_t treeId, bool ad
     SANITY_CHECK_RETURN_ERROR(p_FmPcd,E_INVALID_HANDLE);
     SANITY_CHECK_RETURN_ERROR(p_FmPcd->p_FmPcdCc,E_INVALID_HANDLE);
     SANITY_CHECK_RETURN_ERROR(p_FmPcd->p_FmPcdCc->ccTreeArrayEntry[treeId].p_FmPcdCcTree,E_INVALID_HANDLE);
-    SANITY_CHECK_RETURN_ERROR((treeId < MAX_NUM_OF_PCD_CC_TREES), E_INVALID_VALUE);
+    SANITY_CHECK_RETURN_ERROR((treeId < FM_PCD_MAX_NUM_OF_CC_TREES), E_INVALID_VALUE);
 
     if(add)
         p_FmPcd->p_FmPcdCc->ccTreeArrayEntry[treeId].owners++;
@@ -2278,16 +2290,16 @@ void CcFree(t_FmPcdCc *p_FmPcdCc)
 {
 
     int i = 0;
-    for (i = 0; i < MAX_NUM_OF_PCD_CC_NODES; i++)
+    for (i = 0; i < FM_PCD_MAX_NUM_OF_CC_NODES; i++)
         ReleaseNode(p_FmPcdCc, (uint16_t)i);
 
-    for(i = 0; i < MAX_NUM_OF_PCD_CC_TREES; i++)
+    for(i = 0; i < FM_PCD_MAX_NUM_OF_CC_TREES; i++)
         ReleaseTree(p_FmPcdCc, (uint8_t)i);
 }
 
 t_Error  FmPcdCcBindTree(t_Handle h_FmPcd, t_Handle  h_FmPcdCcTree,  uint32_t  *p_Offset)
 {
-    t_FmPcd *p_FmPcd = (t_FmPcd*)h_FmPcd;
+    t_FmPcd             *p_FmPcd = (t_FmPcd*)h_FmPcd;
     t_FmPcdCcTree       *p_FmPcdCcTree = (t_FmPcdCcTree *)h_FmPcdCcTree;
     t_Error             err = E_OK;
 
@@ -2299,7 +2311,8 @@ t_Error  FmPcdCcBindTree(t_Handle h_FmPcd, t_Handle  h_FmPcdCcTree,  uint32_t  *
     if(err)
         RETURN_ERROR(MINOR, err, NO_MSG);
 
-    *p_Offset = CAST_POINTER_TO_UINT32(XX_VirtToPhys(CAST_UINT32_TO_POINTER((uint32_t)p_FmPcdCcTree->p_CcBaseTree))) - ((t_FmPcd *)p_FmPcd)->p_FmPcdCc->physicalMuramBase;
+    *p_Offset = (uint32_t)(XX_VirtToPhys(CAST_UINT64_TO_POINTER(p_FmPcdCcTree->ccTreeBaseAddr)) -
+                           ((t_FmPcd *)p_FmPcd)->p_FmPcdCc->physicalMuramBase);
 
     return E_OK;
 }
@@ -2329,19 +2342,19 @@ t_Handle FM_PCD_CcBuildTree(t_Handle h_FmPcd, t_FmPcdCcTreeParams *p_PcdGroupsPa
     uint8_t                     lastOne = 0;
     t_CcNodeInfo                *p_CcNodeInfo;
     t_NextEngineParamsInfo      nextEngineParamsInfo;
-    uint16_t                    ccInfo[MAX_NUM_OF_PCD_CC_NODES];
+    uint16_t                    ccInfo[FM_PCD_MAX_NUM_OF_CC_NODES];
     t_FmPcdCcNode               *p_FmPcdCcNextNode;
     t_List                      *p_Pos;
     t_List                      ccNextDifferentNodesLst;
     uint32_t                    myInfo;
-    uint16_t                     ccArray[MAX_NUM_OF_PCD_CC_NODES];
+    uint16_t                    ccArray[FM_PCD_MAX_NUM_OF_CC_NODES];
 
     SANITY_CHECK_RETURN_VALUE(h_FmPcd,E_INVALID_HANDLE, NULL);
     SANITY_CHECK_RETURN_VALUE(p_PcdGroupsParam,E_INVALID_HANDLE, NULL);
     SANITY_CHECK_RETURN_VALUE(p_FmPcd->p_FmPcdCc,E_INVALID_STATE, NULL);
 
-    memset(ccInfo, 0, sizeof(uint8_t) * MAX_NUM_OF_PCD_CC_NODES);
-    memset(ccArray, 0, sizeof(uint16_t) * MAX_NUM_OF_PCD_CC_NODES);
+    memset(ccInfo, 0, sizeof(uint8_t) * FM_PCD_MAX_NUM_OF_CC_NODES);
+    memset(ccArray, 0, sizeof(uint16_t) * FM_PCD_MAX_NUM_OF_CC_NODES);
 
     memset(params, 0, 16 * sizeof(t_FmPcdCcNextEngineParams));
     p_FmPcdCc = p_FmPcd->p_FmPcdCc;
@@ -2441,20 +2454,21 @@ t_Handle FM_PCD_CcBuildTree(t_Handle h_FmPcd, t_FmPcdCcTreeParams *p_PcdGroupsPa
     }
 
     p_FmPcdCcTree->numOfGrps = p_PcdGroupsParam->numOfGrps;
-    p_FmPcdCcTree->p_CcBaseTree = FM_MURAM_AllocMem(p_FmPcdCc->h_FmMuram,
-                                         (uint32_t)( k * FM_PCD_CC_AD_ENTRY_SIZE),
-                                         FM_PCD_CC_AD_TABLE_ALIGN);
+    p_FmPcdCcTree->ccTreeBaseAddr =
+        CAST_POINTER_TO_UINT64(FM_MURAM_AllocMem(p_FmPcdCc->h_FmMuram,
+                                                 (uint32_t)( k * FM_PCD_CC_AD_ENTRY_SIZE),
+                                                 FM_PCD_CC_AD_TABLE_ALIGN));
 
-    if(!p_FmPcdCcTree->p_CcBaseTree)
+    if(!p_FmPcdCcTree->ccTreeBaseAddr)
     {
         ReleaseTree(p_FmPcdCc,treeId);
         ReleaseTreeHandler(p_FmPcdCcTree,p_FmPcdCc);
         REPORT_ERROR(MAJOR, E_NO_MEMORY, ("No memory"));
         return NULL;
     }
-    WRITE_BLOCK((uint8_t *)p_FmPcdCcTree->p_CcBaseTree, 0, (uint32_t)(k * FM_PCD_CC_AD_ENTRY_SIZE));
+    WRITE_BLOCK(CAST_UINT64_TO_POINTER_TYPE(uint8_t, p_FmPcdCcTree->ccTreeBaseAddr), 0, (uint32_t)(k * FM_PCD_CC_AD_ENTRY_SIZE));
 
-    p_CcTreeTmp  = p_FmPcdCcTree->p_CcBaseTree;
+    p_CcTreeTmp  = CAST_UINT64_TO_POINTER(p_FmPcdCcTree->ccTreeBaseAddr);
 
     j = 0;
     for(i = 0; i < numOfEntries; i++)
@@ -2540,8 +2554,8 @@ t_Handle FM_PCD_CcSetNode(t_Handle h_FmPcd, t_FmPcdCcNodeParams *p_CcNodeParam)
     uint16_t            nodeId;
     t_NextEngineParamsInfo nextEngineParamsInfo;
     uint16_t            profileInfo[FM_PCD_PLCR_NUM_ENTRIES];
-    uint16_t            ccInfo[MAX_NUM_OF_PCD_CC_NODES];
-    uint8_t             ccDifferentInfo[MAX_NUM_OF_PCD_CC_NODES];
+    uint16_t            ccInfo[FM_PCD_MAX_NUM_OF_CC_NODES];
+    uint8_t             ccDifferentInfo[FM_PCD_MAX_NUM_OF_CC_NODES];
     t_List              *p_Pos;
     t_CcNodeInfo        *p_CcNodeInfo;
     t_List              ccNextDifferentNodesLst;
@@ -2558,8 +2572,8 @@ t_Handle FM_PCD_CcSetNode(t_Handle h_FmPcd, t_FmPcdCcNodeParams *p_CcNodeParam)
     }
 
     memset(profileInfo, 0x00, FM_PCD_PLCR_NUM_ENTRIES*sizeof(uint16_t));
-    memset(ccInfo, 0x00, MAX_NUM_OF_PCD_CC_NODES*sizeof(uint16_t));
-    memset(ccDifferentInfo, 0x00, MAX_NUM_OF_PCD_CC_NODES*sizeof(uint8_t));
+    memset(ccInfo, 0x00, FM_PCD_MAX_NUM_OF_CC_NODES*sizeof(uint16_t));
+    memset(ccDifferentInfo, 0x00, FM_PCD_MAX_NUM_OF_CC_NODES*sizeof(uint8_t));
 
     p_FmPcdCc = p_FmPcd->p_FmPcdCc;
 
@@ -2620,10 +2634,9 @@ t_Handle FM_PCD_CcSetNode(t_Handle h_FmPcd, t_FmPcdCcNodeParams *p_CcNodeParam)
         p_FmPcdCcNode->glblMaskSize = (uint8_t)p_CcNodeParam->keysParams.keySize;
     }
     else
-     {   memset(p_FmPcdCcNode->p_GlblMask, 0xff, 4);
-         p_FmPcdCcNode->glblMaskSize = 4;
+     {   memset(p_FmPcdCcNode->p_GlblMask, 0xff, CC_GLBL_MASK_SIZE);
+         p_FmPcdCcNode->glblMaskSize = CC_GLBL_MASK_SIZE;
      }
-
     switch(p_CcNodeParam->extractCcParams.type)
     {
         case(e_FM_PCD_EXTRACT_BY_HDR):
@@ -2635,7 +2648,7 @@ t_Handle FM_PCD_CcSetNode(t_Handle h_FmPcd, t_FmPcdCcNodeParams *p_CcNodeParam)
                     GetSizeHeaderField(p_CcNodeParam->extractCcParams.extractParams.extractByHdr.hdr, p_CcNodeParam->extractCcParams.extractParams.extractByHdr.extractByHdrType.fullField, &p_FmPcdCcNode->sizeOfExtraction);
                     fullField = TRUE;
                     break;
-                    case(e_FM_PCD_EXTRACT_FROM_HDR):
+                case(e_FM_PCD_EXTRACT_FROM_HDR):
                         p_FmPcdCcNode->sizeOfExtraction = p_CcNodeParam->extractCcParams.extractParams.extractByHdr.extractByHdrType.fromHdr.size;
                         p_FmPcdCcNode->offset =  p_CcNodeParam->extractCcParams.extractParams.extractByHdr.extractByHdrType.fromHdr.offset;
                         p_FmPcdCcNode->parseCode = GetPrParseCode(p_CcNodeParam->extractCcParams.extractParams.extractByHdr.hdr, p_CcNodeParam->extractCcParams.extractParams.extractByHdr.hdrIndex,
@@ -2660,7 +2673,28 @@ t_Handle FM_PCD_CcSetNode(t_Handle h_FmPcd, t_FmPcdCcNodeParams *p_CcNodeParam)
             p_FmPcdCcNode->sizeOfExtraction = p_CcNodeParam->extractCcParams.extractParams.extractNonHdr.size;
             p_FmPcdCcNode->offset =  p_CcNodeParam->extractCcParams.extractParams.extractNonHdr.offset;
             p_FmPcdCcNode->parseCode = GetGenParseCode(p_CcNodeParam->extractCcParams.extractParams.extractNonHdr.src, p_FmPcdCcNode->offset, glblMask, &p_FmPcdCcNode->prsArrayOffset);
-            break;
+            if(p_FmPcdCcNode->parseCode == CC_PC_GENERIC_IC_GMASK)
+            {
+                p_FmPcdCcNode->offset +=  p_FmPcdCcNode->prsArrayOffset;
+                p_FmPcdCcNode->prsArrayOffset = 0;
+            }
+            if(p_FmPcdCcNode->parseCode == CC_PC_GENERIC_IC_HASH_INDEXED)
+            {
+                 ReleaseNode(p_FmPcdCc,nodeId);
+                 REPORT_ERROR(MAJOR, E_INVALID_SELECTION, ("Not implemented yet"));
+                 return NULL;
+                if(!glblMask)
+               {
+                   REPORT_ERROR(MAJOR, E_INVALID_SELECTION, ("in the type e_FM_PCD_EXTRACT_FROM_IC_HASH_INDEXED_MATCH glblMask has to be defined"));
+                   return NULL;
+               }
+                if(p_FmPcdCcNode->sizeOfExtraction != 2)
+                {
+                    REPORT_ERROR(MAJOR, E_INVALID_SELECTION, ("in the type e_FM_PCD_EXTRACT_FROM_IC_HASH_INDEXED_MATCH sizeOfExtraction has to be 2 bytes"));
+                    return NULL;
+                }
+              }
+                break;
 
        default:
             ReleaseNode(p_FmPcdCc,nodeId);
@@ -2685,7 +2719,7 @@ t_Handle FM_PCD_CcSetNode(t_Handle h_FmPcd, t_FmPcdCcNodeParams *p_CcNodeParam)
         return NULL;
     }
 
-    if((p_FmPcdCcNode->sizeOfExtraction > MAX_SIZE_OF_KEY) || !p_FmPcdCcNode->sizeOfExtraction)
+    if((p_FmPcdCcNode->sizeOfExtraction > FM_PCD_MAX_SIZE_OF_KEY) || !p_FmPcdCcNode->sizeOfExtraction)
     {
         ReleaseNode(p_FmPcdCc,nodeId);
         ReleaseNodeHandler(p_FmPcdCcNode,p_FmPcdCc);
@@ -2708,21 +2742,23 @@ t_Handle FM_PCD_CcSetNode(t_Handle h_FmPcd, t_FmPcdCcNodeParams *p_CcNodeParam)
         p_KeyParams = &p_CcNodeParam->keysParams.keyParams[tmp];
         if((p_FmPcdCcNode->parseCode != CC_PC_FF_IPV4TTL) && (p_FmPcdCcNode->parseCode != CC_PC_FF_IPV6HOP_LIMIT))
         {
-            if(!p_KeyParams->p_Key)
-            {
-                ReleaseNode(p_FmPcdCc,nodeId);
-                ReleaseNodeHandler(p_FmPcdCcNode,p_FmPcdCc);
-                REPORT_ERROR(MAJOR, E_NO_MEMORY, ("p_Key is not initialized"));
-                return NULL;
-            }
 
-            if(p_KeyParams->p_Mask && glblMask)
-            {
-                ReleaseNode(p_FmPcdCc,nodeId);
-                ReleaseNodeHandler(p_FmPcdCcNode,p_FmPcdCc);
-                REPORT_ERROR(MAJOR, E_NO_MEMORY, ("Can not be used globalMask and localMask"));
-                return NULL;
-            }
+                if(!p_KeyParams->p_Key)
+                {
+                    ReleaseNode(p_FmPcdCc,nodeId);
+                    ReleaseNodeHandler(p_FmPcdCcNode,p_FmPcdCc);
+                    REPORT_ERROR(MAJOR, E_NO_MEMORY, ("p_Key is not initialized"));
+                    return NULL;
+                }
+
+                if(p_KeyParams->p_Mask && glblMask)
+                {
+                    ReleaseNode(p_FmPcdCc,nodeId);
+                    ReleaseNodeHandler(p_FmPcdCcNode,p_FmPcdCc);
+                    REPORT_ERROR(MAJOR, E_NO_MEMORY, ("Can not be used globalMask and localMask"));
+                    return NULL;
+                }
+
         }
         err = ValidateNextEngineParams(h_FmPcd, &p_KeyParams->ccNextEngineParams, &nextEngineParamsInfo);
         if(err)

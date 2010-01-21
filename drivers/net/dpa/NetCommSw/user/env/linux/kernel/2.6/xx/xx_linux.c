@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -633,56 +633,44 @@ void XX_Unlock(t_MutexHandle h_Mutex)
 /*****************************************************************************/
 /*                         Spinlock Service Routines                         */
 /*****************************************************************************/
-typedef struct {
-    unsigned long   flags;
-    spinlock_t      *p_Lock;
-} t_Spinlock;
 
-t_SpinlockHandle XX_InitSpinlock(void)
+t_Handle XX_InitSpinlock(void)
 {
-    t_Spinlock *p_Spinlock = (t_Spinlock *)XX_Malloc(sizeof(t_Spinlock));
+    spinlock_t *p_Spinlock = (spinlock_t *)XX_Malloc(sizeof(spinlock_t));
     if (!p_Spinlock)
         return NULL;
-    memset(p_Spinlock, 0 , sizeof(t_Spinlock));
-    p_Spinlock->p_Lock = (spinlock_t *)XX_Malloc(sizeof(spinlock_t));
-    if (!p_Spinlock->p_Lock)
-    {
-        XX_Free(p_Spinlock);
-        return NULL;
-    }
 
-    spin_lock_init (p_Spinlock->p_Lock);
-    return (t_SpinlockHandle)p_Spinlock;
+    spin_lock_init(p_Spinlock);
+
+    return (t_Handle)p_Spinlock;
 }
 
-void XX_FreeSpinlock(t_SpinlockHandle h_Spinlock)
+void XX_FreeSpinlock(t_Handle h_Spinlock)
 {
     if (h_Spinlock)
-    {
-        if (((t_Spinlock *)h_Spinlock)->p_Lock)
-            XX_Free(((t_Spinlock *)h_Spinlock)->p_Lock);
         XX_Free(h_Spinlock);
-    }
 }
 
-void XX_Spinlock(t_SpinlockHandle h_Spinlock)
+void XX_LockSpinlock(t_Handle h_Spinlock)
 {
-    spin_lock(((t_Spinlock *)h_Spinlock)->p_Lock);
+    spin_lock((spinlock_t *)h_Spinlock);
 }
 
-void XX_Spinunlock(t_SpinlockHandle h_Spinlock)
+void XX_UnlockSpinlock(t_Handle h_Spinlock)
 {
-    spin_unlock(((t_Spinlock *)h_Spinlock)->p_Lock);
+    spin_unlock((spinlock_t *)h_Spinlock);
 }
 
-void XX_IntrSpinlock(t_SpinlockHandle h_Spinlock)
+uint32_t XX_LockIntrSpinlock(t_Handle h_Spinlock)
 {
-    spin_lock_irqsave(((t_Spinlock *)h_Spinlock)->p_Lock, ((t_Spinlock *)h_Spinlock)->flags);
+    unsigned long intrFlags;
+    spin_lock_irqsave((spinlock_t *)h_Spinlock, intrFlags);
+    return intrFlags;
 }
 
-void XX_IntrSpinunlock(t_SpinlockHandle h_Spinlock)
+void XX_UnlockIntrSpinlock(t_Handle h_Spinlock, uint32_t intrFlags)
 {
-    spin_unlock_irqrestore(((t_Spinlock *)h_Spinlock)->p_Lock, ((t_Spinlock *)h_Spinlock)->flags);
+     spin_unlock_irqrestore((spinlock_t *)h_Spinlock, (unsigned long)intrFlags);
 }
 
 
@@ -696,7 +684,7 @@ uint32_t XX_CurrentTime(void)
 }
 
 
-t_TimerHandle XX_CreateTimer(void)
+t_Handle XX_CreateTimer(void)
 {
     struct timer_list *p_Timer = (struct timer_list *)XX_Malloc(sizeof(struct timer_list));
     if (p_Timer)
@@ -704,20 +692,20 @@ t_TimerHandle XX_CreateTimer(void)
         memset(p_Timer, 0, sizeof(struct timer_list));
         init_timer(p_Timer);
     }
-    return (t_TimerHandle)p_Timer;
+    return (t_Handle)p_Timer;
 }
 
-void XX_FreeTimer(t_TimerHandle h_Timer)
+void XX_FreeTimer(t_Handle h_Timer)
 {
     if (h_Timer)
         XX_Free(h_Timer);
 }
 
-void XX_StartTimer(t_TimerHandle    h_Timer,
-                   uint32_t         msecs,
-                   bool             periodic,
-                   void             (*f_TimerExpired)(t_Handle),
-                   t_Handle         h_Arg)
+void XX_StartTimer(t_Handle h_Timer,
+                   uint32_t msecs,
+                   bool     periodic,
+                   void     (*f_TimerExpired)(t_Handle),
+                   t_Handle h_Arg)
 {
     int                 tmp_jiffies = (msecs*HZ)/1000;
     struct timer_list   *p_Timer = (struct timer_list *)h_Timer;
@@ -733,33 +721,33 @@ void XX_StartTimer(t_TimerHandle    h_Timer,
     add_timer((struct timer_list *)h_Timer);
 }
 
-void XX_SetTimerData(t_TimerHandle h_Timer, t_Handle data)
+void XX_SetTimerData(t_Handle h_Timer, t_Handle data)
 {
     struct timer_list   *p_Timer = (struct timer_list *)h_Timer;
 
     p_Timer->data = (unsigned long)data;
 }
 
-t_Handle XX_GetTimerData(t_TimerHandle h_Timer)
+t_Handle XX_GetTimerData(t_Handle h_Timer)
 {
     struct timer_list   *p_Timer = (struct timer_list *)h_Timer;
 
     return (t_Handle)p_Timer->data;
 }
 
-uint32_t   XX_GetExpirationTime(t_TimerHandle h_Timer)
+uint32_t   XX_GetExpirationTime(t_Handle h_Timer)
 {
     struct timer_list   *p_Timer = (struct timer_list *)h_Timer;
 
     return (uint32_t)p_Timer->expires;
 }
 
-void XX_StopTimer(t_TimerHandle h_Timer)
+void XX_StopTimer(t_Handle h_Timer)
 {
     del_timer((struct timer_list *)h_Timer);
 }
 
-void XX_ModTimer(t_TimerHandle h_Timer, uint32_t msecs)
+void XX_ModTimer(t_Handle h_Timer, uint32_t msecs)
 {
     int tmp_jiffies = (msecs*HZ)/1000;
 
@@ -768,7 +756,7 @@ void XX_ModTimer(t_TimerHandle h_Timer, uint32_t msecs)
     mod_timer((struct timer_list *)h_Timer, jiffies + tmp_jiffies);
 }
 
-int XX_TimerIsActive(t_TimerHandle h_Timer)
+int XX_TimerIsActive(t_Handle h_Timer)
 {
   return timer_pending((struct timer_list *)h_Timer);
 }

@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -43,15 +43,14 @@
 #include "fm_pcd_ext.h"
 #include "fm_port_ext.h"
 
-#define __ERR_MODULE__  MODULE_FM
 
 #define CLS_PLAN_NUM_PER_GRP                        8
 #define DRIVER_PRIVATE_NET_ENV_ID                   PCD_MAX_NUM_OF_PORTS
 
 
-#ifdef __MWERKS__
+#if defined(__MWERKS__) && !defined(__GNUC__)
 #pragma pack(push,1)
-#endif /*__MWERKS__ */
+#endif /* defined(__MWERKS__) && ... */
 #define MEM_MAP_START
 
 /**************************************************************************//**
@@ -81,27 +80,27 @@ typedef _Packed struct t_FmPcdPlcrInterModuleProfileRegs {
  @Description   PCD KG scheme registers
 *//***************************************************************************/
 typedef _Packed struct t_FmPcdKgInterModuleSchemeRegs {
-    uint32_t kgse_mode;    /**< MODE */
-    uint32_t kgse_ekfc;    /**< Extract Known Fields Command */
-    uint32_t kgse_ekdv;    /**< Extract Known Default Value */
-    uint32_t kgse_bmch;    /**< Bit Mask Command High */
-    uint32_t kgse_bmcl;    /**< Bit Mask Command Low */
-    uint32_t kgse_fqb;     /**< Frame Queue Base */
-    uint32_t kgse_hc;      /**< Hash Command */
-    uint32_t kgse_ppc;     /**< Policer Profile Command */
-    uint32_t kgse_gec[FM_PCD_KG_NUM_OF_GENERIC_REGS];
-                           /**< Generic Extract Command */
-    uint32_t kgse_spc;     /**< KeyGen Scheme Entry Statistic Packet Counter */
-    uint32_t kgse_dv0;     /**< KeyGen Scheme Entry Default Value 0 */
-    uint32_t kgse_dv1;     /**< KeyGen Scheme Entry Default Value 1 */
-    uint32_t kgse_ccbs;    /**< KeyGen Scheme Entry Coarse Classification Bit*/
-    uint32_t kgse_mv;      /**< KeyGen Scheme Entry Match vector */
+    volatile uint32_t kgse_mode;    /**< MODE */
+    volatile uint32_t kgse_ekfc;    /**< Extract Known Fields Command */
+    volatile uint32_t kgse_ekdv;    /**< Extract Known Default Value */
+    volatile uint32_t kgse_bmch;    /**< Bit Mask Command High */
+    volatile uint32_t kgse_bmcl;    /**< Bit Mask Command Low */
+    volatile uint32_t kgse_fqb;     /**< Frame Queue Base */
+    volatile uint32_t kgse_hc;      /**< Hash Command */
+    volatile uint32_t kgse_ppc;     /**< Policer Profile Command */
+    volatile uint32_t kgse_gec[FM_PCD_KG_NUM_OF_GENERIC_REGS];
+                                   /**< Generic Extract Command */
+    volatile uint32_t kgse_spc;     /**< KeyGen Scheme Entry Statistic Packet Counter */
+    volatile uint32_t kgse_dv0;     /**< KeyGen Scheme Entry Default Value 0 */
+    volatile uint32_t kgse_dv1;     /**< KeyGen Scheme Entry Default Value 1 */
+    volatile uint32_t kgse_ccbs;    /**< KeyGen Scheme Entry Coarse Classification Bit*/
+    volatile uint32_t kgse_mv;      /**< KeyGen Scheme Entry Match vector */
 } _PackedType t_FmPcdKgInterModuleSchemeRegs;
 
 #define MEM_MAP_END
-#ifdef __MWERKS__
+#if defined(__MWERKS__) && !defined(__GNUC__)
 #pragma pack(pop)
-#endif /* __MWERKS__ */
+#endif /* defined(__MWERKS__) && ... */
 
 typedef struct {
     uint8_t             baseEntry;
@@ -112,8 +111,6 @@ typedef struct {
 /**************************************************************************//**
  @Description   Structure for binding a port to keygen schemes.
 *//***************************************************************************/
-
-
 typedef struct t_FmPcdKgInterModuleBindPortToSchemes {
     uint8_t     hardwarePortId;
     uint8_t     netEnvId;
@@ -212,42 +209,13 @@ typedef uint32_t t_FmBlockIntrEnable;
 /* @} */
 
 
-/**************************************************************************//**
- @Description   Enum for inter-module interrupts registration
-*//***************************************************************************/
-typedef enum e_FmInterModuleEvent {
-    e_FM_EV_PRS,                    /**< Parser event */
-    e_FM_EV_ERR_PRS,                /**< Parser error event */
-    e_FM_EV_KG,                     /**< Keygen event */
-    e_FM_EV_ERR_KG,                 /**< Keygen error event */
-    e_FM_EV_PLCR,                   /**< Policer event */
-    e_FM_EV_ERR_PLCR,               /**< Policer error event */
-    e_FM_EV_ERR_10G_MAC0,           /**< 10G MAC 0 error event */
-    e_FM_EV_ERR_1G_MAC0,            /**< 1G MAC 0 error event */
-    e_FM_EV_ERR_1G_MAC1,            /**< 1G MAC 1 error event */
-    e_FM_EV_ERR_1G_MAC2,            /**< 1G MAC 2 error event */
-    e_FM_EV_ERR_1G_MAC3,            /**< 1G MAC 3 error event */
-    e_FM_EV_TMR,                    /**< Timer event */
-    e_FM_EV_1G_MAC1,                /**< 1G MAC 1 event */
-    e_FM_EV_1G_MAC2,                /**< 1G MAC 2 event */
-    e_FM_EV_1G_MAC3,                /**< 1G MAC 3 event */
-    e_FM_EV_1G_MAC0_TMR,            /**< 1G MAC 0 Timer event */
-    e_FM_EV_1G_MAC1_TMR,            /**< 1G MAC 1 Timer event */
-    e_FM_EV_1G_MAC2_TMR,            /**< 1G MAC 2 Timer event */
-    e_FM_EV_1G_MAC3_TMR,            /**< 1G MAC 3 Timer event */
-    e_FM_EV_DUMMY_LAST
-} e_FmInterModuleEvent;
+#define PCD_MAX_NUM_OF_PORTS        (FM_MAX_NUM_OF_OH_PORTS +       \
+                                     FM_MAX_NUM_OF_1G_RX_PORTS +    \
+                                     FM_MAX_NUM_OF_10G_RX_PORTS)
+#define MODULE_NAME_SIZE            30
+#define DUMMY_PORT_ID               0
 
-
-#define MAX_NUM_OF_OP_PORTS                 7
-#define MAX_NUM_OF_RX_1G_PORTS              4
-#define MAX_NUM_OF_RX_10G_PORTS             1
-#define PCD_MAX_NUM_OF_PORTS                (MAX_NUM_OF_OP_PORTS +      \
-                                            MAX_NUM_OF_RX_1G_PORTS +    \
-                                            MAX_NUM_OF_RX_10G_PORTS)
-#define MODULE_NAME_SIZE                    20
-#define DUMMY_PORT_ID                       0
-
+#define FM_LIODN_OFFSET_MASK        0x3FF
 /**************************************************************************//**
   @Description       NIA Description
 *//***************************************************************************/
@@ -262,10 +230,10 @@ typedef enum e_FmInterModuleEvent {
 #define NIA_ENG_QMI_DEQ             0x00580000
 #define NIA_ENG_MASK                0x007C0000
 
-#define NIA_FM_CTL_AC_CC              0x00000006
-#define NIA_FM_CTL_AC_HC              0x0000000C
-#define NIA_FM_CTL_AC_IND_MODE_TX     0x00000008
-#define NIA_FM_CTL_AC_IND_MODE_RX     0x0000000A
+#define NIA_FM_CTL_AC_CC            0x00000006
+#define NIA_FM_CTL_AC_HC            0x0000000C
+#define NIA_FM_CTL_AC_IND_MODE_TX   0x00000008
+#define NIA_FM_CTL_AC_IND_MODE_RX   0x0000000A
 
 #define NIA_BMI_AC_ENQ_FRAME        0x00000002
 #define NIA_BMI_AC_TX_RELEASE       0x000002C0
@@ -295,8 +263,8 @@ typedef enum e_FmInterModuleEvent {
 
 #define GET_GLOBAL_PORTID(port, type, id)               \
 switch(type){                                           \
-    case(e_FM_PORT_TYPE_OFFLINE_PARSING):               \
-    case(e_FM_PORT_TYPE_HOST_COMMAND):                  \
+    case(e_FM_PORT_TYPE_OH_OFFLINE_PARSING):            \
+    case(e_FM_PORT_TYPE_OH_HOST_COMMAND):               \
         port = (uint8_t)(BASE_HO_PORTID + id);          \
         if (id > (LAST_HO_PORTID-BASE_HO_PORTID))       \
             REPORT_ERROR(MAJOR, E_INVALID_VALUE, ("Illegal port id")); \
@@ -600,7 +568,7 @@ t_Error     FmPcdKgSwBindPortToClsPlanGrp(t_Handle h_FmPcd, uint8_t netEnvId, ui
 void        FmPcdKgSwUnbindPortToClsPlanGrp(t_Handle h_FmPcd, uint8_t clsPlanGrpId);
 bool        FmPcdKgIsEmptyClsPlanGrp(t_Handle h_FmPcd);
 uint8_t     FmPcdKgGetEmptyClsPlanGrpId(t_Handle h_FmPcd);
-t_Error     FmPcdKgBuildScheme(t_Handle h_FmPcd,  t_FmPcdKgSchemeParams *p_Scheme, t_FmPcdKgInterModuleSchemeRegs *p_SchemeRegs, t_FmPcdKgKeyOrder *p_OrderedArray);
+t_Error     FmPcdKgBuildScheme(t_Handle h_FmPcd,  t_FmPcdKgSchemeParams *p_Scheme, t_FmPcdKgInterModuleSchemeRegs *p_SchemeRegs);
 t_Handle    FmPcdKgBuildClsPlanGrp(t_Handle h_FmPcd, t_FmPcdKgClsPlanGrpParams *p_Grp, t_FmPcdKgInterModuleClsPlanSet *p_ClsPlanSet);
 uint8_t     FmPcdKgGetNumOfPartitionSchemes(t_Handle h_FmPcd);
 uint8_t     FmPcdKgGetPhysicalSchemeId(t_Handle h_FmPcd, uint8_t schemeId);
@@ -701,6 +669,24 @@ void FmRegisterIntr(t_Handle                h_Fm,
                      t_Handle               h_Arg);
 
 /**************************************************************************//**
+ @Function      FmUnregisterIntr
+
+ @Description   Used to un-register an inter-module event handler that was processed by FM
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+ @Param[in]     mod             The module that causes the event
+ @Param[in]     modId           Module id - if more than 1 instansiation of this
+                                mode exists,0 otherwise.
+ @Param[in]     intrType        Interrupt type (error/normal) selection.
+
+ @Return        None.
+*//***************************************************************************/
+void FmUnregisterIntr(t_Handle                h_Fm,
+                     e_FmEventModules       mod,
+                     uint8_t                modId,
+                     e_FmIntrType           intrType);
+
+/**************************************************************************//**
  @Function      FmRegisterFmCtlIntr
 
  @Description   Used to register to one of the fmCtl events in the FM module
@@ -714,5 +700,229 @@ void FmRegisterIntr(t_Handle                h_Fm,
  @Cautions      Allowed only following FM_Init().
 *//***************************************************************************/
 void  FmRegisterFmCtlIntr(t_Handle h_Fm, uint8_t eventRegId, void (*f_Isr) (t_Handle h_Fm, uint32_t event));
+
+/**************************************************************************//**
+ @Description   enum for defining MAC types
+*//***************************************************************************/
+typedef enum e_FmMacType {
+    e_FM_MAC_10G,               /**< 10G MAC */
+    e_FM_MAC_1G                 /**< 1G MAC */
+} e_FmMacType;
+
+/**************************************************************************//**
+ @Description   Structure for port-FM communication during FM_PORT_Init.
+                Fields commented 'IN' are passed by the port module to be used
+                by the FM module.
+                Fields commented 'OUT' will be filled by FM before returning to port.
+                Some fields are optional (depending on configuration) and
+                will be analized by the port and FM modules accordingly.
+*//***************************************************************************/
+typedef struct t_FmInterModulePortInitParams {
+    uint8_t             hardwarePortId;     /**< IN. port Id */
+    e_FmPortType        portType;           /**< IN. Port type */
+    bool                useRateLimit;       /**< IN. AN indication whether rate limit
+                                                 is used, to enable timestamp. */
+    uint8_t             count1MicroBit;     /**< OUT. an indication of which TS bit
+                                                 counts closest to 1 Microsecond. */
+    bool                independentMode;    /**< IN. TRUE if FM Port operates in independent mode */
+    uint16_t            portPartition;      /**< IN. Port's requested resource */
+    uint8_t             numOfTasks;         /**< IN. Port's requested resource */
+    uint8_t             numOfExtraTasks;    /**< IN. Port's requested resource */
+    uint8_t             numOfOpenDmas;      /**< IN. Port's requested resource */
+    uint8_t             numOfExtraOpenDmas; /**< IN. Port's requested resource */
+    uint32_t            sizeOfFifo;         /**< IN. Port's requested resource */
+    uint32_t            extraSizeOfFifo;    /**< IN. Port's requested resource */
+    uint8_t             deqPipelineDepth;   /**< IN. Port's requested resource */
+    t_FmPhysAddr        fmMuramPhysBaseAddr;/**< OUT. FM-MURAM physical address*/
+} t_FmInterModulePortInitParams;
+
+/**************************************************************************//**
+ @Description   Structure for port-FM communication during FM_PORT_Free.
+*//***************************************************************************/
+typedef struct t_FmInterModulePortFreeParams {
+    uint8_t             hardwarePortId;     /**< IN. port Id */
+    e_FmPortType        portType;           /**< IN. Port type */
+    uint8_t             deqPipelineDepth;   /**< IN. Port's requested resource */
+} t_FmInterModulePortFreeParams;
+
+/**************************************************************************//**
+ @Function      FmGetPcdPrsBaseAddr
+
+ @Description   Get the base address of the Parser from the FM module
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+
+ @Return        Base address.
+*//***************************************************************************/
+uint64_t FmGetPcdPrsBaseAddr(t_Handle h_Fm);
+
+/**************************************************************************//**
+ @Function      FmGetPcdKgBaseAddr
+
+ @Description   Get the base address of the Keygen from the FM module
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+
+ @Return        Base address.
+*//***************************************************************************/
+uint64_t FmGetPcdKgBaseAddr(t_Handle h_Fm);
+
+/**************************************************************************//**
+ @Function      FmGetPcdPlcrBaseAddr
+
+ @Description   Get the base address of the Policer from the FM module
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+
+ @Return        Base address.
+*//***************************************************************************/
+uint64_t FmGetPcdPlcrBaseAddr(t_Handle h_Fm);
+
+/**************************************************************************//**
+ @Function      FmGetMuramHandle
+
+ @Description   Get the handle of the MURAM from the FM module
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+
+ @Return        MURAM module handle.
+*//***************************************************************************/
+t_Handle FmGetMuramHandle(t_Handle h_Fm);
+
+/**************************************************************************//**
+ @Function      FmGetPhysicalMuramBase
+
+ @Description   Get the physical base address of the MURAM from the FM module
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+ @Param[in]     fmPhysAddr      Physical MURAM base
+
+ @Return        Physical base address.
+*//***************************************************************************/
+t_Error FmGetPhysicalMuramBase(t_Handle h_Fm, t_FmPhysAddr *fmPhysAddr);
+
+/**************************************************************************//**
+ @Function      FmGetTimeStampScale
+
+ @Description   Used internally by other modules in order to get the timeStamp
+                period as requested by the application.
+
+ @Param[in]     h_Fm                    A handle to an FM Module.
+
+ @Return        TimeStamp period in nanoseconds.
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+uint32_t    FmGetTimeStampScale(t_Handle h_Fm);
+
+/**************************************************************************//**
+ @Function      FmResumeStalledPort
+
+ @Description   Used internally by FM port to release a stalled port.
+
+ @Param[in]     h_Fm                            A handle to an FM Module.
+ @Param[in]     hardwarePortId                    HW port id.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+t_Error FmResumeStalledPort(t_Handle h_Fm, uint8_t hardwarePortId);
+
+/**************************************************************************//**
+ @Function      FmIsPortStalled
+
+ @Description   Used internally by FM port to read the port's status.
+
+ @Param[in]     h_Fm                            A handle to an FM Module.
+ @Param[in]     hardwarePortId                    HW port id.
+
+ @Return        TRUE if port is stalled, FALSE otherwize
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+bool FmIsPortStalled(t_Handle h_Fm, uint8_t hardwarePortId);
+
+/**************************************************************************//**
+ @Function      FmResetMac
+
+ @Description   Used by MAC driver to reset the MAC registers
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+ @Param[in]     type            MAC type.
+ @Param[in]     macId           MAC id - according to type.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+t_Error FmResetMac(t_Handle h_Fm, e_FmMacType type, uint8_t macId);
+
+/**************************************************************************//**
+ @Function      FmGetClockFreq
+
+ @Description   Used by MAC driver to get the FM clock frequency
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+
+ @Return        clock-freq on success; 0 otherwise.
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+uint16_t FmGetClockFreq(t_Handle h_Fm);
+
+/**************************************************************************//**
+ @Function      FmGetId
+
+ @Description   Used by PCD driver to read rhe FM id
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+uint8_t FmGetId(t_Handle h_Fm);
+
+/**************************************************************************//**
+ @Function      FmGetSetPortParams
+
+ @Description   Used by FM-PORT driver to pass and receive parameters between
+                PORT and FM modules.
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+ @Param[in,out] p_PortParams    A structure of FM Port parameters.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+t_Error FmGetSetPortParams(t_Handle h_Fm,t_FmInterModulePortInitParams *p_PortParams);
+
+/**************************************************************************//**
+ @Function      FmFreePortParams
+
+ @Description   Used by FM-PORT driver to free port's resources within the FM.
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+ @Param[in,out] p_PortParams    A structure of FM Port parameters.
+
+ @Return        None.
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+void FmFreePortParams(t_Handle h_Fm,t_FmInterModulePortFreeParams *p_PortParams);
+
+#if (defined(CONFIG_MULTI_PARTITION_SUPPORT) && !defined(CONFIG_GUEST_PARTITION))
+t_Error     FmHandleIpcMsg(t_Handle h_Fm, uint32_t msgId, uint8_t msgBody[MSG_BODY_SIZE]);
+#endif /* (defined(CONFIG_MULTI_PARTITION_SUPPORT) && ... */
+void        FmRegisterPcd(t_Handle h_Fm, t_Handle h_FmPcd);
+void        FmUnregisterPcd(t_Handle h_Fm);
+t_Handle    FmGetPcdHandle(t_Handle h_Fm);
+bool        FmRamsEccIsExternalCtl(t_Handle h_Fm);
+t_Error     FmEnableRamsEcc(t_Handle h_Fm);
+t_Error     FmDisableRamsEcc(t_Handle h_Fm);
+void        FmGetRevision(t_Handle h_Fm, t_FmRevisionInfo *p_FmRevisionInfo);
+
 
 #endif /* __FM_COMMON_H */

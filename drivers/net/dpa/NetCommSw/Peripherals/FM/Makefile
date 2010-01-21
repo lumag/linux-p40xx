@@ -18,3 +18,4 @@ obj-y		+= MAC/
 obj-y		+= Pcd/
 obj-y		+= Port/
 obj-y		+= HC/
+obj-y		+= Rtc/

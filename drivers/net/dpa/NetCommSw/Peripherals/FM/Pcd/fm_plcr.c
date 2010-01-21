@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -45,7 +45,7 @@
 #include "fm_hc.h"
 
 
-static bool    FmPcdPlcrIsProfileShared(t_Handle h_FmPcd, uint16_t absoluteProfileId)
+static bool FmPcdPlcrIsProfileShared(t_Handle h_FmPcd, uint16_t absoluteProfileId)
 {
     t_FmPcd         *p_FmPcd            = (t_FmPcd*)h_FmPcd;
     uint16_t        i;
@@ -115,43 +115,56 @@ static uint32_t FPP_Function(uint32_t fpp)
     else
         return 16 + fpp;
 }
-
-static uint64_t Rate2Sample(e_FmPcdPlcrRateMode rateMode, uint32_t rate, uint64_t timeStampPeriod, uint32_t count)
+static void GetInfoRateReg(e_FmPcdPlcrRateMode rateMode,
+                                uint32_t rate,
+                                uint64_t tsuInTenthNano,
+                                uint32_t fppShift,
+                                uint64_t *p_Integer,
+                                uint64_t *p_Fraction)
 {
-uint64_t temp;
-uint32_t tmp;
+    uint64_t tmp, div;
 
-    tmp = FPP_Function(count);
-    if (rateMode == e_FM_PCD_PLCR_BYTE_MODE)
+    if(rateMode == e_FM_PCD_PLCR_BYTE_MODE)
     {
-        temp = ((uint64_t)rate) << (16+tmp);    /* Move it left 16 Bit to the fix point position
-                                             + 16 Bit to set the time stamp period */
-        temp = temp / 1000000000;         /* Change it from KBit/sec into KBit/(Nano Sec) */
-        temp = (temp * 1000) / 8;         /* Change it from KBit/(Nano Sec) into Byte/(Nano Sec) */
-        temp =  temp / (timeStampPeriod); /* Change it from Byte/(Nano Sec) into Byte/TimeStamp Units*/
+        /* now we calculate the initial integer for the bigger rate */
+        /* from Kbps to Bytes/TSU */
+        tmp = (uint64_t)rate;
+        tmp *= 1000; /* kb --> b */
+        tmp *= tsuInTenthNano; /* bps --> bpTsu(in 10nano) */
+
+        div = 1000000000;   /* nano */
+        div *= 10;          /* 10 nano */
+        div *= 8;           /* bit to byte */
     }
     else
     {
-        temp = ((uint64_t)rate) << (16+tmp);  /* Move it left 16 bit to the fix point position
-                                           + 16 Bit to set the time stamp period */
-        temp = temp / 1000000000;       /* Change it from Packet/sec into Packet/(Nano Sec) */
-        temp =  temp / (timeStampPeriod); /* Change it from Packet/Nano into Packet/TimeStamp */
-    }
+        /* now we calculate the initial integer for the bigger rate */
+        /* from Kbps to Bytes/TSU */
+        tmp = (uint64_t)rate;
+        tmp *= tsuInTenthNano; /* bps --> bpTsu(in 10nano) */
 
-    return temp;
+        div = 1000000000;   /* nano */
+        div *= 10;          /* 10 nano */
+    }
+    *p_Integer = (tmp<<fppShift)/div;
+
+    /* for calculating the fraction, we will recalculate cir and deduct the integer.
+     * For precision, we will multiply by 2^16. we do not divid back, since we write
+     * this value as fraction - see spec.
+     */
+    *p_Fraction = (((tmp<<fppShift)<<16) - ((*p_Integer<<16)*div))/div;
 
 }
-
-
 static void CheckValidRateRange(t_FmPcd *p_FmPcd)
 {
-    uint64_t    timeStampPeriod;
+    //uint64_t    timeStampPeriod;
 //    uint64_t    maxVal = 0xffffffff0000LL; /* [bytes per timeStamp unit] max value which will be legal  for fpp adjustement calculation - for not being "too big"*/
-    uint32_t    minVal = 0x00010000;     /*  [bytes per timeStamp unit] min value which will be legal  for fpp adjustement calculation - for not being "too small"*/
+    //uint32_t    minVal = 0x00010000;     /*  [bytes per timeStamp unit] min value which will be legal  for fpp adjustement calculation - for not being "too small"*/
 //    uint64_t    tempMaxLimit;
-    uint64_t    tempMinLimit;
-
-    timeStampPeriod = (uint64_t)FmGetTimeStampPeriod(p_FmPcd->h_Fm);               /* TimeStamp per nano seconds units */
+//    uint64_t    tempMinLimit;
+    /*TODO */
+#if 0
+   timeStampPeriod = (uint64_t)FmGetTimeStampPeriod(p_FmPcd->h_Fm);               /* TimeStamp per nano seconds units */
 
     /*With current timestamp configuration there can not be a MaxLimit,
       which means that any rate above MinLimit can be served by Policer*/
@@ -178,6 +191,9 @@ static void CheckValidRateRange(t_FmPcd *p_FmPcd)
     tempMinLimit = tempMinLimit >> 32;         /*16 (Cir/pir register presicion) + 16 (number of shifts done to fpp by default)*/
 
     XX_Print("Valid range for PacketMode RateSelection is min 0x%x ", (uint32_t)tempMinLimit);
+#else
+    UNUSED(p_FmPcd);
+#endif /* 0 */
 }
 
 /* .......... */
@@ -186,100 +202,83 @@ static void calcRates(t_Handle h_FmPcd, t_FmPcdPlcrNonPassthroughAlgParams *p_No
                         uint32_t *cir, uint32_t *cbs, uint32_t *pir_eir, uint32_t *pbs_ebs, uint32_t *fpp)
 {
     t_FmPcd     *p_FmPcd = (t_FmPcd*)h_FmPcd;
-    uint64_t    timeStampPeriod;
-    uint64_t    tempCir, tempPir_Eir;
-    uint32_t    temp, count;
-    bool        big;
+    uint64_t    integer, fraction;
+    uint32_t    temp, tsuInTenthNanos, bitFor1Micro;
+    uint8_t     fppShift=0;
 
-    timeStampPeriod = (uint64_t)FmGetTimeStampPeriod(p_FmPcd->h_Fm);               /* TimeStamp per nano seconds units */
+    bitFor1Micro = FmGetTimeStampScale(p_FmPcd->h_Fm);  /* TimeStamp per nano seconds units */
+    /* we want the tsu to count 10 nano for better precision normally tsu is 3.9 nano, now we will get 39 */
+    tsuInTenthNanos = (uint32_t)(1000*10/(1<<bitFor1Micro));
 
-    /* First round to calculate precision */
+    /* we choose the faster rate to calibrate fpp */
     if (p_NonPassthroughAlgParam->comittedInfoRate > p_NonPassthroughAlgParam->peakOrAccessiveInfoRate)
-        tempCir = Rate2Sample(p_NonPassthroughAlgParam->rateMode, p_NonPassthroughAlgParam->comittedInfoRate, timeStampPeriod, 0);
+        GetInfoRateReg(p_NonPassthroughAlgParam->rateMode, p_NonPassthroughAlgParam->comittedInfoRate, tsuInTenthNanos, 0, &integer, &fraction);
     else
-        tempCir = Rate2Sample(p_NonPassthroughAlgParam->rateMode, p_NonPassthroughAlgParam->peakOrAccessiveInfoRate, timeStampPeriod, 0);
+        GetInfoRateReg(p_NonPassthroughAlgParam->rateMode, p_NonPassthroughAlgParam->peakOrAccessiveInfoRate, tsuInTenthNanos, 0, &integer, &fraction);
 
-    /* Base on result calculate the FPP and re calculate cir, pir_eir */
-    count = 0;
-    if ((tempCir > 0xFFFFFFFF))
+
+    /* we shift integer, as in cir/pir it is represented by the MSB 16 bits, and
+     * the LSB bits are for the fraction */
+    temp = (uint32_t)((integer<<16) & 0x00000000FFFFFFFF);
+    /* temp is effected by the rate. For low rates it may be as low as 0, and then we'll
+     * take max fpp=31.
+     * For high rates it will never exceed the 32 bit reg (after the 16 shift), as it is
+     * limited by the 10G physical port.
+     */
+    if(temp != 0)
     {
-        /* Overflow need to shrink number */
-        big = TRUE;
-        temp = (uint32_t)(tempCir >> 32);
-        while (temp > 0)
+        /* count zeroes left of the higher used bit (in order to shift the value such that
+         * unused bits may be used for fraction).
+         */
+        while ((temp & 0x80000000) == 0)
         {
-            temp = temp >> 1;
-            count++;
+            temp = temp << 1;
+            fppShift++;
         }
-        if(count > 16)
+        if(fppShift > 15)
         {
-            REPORT_ERROR(MAJOR, E_INVALID_SELECTION, ("timeStampPeriod to Information rate ratio is too big"));
+            REPORT_ERROR(MAJOR, E_INVALID_SELECTION, ("timeStampPeriod to Information rate ratio is too small"));
             CheckValidRateRange(p_FmPcd);
             return;
         }
     }
     else
     {
-        /* Underflow need to improve accuracy */
-        big = FALSE;
-        temp = (uint32_t)(tempCir & 0x00000000FFFFFFFF);
-        if(temp != 0)
+        temp = (uint32_t)fraction; /* fraction will alyas be smaller than 2^16 */
+        if(!temp)
+            /* integer and fraction are 0, we set fpp to its max val */
+            fppShift = 31;
+        else
         {
-        while ((temp & 0x80000000) == 0)
-        {
-            temp = temp << 1;
-            count++;
-        }
-        if(count > 15)
-        {
-            REPORT_ERROR(MAJOR, E_INVALID_SELECTION, ("timeStampPeriod to Information rate ratio is too small"));
-                CheckValidRateRange(p_FmPcd);
-            return;
+            /* integer was 0 but fraction is not. fpp is 16 for the integer,
+             * + all left zeroes of the fraction. */
+            fppShift=16;
+            /* count zeroes left of the higher used bit (in order to shift the value such that
+             * unused bits may be used for fraction).
+             */
+            while ((temp & 0x8000) == 0)
+            {
+                temp = temp << 1;
+                fppShift++;
             }
         }
     }
 
-    /* Second round based on precision do the roght calculation */
-    if (count > 0)
-    {
-        if (big)
-        {
-           *fpp = (uint32_t)(0x1F - (count - 1));
- //           tempCir     = Rate2Sample(p_NonPassthroughAlgParam->rateMode, p_NonPassthroughAlgParam->comittedInfoRate, timeStampPeriod, *fpp);
- //           tempPir_Eir = Rate2Sample(p_NonPassthroughAlgParam->rateMode, p_NonPassthroughAlgParam->peakOrAccessiveInfoRate , timeStampPeriod, *fpp);
-           // *fpp = (uint32_t)(0x1F - ((1 << (count - 1)) + 1));
-        }
-        else
-        {
-            *fpp = (uint32_t)count;
- //           tempCir     = Rate2Sample(p_NonPassthroughAlgParam->rateMode, p_NonPassthroughAlgParam->comittedInfoRate , timeStampPeriod, *fpp);
- //           tempPir_Eir = Rate2Sample(p_NonPassthroughAlgParam->rateMode, p_NonPassthroughAlgParam->peakOrAccessiveInfoRate , timeStampPeriod, *fpp);
-          //  *fpp = (uint32_t)(1 << (count - 1));
-        }
-    }
-    else
-    {
-            *fpp = 0;
- //           tempCir     = Rate2Sample(p_NonPassthroughAlgParam->rateMode, p_NonPassthroughAlgParam->comittedInfoRate, timeStampPeriod, *fpp);
- //           tempPir_Eir = Rate2Sample(p_NonPassthroughAlgParam->rateMode, p_NonPassthroughAlgParam->peakOrAccessiveInfoRate, timeStampPeriod, *fpp);
-    }
+    /*
+     * This means that the FM TS register will now be used so that 'count' bits are for
+     * fraction and the rest for integer */
+    /* now we re-calculate cir */
+    GetInfoRateReg(p_NonPassthroughAlgParam->rateMode, p_NonPassthroughAlgParam->comittedInfoRate, tsuInTenthNanos, fppShift, &integer, &fraction);
+    *cir = (uint32_t)(integer << 16 | (fraction & 0xFFFF));
+    GetInfoRateReg(p_NonPassthroughAlgParam->rateMode, p_NonPassthroughAlgParam->peakOrAccessiveInfoRate, tsuInTenthNanos, fppShift, &integer, &fraction);
+    *pir_eir = (uint32_t)(integer << 16 | (fraction & 0xFFFF));
 
-    tempCir     = Rate2Sample(p_NonPassthroughAlgParam->rateMode, p_NonPassthroughAlgParam->comittedInfoRate, timeStampPeriod, *fpp);
-    tempPir_Eir = Rate2Sample(p_NonPassthroughAlgParam->rateMode, p_NonPassthroughAlgParam->peakOrAccessiveInfoRate , timeStampPeriod, *fpp);
+    *cbs     =  p_NonPassthroughAlgParam->comittedBurstSize;
+    *pbs_ebs =  p_NonPassthroughAlgParam->peakOrAccessiveBurstSize;
 
-    if (p_NonPassthroughAlgParam->rateMode == e_FM_PCD_PLCR_BYTE_MODE)
-    {
-        *cbs     = (1000 * p_NonPassthroughAlgParam->comittedBurstSize / 8);
-        *pbs_ebs = (1000 * p_NonPassthroughAlgParam->peakOrAccessiveBurstSize) / 8; /* 8=Bits->Bytes 1000=KB->B */
-    }
-    else
-    {
-        *cbs     =  p_NonPassthroughAlgParam->comittedBurstSize;
-        *pbs_ebs =  p_NonPassthroughAlgParam->peakOrAccessiveBurstSize;
-    }
+    /* get fpp as it should be written to reg.*/
+    *fpp = FPP_Function(fppShift);
 
-    *cir     = (uint32_t)tempCir;
-    *pir_eir = (uint32_t)tempPir_Eir;
 }
 
 #ifndef CONFIG_GUEST_PARTITION
@@ -314,9 +313,9 @@ static void PcdPlcrException(t_Handle h_FmPcd)
     WRITE_UINT32(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs->fmpl_evr, event);
 
     if(event & FM_PCD_PLCR_PRAM_SELF_INIT_COMPLETE)
-        p_FmPcd->f_FmPcdException(p_FmPcd->h_App,e_FM_PCD_PLCR_EXCEPTION_PRAM_SELF_INIT_COMPLETE);
+        p_FmPcd->f_Exception(p_FmPcd->h_App,e_FM_PCD_PLCR_EXCEPTION_PRAM_SELF_INIT_COMPLETE);
     if(event & FM_PCD_PLCR_ATOMIC_ACTION_COMPLETE)
-        p_FmPcd->f_FmPcdException(p_FmPcd->h_App,e_FM_PCD_PLCR_EXCEPTION_ATOMIC_ACTION_COMPLETE);
+        p_FmPcd->f_Exception(p_FmPcd->h_App,e_FM_PCD_PLCR_EXCEPTION_ATOMIC_ACTION_COMPLETE);
 
 }
 
@@ -339,7 +338,7 @@ static void PcdPlcrErrorException(t_Handle h_FmPcd)
     WRITE_UINT32(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs->fmpl_eevr, event);
 
     if(event & FM_PCD_PLCR_DOUBLE_ECC)
-        p_FmPcd->f_FmPcdException(p_FmPcd->h_App,e_FM_PCD_PLCR_ERR_EXCEPTION_DOUBLE_ECC);
+        p_FmPcd->f_Exception(p_FmPcd->h_App,e_FM_PCD_PLCR_EXCEPTION_DOUBLE_ECC);
     if(event & FM_PCD_PLCR_INIT_ENTRY_ERROR)
     {
         captureReg = GET_UINT32(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs->fmpl_upcr);
@@ -347,7 +346,7 @@ static void PcdPlcrErrorException(t_Handle h_FmPcd)
         p_UnInitCapt->profileNum = (uint8_t)(captureReg & PLCR_ERR_UNINIT_NUM_MASK);
         p_UnInitCapt->portId = (uint8_t)((captureReg & PLCR_ERR_UNINIT_PID_MASK) >>PLCR_ERR_UNINIT_PID_SHIFT) ;
         p_UnInitCapt->absolute = (bool)(captureReg & PLCR_ERR_UNINIT_ABSOLUTE_MASK);*/
-        p_FmPcd->f_FmPcdIndexedException(p_FmPcd->h_App,e_FM_PCD_PLCR_ERR_EXCEPTION_INIT_ENTRY_ERROR,(uint16_t)(captureReg & PLCR_ERR_UNINIT_NUM_MASK));
+        p_FmPcd->f_FmPcdIndexedException(p_FmPcd->h_App,e_FM_PCD_PLCR_EXCEPTION_INIT_ENTRY_ERROR,(uint16_t)(captureReg & PLCR_ERR_UNINIT_NUM_MASK));
         WRITE_UINT32(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs->fmpl_upcr, PLCR_ERR_UNINIT_CAP);
     }
 }
@@ -363,7 +362,6 @@ t_Error  FmPcdPlcrAllocProfiles(t_Handle h_FmPcd, uint8_t hardwarePortId, uint16
     t_Error                     err = E_OK;
     uint16_t                    base;
     uint16_t                    pcdPortId;
-    uint8_t                     portsTable[]        = PCD_PORTS_TABLE;
 
     SANITY_CHECK_RETURN_ERROR(p_FmPcd, E_INVALID_HANDLE);
 
@@ -381,13 +379,12 @@ t_Error  FmPcdPlcrAllocProfiles(t_Handle h_FmPcd, uint8_t hardwarePortId, uint16
         RETURN_ERROR(MAJOR, err,NO_MSG);
 #endif /* CONFIG_GUEST_PARTITION */
 
-    GET_FM_PCD_PORTID_FROM_GLOBAL_PORTID(pcdPortId, portsTable, hardwarePortId)
+    SET_FM_PCD_PORTID_FROM_GLOBAL_PORTID(pcdPortId, hardwarePortId);
 
     p_FmPcd->p_FmPcdPlcr->portsMapping[pcdPortId].numOfProfiles = numOfProfiles;
     p_FmPcd->p_FmPcdPlcr->portsMapping[pcdPortId].profilesBase = base;
 
     return E_OK;
-
 }
 
 t_Error  FmPcdPlcrFreeProfiles(t_Handle h_FmPcd, uint8_t hardwarePortId)
@@ -398,12 +395,10 @@ t_Error  FmPcdPlcrFreeProfiles(t_Handle h_FmPcd, uint8_t hardwarePortId)
 #endif /* CONFIG_GUEST_PARTITION */
     t_Error                     err = E_OK;
     uint16_t                    pcdPortId;
-    uint8_t                     portsTable[]        = PCD_PORTS_TABLE;
 
     SANITY_CHECK_RETURN_ERROR(p_FmPcd, E_INVALID_HANDLE);
 
-    GET_FM_PCD_PORTID_FROM_GLOBAL_PORTID(pcdPortId, portsTable, hardwarePortId)
-
+    SET_FM_PCD_PORTID_FROM_GLOBAL_PORTID(pcdPortId, hardwarePortId);
 
 #ifdef CONFIG_GUEST_PARTITION
     /* Alloc resources using IPC messaging */
@@ -662,6 +657,8 @@ t_Error FmPcdPlcrBuildProfile(t_Handle h_FmPcd, t_FmPcdPlcrProfileParams *p_Prof
         case    e_FM_PCD_PLCR_RFC_2698:
             /* Select algorithm MODE[ALG] = ‘01’ */
             pemode |= FM_PCD_PLCR_PEMODE_ALG_RFC2698;
+            if (p_Profile->nonPassthroughAlgParams.comittedInfoRate > p_Profile->nonPassthroughAlgParams.peakOrAccessiveInfoRate)
+                RETURN_ERROR(MAJOR, E_INVALID_SELECTION, ("in RFC2698 Peak rate must be equal or larger than comittedInfoRate."));
             goto cont_rfc;
         case    e_FM_PCD_PLCR_RFC_4115:
             /* Select algorithm MODE[ALG] = ‘10’ */
@@ -875,8 +872,7 @@ t_Error PlcrInit(t_FmPcd *p_FmPcd)
     tmpReg32 = 0;
     if(p_FmPcd->exceptions & FM_PCD_EX_PLCR_DOUBLE_ECC)
     {
-        if(!FmRamsEccIsExternalCtl(p_FmPcd->h_Fm))
-            FM_EnableRamsEcc(p_FmPcd->h_Fm);
+        FmEnableRamsEcc(p_FmPcd->h_Fm);
         tmpReg32 |= FM_PCD_PLCR_DOUBLE_ECC;
     }
     if(p_FmPcd->exceptions & FM_PCD_EX_PLCR_INIT_ENTRY_ERROR)
@@ -911,12 +907,46 @@ t_Error PlcrInit(t_FmPcd *p_FmPcd)
     return E_OK;
 }
 
+t_Error PlcrFree(t_FmPcd *p_FmPcd)
+{
+#ifdef CONFIG_GUEST_PARTITION
+    t_Error err;
+#endif /* CONFIG_GUEST_PARTITION */
+
+    FmUnregisterIntr(p_FmPcd->h_Fm, e_FM_MOD_PLCR, 0, e_FM_INTR_TYPE_ERR);
+    FmUnregisterIntr(p_FmPcd->h_Fm, e_FM_MOD_PLCR, 0, e_FM_INTR_TYPE_NORMAL);
+
+    if(p_FmPcd->p_FmPcdPlcr->numOfSharedProfiles)
+#ifdef CONFIG_GUEST_PARTITION
+    {
+        /* Alloc resources using IPC messaging */
+        ipcSharedPlcrParams.num = p_FmPcd->p_FmPcdPlcr->numOfSharedProfiles;
+        memcpy(ipcSharedPlcrParams.profilesIds,p_FmPcd->p_FmPcdPlcr->sharedProfilesIds, p_FmPcd->p_FmPcdPlcr->numOfSharedProfiles*sizeof(uint16_t));
+        err = XX_SendMessage(p_FmPcd->fmPcdModuleName, FM_PCD_FREE_SHARED_PROFILES, (uint8_t*)&ipcSharedPlcrParams, NULL, NULL);
+        if(err)
+            RETURN_ERROR(MAJOR, err,NO_MSG);
+    }
+#else /* master */
+        PlcrFreeSharedProfiles(p_FmPcd, p_FmPcd->p_FmPcdPlcr->numOfSharedProfiles, p_FmPcd->p_FmPcdPlcr->sharedProfilesIds);
+#endif /* CONFIG_GUEST_PARTITION */
+    return E_OK;
+}
+
 #ifndef CONFIG_GUEST_PARTITION
 t_Error PlcrEnable(t_FmPcd *p_FmPcd)
 {
     t_FmPcdPlcrRegs             *p_Regs = p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs;
 
     WRITE_UINT32(p_Regs->fmpl_gcr, GET_UINT32(p_Regs->fmpl_gcr) | FM_PCD_PLCR_GCR_EN);
+
+    return E_OK;
+}
+
+t_Error PlcrDisable(t_FmPcd *p_FmPcd)
+{
+    t_FmPcdPlcrRegs             *p_Regs = p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs;
+
+    WRITE_UINT32(p_Regs->fmpl_gcr, GET_UINT32(p_Regs->fmpl_gcr) & ~FM_PCD_PLCR_GCR_EN);
 
     return E_OK;
 }
@@ -963,9 +993,8 @@ uint16_t FmPcdPlcrGetPortProfilesBase(t_Handle h_FmPcd, uint8_t hardwarePortId)
 {
     t_FmPcd         *p_FmPcd = (t_FmPcd *)h_FmPcd;
     uint16_t        pcdPortId;
-    uint8_t         portsTable[] = PCD_PORTS_TABLE;
 
-    GET_FM_PCD_PORTID_FROM_GLOBAL_PORTID(pcdPortId, portsTable, hardwarePortId)
+    SET_FM_PCD_PORTID_FROM_GLOBAL_PORTID(pcdPortId, hardwarePortId);
 
     return p_FmPcd->p_FmPcdPlcr->portsMapping[pcdPortId].profilesBase;
 }
@@ -974,9 +1003,8 @@ uint16_t FmPcdPlcrGetPortNumOfProfiles(t_Handle h_FmPcd, uint8_t hardwarePortId)
 {
     t_FmPcd         *p_FmPcd = (t_FmPcd *)h_FmPcd;
     uint16_t        pcdPortId;
-    uint8_t         portsTable[] = PCD_PORTS_TABLE;
 
-    GET_FM_PCD_PORTID_FROM_GLOBAL_PORTID(pcdPortId, portsTable, hardwarePortId)
+    SET_FM_PCD_PORTID_FROM_GLOBAL_PORTID(pcdPortId, hardwarePortId);
 
     return p_FmPcd->p_FmPcdPlcr->portsMapping[pcdPortId].numOfProfiles;
 
@@ -1080,6 +1108,11 @@ t_Handle FM_PCD_PlcrSetProfile(t_Handle     h_FmPcd,
     if (p_Profile->modify)
     {
         absoluteProfileId = (uint16_t)(CAST_POINTER_TO_UINT32(p_Profile->id.h_Profile)-1);
+        if (absoluteProfileId > FM_PCD_PLCR_NUM_ENTRIES)
+        {
+            REPORT_ERROR(MAJOR, E_INVALID_VALUE, ("profileId too Big "));
+            return NULL;
+        }
         TRY_LOCK_RET_NULL(p_FmPcd->p_FmPcdPlcr->profiles[absoluteProfileId].lock);
     }
     else
@@ -1090,6 +1123,11 @@ t_Handle FM_PCD_PlcrSetProfile(t_Handle     h_FmPcd,
                                             p_Profile->id.newParams.h_FmPort,
                                             p_Profile->id.newParams.relativeProfileId,
                                             &absoluteProfileId);
+        if (absoluteProfileId > FM_PCD_PLCR_NUM_ENTRIES)
+        {
+            REPORT_ERROR(MAJOR, E_INVALID_VALUE, ("profileId too Big "));
+            return NULL;
+        }
         if(err)
         {
             RELEASE_LOCK(p_FmPcd->lock);
@@ -1099,12 +1137,6 @@ t_Handle FM_PCD_PlcrSetProfile(t_Handle     h_FmPcd,
         TRY_LOCK_RET_NULL(p_FmPcd->p_FmPcdPlcr->profiles[absoluteProfileId].lock);
 
         RELEASE_LOCK(p_FmPcd->lock);
-    }
-
-    if (absoluteProfileId > FM_PCD_PLCR_NUM_ENTRIES)
-    {
-        REPORT_ERROR(MAJOR, E_INVALID_VALUE, ("profileId too Big "));
-        return NULL;
     }
 
     /* if no override, check first that this scheme is unused */
@@ -1372,9 +1404,7 @@ t_Error FM_PCD_ConfigPlcrAutoRefreshMode(t_Handle h_FmPcd, bool enable)
 t_Error FM_PCD_PlcrDumpRegs(t_Handle h_FmPcd)
 {
     t_FmPcd                             *p_FmPcd = (t_FmPcd*)h_FmPcd;
-    t_FmPcdPlcrInterModuleProfileRegs   *p_ProfilesRegs;
     int                                 i = 0;
-    uint32_t                            tmpReg;
 
     DECLARE_DUMP;
 
@@ -1400,33 +1430,6 @@ t_Error FM_PCD_PlcrDumpRegs(t_Handle h_FmPcd)
     DUMP_VAR(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs,fmpl_tpcnt);
     DUMP_VAR(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs,fmpl_flmcnt);
 
-    p_ProfilesRegs = &p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs->profileRegs;
-
-    for(i = 0;i<FM_PCD_PLCR_NUM_ENTRIES; i++)
-    {
-        tmpReg = FmPcdPlcrBuildReadPlcrActionReg((uint16_t)i);
-        WritePar(p_FmPcd, tmpReg);
-
-        DUMP_TITLE(p_ProfilesRegs, ("Profile %d regs", i));
-
-        DUMP_VAR(p_ProfilesRegs, fmpl_pemode);
-        DUMP_VAR(p_ProfilesRegs, fmpl_pegnia);
-        DUMP_VAR(p_ProfilesRegs, fmpl_peynia);
-        DUMP_VAR(p_ProfilesRegs, fmpl_pernia);
-        DUMP_VAR(p_ProfilesRegs, fmpl_pecir);
-        DUMP_VAR(p_ProfilesRegs, fmpl_pecbs);
-        DUMP_VAR(p_ProfilesRegs, fmpl_pepepir_eir);
-        DUMP_VAR(p_ProfilesRegs, fmpl_pepbs_ebs);
-        DUMP_VAR(p_ProfilesRegs, fmpl_pelts);
-        DUMP_VAR(p_ProfilesRegs, fmpl_pects);
-        DUMP_VAR(p_ProfilesRegs, fmpl_pepts_ets);
-        DUMP_VAR(p_ProfilesRegs, fmpl_pegpc);
-        DUMP_VAR(p_ProfilesRegs, fmpl_peypc);
-        DUMP_VAR(p_ProfilesRegs, fmpl_perpc);
-        DUMP_VAR(p_ProfilesRegs, fmpl_perypc);
-        DUMP_VAR(p_ProfilesRegs, fmpl_perrpc);
-    }
-
     DUMP_VAR(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs,fmpl_serc);
     DUMP_VAR(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs,fmpl_upcr);
     DUMP_VAR(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs,fmpl_dpmr);
@@ -1437,6 +1440,48 @@ t_Error FM_PCD_PlcrDumpRegs(t_Handle h_FmPcd)
     {
         DUMP_MEMORY(&p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs->fmpl_pmr[i], sizeof(uint32_t));
     }
+
+    return E_OK;
+}
+t_Error FM_PCD_PlcrProfileDumpRegs(t_Handle h_FmPcd, t_Handle h_Profile)
+{
+    t_FmPcd                             *p_FmPcd = (t_FmPcd*)h_FmPcd;
+    t_FmPcdPlcrInterModuleProfileRegs   *p_ProfilesRegs;
+    uint32_t                            tmpReg;
+    uint16_t                            profileIndx = (uint16_t)(CAST_POINTER_TO_UINT32(h_Profile)-1);
+
+    DECLARE_DUMP;
+
+    SANITY_CHECK_RETURN_ERROR(p_FmPcd, E_INVALID_HANDLE);
+    SANITY_CHECK_RETURN_ERROR(p_FmPcd->p_FmPcdPlcr, E_INVALID_HANDLE);
+    SANITY_CHECK_RETURN_ERROR(!p_FmPcd->p_FmPcdDriverParam, E_INVALID_STATE);
+
+    DUMP_SUBTITLE(("\n"));
+    DUMP_TITLE(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs, ("FmPcdPlcrRegs Profile Regs"));
+
+    p_ProfilesRegs = &p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs->profileRegs;
+
+    tmpReg = FmPcdPlcrBuildReadPlcrActionReg((uint16_t)profileIndx);
+    WritePar(p_FmPcd, tmpReg);
+
+    DUMP_TITLE(p_ProfilesRegs, ("Profile %d regs", profileIndx));
+
+    DUMP_VAR(p_ProfilesRegs, fmpl_pemode);
+    DUMP_VAR(p_ProfilesRegs, fmpl_pegnia);
+    DUMP_VAR(p_ProfilesRegs, fmpl_peynia);
+    DUMP_VAR(p_ProfilesRegs, fmpl_pernia);
+    DUMP_VAR(p_ProfilesRegs, fmpl_pecir);
+    DUMP_VAR(p_ProfilesRegs, fmpl_pecbs);
+    DUMP_VAR(p_ProfilesRegs, fmpl_pepepir_eir);
+    DUMP_VAR(p_ProfilesRegs, fmpl_pepbs_ebs);
+    DUMP_VAR(p_ProfilesRegs, fmpl_pelts);
+    DUMP_VAR(p_ProfilesRegs, fmpl_pects);
+    DUMP_VAR(p_ProfilesRegs, fmpl_pepts_ets);
+    DUMP_VAR(p_ProfilesRegs, fmpl_pegpc);
+    DUMP_VAR(p_ProfilesRegs, fmpl_peypc);
+    DUMP_VAR(p_ProfilesRegs, fmpl_perpc);
+    DUMP_VAR(p_ProfilesRegs, fmpl_perypc);
+    DUMP_VAR(p_ProfilesRegs, fmpl_perrpc);
 
     return E_OK;
 }

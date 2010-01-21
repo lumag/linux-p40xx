@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -41,8 +41,10 @@
 #include "std_ext.h"
 #include "error_ext.h"
 #include "list_ext.h"
-#include "fm_common.h"
 #include "fm_mac_ext.h"
+
+
+#define __ERR_MODULE__  MODULE_FM_MAC
 
 
 #define DEFAULT_resetOnInit                 FALSE
@@ -59,17 +61,18 @@ typedef struct
     t_Error (*f_FM_MAC_ConfigWan) (t_Handle h_FmMac, bool flag);
     t_Error (*f_FM_MAC_ConfigPadAndCrc) (t_Handle h_FmMac, bool newVal);
     t_Error (*f_FM_MAC_ConfigHalfDuplex) (t_Handle h_FmMac, bool newVal);
-    t_Error (*f_FM_MAC_ConfigHugeFrames) (t_Handle h_FmMac, bool newVal);
+    t_Error (*f_FM_MAC_ConfigLengthCheck) (t_Handle h_FmMac, bool newVal);
     t_Error (*f_FM_MAC_ConfigException) (t_Handle h_FmMac, e_FmMacExceptions, bool enable);
 
     t_Error (*f_FM_MAC_SetException) (t_Handle h_FmMac, e_FmMacExceptions ex, bool enable);
 
     t_Error (*f_FM_MAC_Enable)  (t_Handle h_FmMac,  e_CommMode mode);
     t_Error (*f_FM_MAC_Disable) (t_Handle h_FmMac, e_CommMode mode);
-    t_Error (*f_FM_MAC_Restart) (t_Handle h_FmMac, e_CommMode mode);
+    t_Error (*f_FM_MAC_Enable1588TimeStamp) (t_Handle h_FmMac);
+    t_Error (*f_FM_MAC_Disable1588TimeStamp) (t_Handle h_FmMac);
     t_Error (*f_FM_MAC_Reset)   (t_Handle h_FmMac, bool wait);
 
-    t_Error (*f_FM_MAC_TxMacPause) (t_Handle h_FmMac, uint16_t pauseTime, uint16_t exPauseTime);
+    t_Error (*f_FM_MAC_TxMacPause) (t_Handle h_FmMac, uint16_t pauseTime);
 
     t_Error (*f_FM_MAC_ResetCounters) (t_Handle h_FmMac);
     t_Error (*f_FM_MAC_GetStatistics) (t_Handle h_FmMac, t_FmMacStatistics *p_Statistics);
@@ -87,6 +90,8 @@ typedef struct
 
     t_Error (*f_FM_MAC_GetVersion) (t_Handle h_FmMac, uint32_t *macVersion);
 
+    uint16_t (*f_FM_MAC_GetMaxFrameLength) (t_Handle h_FmMac);
+
     t_Error (*f_FM_MAC_MII_WritePhyReg)(t_Handle h_FmMac, uint8_t phyAddr, uint8_t reg, uint16_t data);
     t_Error (*f_FM_MAC_MII_ReadPhyReg)(t_Handle h_FmMac,  uint8_t phyAddr, uint8_t reg, uint16_t *p_Data);
 
@@ -98,6 +103,7 @@ typedef struct
     e_EnetMode      enetMode;
     uint8_t         macId;
     bool            resetOnInit;
+    uint16_t        clkFreq;
 } t_FmMacControllerDriver;
 
 typedef struct {
@@ -111,8 +117,9 @@ typedef struct {
     t_List      *p_Lsts;
 } t_EthHash;
 
-t_Handle  DTSEC_Config(t_FmMacParams *p_FmMacParam);
-t_Handle  TGEC_Config(t_FmMacParams *p_FmMacParams);
+t_Handle    DTSEC_Config(t_FmMacParams *p_FmMacParam);
+t_Handle    TGEC_Config(t_FmMacParams *p_FmMacParams);
+uint16_t    FM_MAC_GetMaxFrameLength(t_Handle FmMac);
 
 /* ........................................................................... */
 

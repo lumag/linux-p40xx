@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -46,7 +46,6 @@
 
 
 #define PEMASK_TSRE                 0x00010000
-#define PEMASK_EVENTS               0x00000301
 
 #define IMASK_BREN                  0x80000000
 #define IMASK_RXCEN                 0x40000000
@@ -66,6 +65,25 @@
 #define IMASK_GRSCEN                0x00000100
 #define IMASK_TDPEEN                0x00000002
 #define IMASK_RDPEEN                0x00000001
+
+#define EVENTS_MASK                 ((uint32_t)(IMASK_BREN    | \
+                                                IMASK_RXCEN   | \
+                                                IMASK_MSROEN  | \
+                                                IMASK_GTSCEN  | \
+                                                IMASK_BTEN    | \
+                                                IMASK_TXCEN   | \
+                                                IMASK_TXEEN   | \
+                                                IMASK_ABRTEN  | \
+                                                IMASK_LCEN    | \
+                                                IMASK_CRLEN   | \
+                                                IMASK_XFUNEN  | \
+                                                IMASK_IFERREN | \
+                                                IMASK_MAGEN   | \
+                                                IMASK_MMRDEN  | \
+                                                IMASK_MMWREN  | \
+                                                IMASK_GRSCEN  | \
+                                                IMASK_TDPEEN  | \
+                                                IMASK_RDPEEN))
 
 #define GET_EXCEPTION_FLAG(bitMask, exception)       switch(exception){ \
     case e_FM_MAC_EX_1G_BAB_RX:                                   \
@@ -110,7 +128,7 @@
 #define MAX_COLLISION_WINDOW        0x03ff
 
 
-/*********************From mac ext *******************************************/
+/********************* From mac ext ******************************************/
 typedef  uint32_t t_ErrorDisable;
 
 #define ERROR_DISABLE_TRANSMIT              0x00400000
@@ -123,79 +141,80 @@ typedef  uint32_t t_ErrorDisable;
 #define ERROR_DISABLE_RxDATA_PARITY         0x00000001
 
 /*****************************************************************************/
-#define DTSEC_NUM_OF_PADDRS         15  /* number of pattern match registers (entries) */
+#define DTSEC_NUM_OF_PADDRS             15  /* number of pattern match registers (entries) */
 
-#define GROUP_ADDRESS               0x0000010000000000LL /* Group address bit indication */
+#define GROUP_ADDRESS                   0x0000010000000000LL /* Group address bit indication */
 
-                           /* if TRUE, Multiple individual addresses are used*/
+#define HASH_TABLE_SIZE                 256 /* Hash table size (= 32 bits * 8 regs) */
 
-#define HASH_TABLE_SIZE             256 /* Hash table size (= 32 bits * 8 regs) */
+#define DTSEC_TO_MII_OFFSET             0x1120  /* number of pattern match registers (entries) */
 
-
-#define DTSEC_TO_MII_OFFSET         0x1120  /* number of pattern match registers (entries) */
-
-#define DEFAULT_cam                 0
-
-#define DEFAULT_errorDisabled       0
-#define DEFAULT_autoZeroCounters    TRUE        /* Must be TRUE don't change with updating driver */
-#define DEFAULT_statisticsEnable    TRUE
-#define DEFAULT_promiscuousEnable   FALSE
-
-#define DEFAULT_pauseExtended       0
-#define DEFAULT_pauseTime           0xf000
-
+#define DEFAULT_cam                     0
+#define DEFAULT_errorDisabled           0
+#define DEFAULT_autoZeroCounters        TRUE        /* Must be TRUE don't change with updating driver */
+#define DEFAULT_statisticsEnable        TRUE
+#define DEFAULT_promiscuousEnable       FALSE
+#define DEFAULT_pauseExtended           0x0
+#define DEFAULT_pauseTime               0xf000
 #define DEFAULT_halfDuplex              FALSE
 #define DEFAULT_halfDulexFlowControlEn  FALSE
 #define DEFAULT_txTimeStampEn           FALSE
 #define DEFAULT_rxTimeStampEn           FALSE
+#define DEFAULT_packetAlignment         0
+#define DEFAULT_controlFrameAccept      FALSE
+#define DEFAULT_groupHashExtend         FALSE
+#define DEFAULT_broadcReject            FALSE
+#define DEFAULT_rxShortFrame            TRUE
+#define DEFAULT_exactMatch              FALSE
+#define DEFAULT_debugMode               FALSE
+#define DEFAULT_loopback                FALSE
+#define DEFAULT_actOnRxPauseFrame       FALSE
+#define DEFAULT_actOnTxPauseFrame       FALSE
 
-#define DEFAULT_packetAlignment     0
-#define DEFAULT_controlFrameAccept  FALSE
-#define DEFAULT_groupHashExtend     FALSE
-#define DEFAULT_broadcReject        FALSE
-#define DEFAULT_rxShortFrame        TRUE
-#define DEFAULT_exactMatch          FALSE
+#define DEFAULT_PreAmLength             0x7
+#define DEFAULT_PreAmRxEn               FALSE
+#define DEFAULT_PreAmTxEn               FALSE
+#define DEFAULT_lengthCheckEnable       FALSE
+#define DEFAULT_padAndCrcEnable         TRUE
+#define DEFAULT_crcEnable               FALSE
 
-#define DEFAULT_debugMode           FALSE
+#define DEFAULT_nonBackToBackIpg1       0x40
+#define DEFAULT_nonBackToBackIpg2       0x60
+#define DEFAULT_minIfgEnforcement       0x50
+#define DEFAULT_backToBackIpg           0x60
 
-#define DEFAULT_loopback            FALSE
-#define DEFAULT_actOnRxPauseFrame   FALSE
-#define DEFAULT_actOnTxPauseFrame   FALSE
+#define DEFAULT_altBackoffVal           0x0A
+#define DEFAULT_altBackoffEnable        FALSE
+#define DEFAULT_backPressureNoBackoff   FALSE
+#define DEFAULT_noBackoff               FALSE
+#define DEFAULT_excessDefer             TRUE
+#define DEFAULT_maxRetransmission       0x0F
+#define DEFAULT_collisionWindow         0x37
 
-#define DEFAULT_PreAmLength         0x7
-#define DEFAULT_PreAmRxEn           FALSE
-#define DEFAULT_PreAmTxEn           FALSE
-#define DEFAULT_hugeFrames          TRUE
-#define DEFAULT_lengthCheckEnable   FALSE
-#define DEFAULT_padAndCrcEnable     TRUE
-#define DEFAULT_crcEnable           FALSE
+#define DEFAULT_maxFrameLength          0x600
 
-#define DEFAULT_nonBackToBackIpg1   0x40
-#define DEFAULT_nonBackToBackIpg2   0x60
-#define DEFAULT_minIfgEnforcement   0x50
-#define DEFAULT_backToBackIpg       0x60
+#define DEFAULT_collisionWindow         0x37
 
-#define DEFAULT_altBackoffVal          0x0A
-#define DEFAULT_altBackoffEnable       FALSE
-#define DEFAULT_backPressureNoBackoff  FALSE
-#define DEFAULT_noBackoff           FALSE
-#define DEFAULT_excessDefer         TRUE
-#define DEFAULT_maxRetransmission   0x0F
-#define DEFAULT_collisionWindow     0x37
+#define DEFAULT_fifoTxThr               0x10
+#define DEFAULT_fifoTxWatermarkH        0x7e
+#define DEFAULT_fifoRxWatermarkL        0x08
+#define DEFAULT_tbiPhyAddr              5
 
-#define DEFAULT_maxFrameLength      0x600
+#define DEFAULT_exceptions              ((uint32_t)(IMASK_BREN    | \
+                                                    IMASK_RXCEN   | \
+                                                    IMASK_MSROEN  | \
+                                                    IMASK_BTEN    | \
+                                                    IMASK_TXCEN   | \
+                                                    IMASK_TXEEN   | \
+                                                    IMASK_ABRTEN  | \
+                                                    IMASK_LCEN    | \
+                                                    IMASK_CRLEN   | \
+                                                    IMASK_XFUNEN  | \
+                                                    IMASK_IFERREN | \
+                                                    IMASK_MAGEN   | \
+                                                    IMASK_TDPEEN  | \
+                                                    IMASK_RDPEEN))
 
-#define DEFAULT_collisionWindow     0x37
-
-#define DEFAULT_fifoTxThr           0x10
-#define DEFAULT_fifoTxWatermarkH    0x7e
-#define DEFAULT_fifoRxWatermarkL    0x08
-#define DEFAULT_tbiPhyAddr          5
-
-#define DEFAULT_exceptions         ((uint32_t)(IMASK_BREN | IMASK_RXCEN | IMASK_MSROEN | \
-                                               IMASK_BTEN | IMASK_TXCEN | IMASK_TXEEN |  IMASK_ABRTEN | \
-                                               IMASK_LCEN | IMASK_CRLEN | IMASK_XFUNEN |IMASK_IFERREN| \
-                                               IMASK_MAGEN | IMASK_TDPEEN |IMASK_RDPEEN))
 
 #define MAX_PHYS                    32 /* maximum number of phys */
 
@@ -215,6 +234,8 @@ typedef  uint32_t t_ErrorDisable;
 #define ECNTRL_SGMIIM               0x00000002
 #define ECNTRL_RPM                  0x00000010
 #define ECNTRL_R100M                0x00000008
+#define ECNTRL_RMM                  0x00000004
+#define ECNTRL_QSGMIIM              0x00000001
 
 #define TCTRL_THDF                  0x00000800
 #define TCTRL_TTSE                  0x00000040
@@ -235,6 +256,9 @@ typedef  uint32_t t_ErrorDisable;
 #define RCTRL_EMEN                  0x00000002
 #define RCTRL_UPROM                 0x00000001
 #define RCTRL_PROM                  (RCTRL_UPROM | RCTRL_MPROM)
+
+#define TMR_CTL_ESFDP               0x00000800
+#define TMR_CTL_ESFDE               0x00000400
 
 #define TSEC_ID1_DEBUG              0x00e00c00
 #define DEBUG_ENABLE                0x80000000
@@ -260,7 +284,6 @@ typedef  uint32_t t_ErrorDisable;
 #define MACCFG2_BYTE_MODE           0x00000200
 #define MACCFG2_PRE_AM_Rx_EN        0x00000080
 #define MACCFG2_PRE_AM_Tx_EN        0x00000040
-#define MACCFG2_HUGE_FRAME          0x00000020
 #define MACCFG2_LENGTH_CHECK        0x00000010
 #define MACCFG2_MAGIC_PACKET_EN     0x00000008
 #define MACCFG2_PAD_CRC_EN          0x00000004
@@ -295,12 +318,6 @@ typedef  uint32_t t_ErrorDisable;
 /* Pause Time Value Register  */
 #define PTV_PTE_SHIFT    16
 
-#define EVENTS_MASK                 ((uint32_t)(IMASK_BREN | IMASK_RXCEN | IMASK_MSROEN | IMASK_GTSCEN | \
-                                                IMASK_BTEN | IMASK_TXCEN | IMASK_TXEEN  | IMASK_ABRTEN | \
-                                                IMASK_LCEN | IMASK_CRLEN | IMASK_XFUNEN | IMASK_IFERREN| \
-                                                IMASK_MAGEN | IMASK_MMRDEN | IMASK_MMWREN | \
-                                                IMASK_TDPEEN |IMASK_RDPEEN))
-
 #define     MASK22BIT   0x003FFFFF
 #define     MASK16BIT   0x0000FFFF
 #define     MASK12BIT   0x00000FFF
@@ -316,9 +333,9 @@ typedef  uint32_t t_ErrorDisable;
 #define PHY_TBICON_SRESET   0x8000
 
 
-#ifdef __MWERKS__
+#if defined(__MWERKS__) && !defined(__GNUC__)
 #pragma pack(push,1)
-#endif /*__MWERKS__ */
+#endif /* defined(__MWERKS__) && ... */
 #define MEM_MAP_START
 
 typedef _Packed struct
@@ -358,78 +375,73 @@ typedef _Packed struct
     volatile uint32_t ipgifg;               /* 0x108 IPG/IFG */
     volatile uint32_t hafdup;               /* 0x10C Half-duplex */
     volatile uint32_t maxfrm;               /* 0x110 Maximum frame */
-    volatile uint32_t DTSEC_RESERVED7[3];  /* 0x114–0x11C register */
-    volatile uint32_t miimcfg;              /* 0x120 MII Mgmt:configuration */
-    volatile uint32_t miimcom;              /* 0x124 MII Mgmt:command */
-    volatile uint32_t miimadd;              /* 0x128 MII Mgmt:address */
-    volatile uint32_t miimcon;              /* 0x12C MII Mgmt:control 3 */
-    volatile uint32_t miimstat;             /* 0x130 MII Mgmt:status */
-    volatile uint32_t miimind;              /* 0x134 MII Mgmt:indicators */
+    volatile uint32_t DTSEC_RESERVED7[3];   /* 0x114-0x11C register */
+    t_MiiAccessMemMap miiMemMap;
     volatile uint32_t ifctrl;               /* 0x138 MII Mgmt:interface control */
     volatile uint32_t ifstat;               /* 0x13C Interface status */
     volatile uint32_t macstnaddr1;          /* 0x140 Station Address,part 1 */
     volatile uint32_t macstnaddr2;          /* 0x144 Station Address,part 2  */
     volatile macRegs  macaddr[DTSEC_NUM_OF_PADDRS]; /* 0x148-0x1BC mac exact match addresses 1-15, parts 1-2 */
-    volatile uint32_t  DTSEC_RESERVED8[16];   /* 0x1C0–0x1FC register */
+    volatile uint32_t DTSEC_RESERVED8[16];  /* 0x1C0-0x1FC register */
 
     /*  RMON MIB REGISTERS  */
     /*  TRANSMIT and RECEIVE COUNTERS   */
 
-    volatile uint32_t  tr64;            /* 0x200 transmit and receive 64 byte frame counter */
-    volatile uint32_t  tr127;           /* 0x204 transmit and receive 65 to 127 byte frame counter */
-    volatile uint32_t  tr255;           /* 0x208 transmit and receive 128 to 255 byte frame counter */
-    volatile uint32_t  tr511;           /* 0x20C transmit and receive 256 to 511 byte frame counter */
-    volatile uint32_t  tr1k;            /* 0x210 transmit and receive 512 to 1023 byte frame counter */
-    volatile uint32_t  trmax;           /* 0x214 transmit and receive 1024 to 1518 byte frame counter */
-    volatile uint32_t  trmgv;           /* 0x218 transmit and receive 1519 to 1522 byte good VLAN frame count */
+    volatile uint32_t tr64;            /* 0x200 transmit and receive 64 byte frame counter */
+    volatile uint32_t tr127;           /* 0x204 transmit and receive 65 to 127 byte frame counter */
+    volatile uint32_t tr255;           /* 0x208 transmit and receive 128 to 255 byte frame counter */
+    volatile uint32_t tr511;           /* 0x20C transmit and receive 256 to 511 byte frame counter */
+    volatile uint32_t tr1k;            /* 0x210 transmit and receive 512 to 1023 byte frame counter */
+    volatile uint32_t trmax;           /* 0x214 transmit and receive 1024 to 1518 byte frame counter */
+    volatile uint32_t trmgv;           /* 0x218 transmit and receive 1519 to 1522 byte good VLAN frame count */
 
     /* RECEIVE COUNTERS */
-    volatile uint32_t  rbyt;            /* 0x21C receive byte counter */
-    volatile uint32_t  rpkt;            /* 0x220 receive packet counter */
-    volatile uint32_t  rfcs;            /* 0x224 receive FCS error counter */
-    volatile uint32_t  rmca;            /* 0x228 RMCA receive multicast packet counter */
-    volatile uint32_t  rbca;            /* 0x22C receive broadcast packet counter */
-    volatile uint32_t  rxcf;            /* 0x230 receive control frame packet counter */
-    volatile uint32_t  rxpf;            /* 0x234 receive PAUSE frame packet counter */
-    volatile uint32_t  rxuo;            /* 0x238 receive unknown OP code counter */
-    volatile uint32_t  raln;            /* 0x23C receive alignment error counter */
-    volatile uint32_t  rflr;            /* 0x240 receive frame length error counter */
-    volatile uint32_t  rcde;            /* 0x244 receive code error counter */
-    volatile uint32_t  rcse;            /* 0x248 receive carrier sense error counter */
-    volatile uint32_t  rund;            /* 0x24C receive undersize packet counter */
-    volatile uint32_t  rovr;            /* 0x250 receive oversize packet counter */
-    volatile uint32_t  rfrg;            /* 0x254 receive fragments counter */
-    volatile uint32_t  rjbr;            /* 0x258 receive jabber counter */
-    volatile uint32_t  rdrp;            /* 0x25C receive drop */
+    volatile uint32_t rbyt;            /* 0x21C receive byte counter */
+    volatile uint32_t rpkt;            /* 0x220 receive packet counter */
+    volatile uint32_t rfcs;            /* 0x224 receive FCS error counter */
+    volatile uint32_t rmca;            /* 0x228 RMCA receive multicast packet counter */
+    volatile uint32_t rbca;            /* 0x22C receive broadcast packet counter */
+    volatile uint32_t rxcf;            /* 0x230 receive control frame packet counter */
+    volatile uint32_t rxpf;            /* 0x234 receive PAUSE frame packet counter */
+    volatile uint32_t rxuo;            /* 0x238 receive unknown OP code counter */
+    volatile uint32_t raln;            /* 0x23C receive alignment error counter */
+    volatile uint32_t rflr;            /* 0x240 receive frame length error counter */
+    volatile uint32_t rcde;            /* 0x244 receive code error counter */
+    volatile uint32_t rcse;            /* 0x248 receive carrier sense error counter */
+    volatile uint32_t rund;            /* 0x24C receive undersize packet counter */
+    volatile uint32_t rovr;            /* 0x250 receive oversize packet counter */
+    volatile uint32_t rfrg;            /* 0x254 receive fragments counter */
+    volatile uint32_t rjbr;            /* 0x258 receive jabber counter */
+    volatile uint32_t rdrp;            /* 0x25C receive drop */
 
     /* TRANSMIT COUNTERS */
-    volatile uint32_t  tbyt;            /* 0x260 transmit byte counter */
-    volatile uint32_t  tpkt;            /* 0x264 transmit packet counter */
-    volatile uint32_t  tmca;            /* 0x268 transmit multicast packet counter */
-    volatile uint32_t  tbca;            /* 0x26C transmit broadcast packet counter */
-    volatile uint32_t  txpf;            /* 0x270 transmit PAUSE control frame counter */
-    volatile uint32_t  tdfr;            /* 0x274 transmit deferral packet counter */
-    volatile uint32_t  tedf;            /* 0x278 transmit excessive deferral packet counter */
-    volatile uint32_t  tscl;            /* 0x27C transmit single collision packet counter */
-    volatile uint32_t  tmcl;            /* 0x280 transmit multiple collision packet counter */
-    volatile uint32_t  tlcl;            /* 0x284 transmit late collision packet counter */
-    volatile uint32_t  txcl;            /* 0x288 transmit excessive collision packet counter */
-    volatile uint32_t  tncl;            /* 0x28C transmit total collision counter */
-    volatile uint32_t  DTSEC_RESERVED9; /* 0x290 */
-    volatile uint32_t  tdrp;            /* 0x294 transmit drop frame counter */
-    volatile uint32_t  tjbr;            /* 0x298 transmit jabber frame counter */
-    volatile uint32_t  tfcs;            /* 0x29C transmit FCS error counter */
-    volatile uint32_t  txcf;            /* 0x2A0 transmit control frame counter */
-    volatile uint32_t  tovr;            /* 0x2A4 transmit oversize frame counter */
-    volatile uint32_t  tund;            /* 0x2A8 transmit undersize frame counter */
-    volatile uint32_t  tfrg;            /* 0x2AC transmit fragments frame counter */
+    volatile uint32_t tbyt;            /* 0x260 transmit byte counter */
+    volatile uint32_t tpkt;            /* 0x264 transmit packet counter */
+    volatile uint32_t tmca;            /* 0x268 transmit multicast packet counter */
+    volatile uint32_t tbca;            /* 0x26C transmit broadcast packet counter */
+    volatile uint32_t txpf;            /* 0x270 transmit PAUSE control frame counter */
+    volatile uint32_t tdfr;            /* 0x274 transmit deferral packet counter */
+    volatile uint32_t tedf;            /* 0x278 transmit excessive deferral packet counter */
+    volatile uint32_t tscl;            /* 0x27C transmit single collision packet counter */
+    volatile uint32_t tmcl;            /* 0x280 transmit multiple collision packet counter */
+    volatile uint32_t tlcl;            /* 0x284 transmit late collision packet counter */
+    volatile uint32_t txcl;            /* 0x288 transmit excessive collision packet counter */
+    volatile uint32_t tncl;            /* 0x28C transmit total collision counter */
+    volatile uint32_t DTSEC_RESERVED9; /* 0x290 */
+    volatile uint32_t tdrp;            /* 0x294 transmit drop frame counter */
+    volatile uint32_t tjbr;            /* 0x298 transmit jabber frame counter */
+    volatile uint32_t tfcs;            /* 0x29C transmit FCS error counter */
+    volatile uint32_t txcf;            /* 0x2A0 transmit control frame counter */
+    volatile uint32_t tovr;            /* 0x2A4 transmit oversize frame counter */
+    volatile uint32_t tund;            /* 0x2A8 transmit undersize frame counter */
+    volatile uint32_t tfrg;            /* 0x2AC transmit fragments frame counter */
 
     /* GENERAL REGISTERS */
-    volatile uint32_t  car1;            /* 0x2B0 carry register one register* */
-    volatile uint32_t  car2;            /* 0x2B4 carry register two register* */
-    volatile uint32_t  cam1;            /* 0x2B8 carry register one mask register */
-    volatile uint32_t  cam2;            /* 0x2BC carry register two mask register */
-    volatile uint32_t  DTSEC_RESERVED10[16]; /* 0x2C0-0x2FC */
+    volatile uint32_t car1;            /* 0x2B0 carry register one register* */
+    volatile uint32_t car2;            /* 0x2B4 carry register two register* */
+    volatile uint32_t cam1;            /* 0x2B8 carry register one mask register */
+    volatile uint32_t cam2;            /* 0x2BC carry register two mask register */
+    volatile uint32_t DTSEC_RESERVED10[16]; /* 0x2C0-0x2FC */
 
     /* Debug and Factory Test Registers */
     volatile uint32_t debug;            /* 0x300 DEBUG—Debug Register */
@@ -452,18 +464,17 @@ typedef _Packed struct
 } _PackedType t_DtsecMemMap;
 
 #define MEM_MAP_END
-#ifdef __MWERKS__
+#if defined(__MWERKS__) && !defined(__GNUC__)
 #pragma pack(pop)
-#endif /* __MWERKS__ */
+#endif /* defined(__MWERKS__) && ... */
 
 
 typedef struct {
-
     uint32_t    errorDisabled;
     bool        halfDuplex;
     uint16_t    pauseTime;
     uint16_t    pauseExtended;
-    uint8_t     tbiPhyAddr;         /**< TBI Physical address  (1-31)     [DEFAULT_tbiPhyAddr]*/
+    uint8_t     tbiPhyAddr;         /**< TBI Physical address  (1-31)     [DEFAULT_tbiPhyAddr] */
 
     bool        autoZeroCounters;
     bool        statisticsEnable;
@@ -494,7 +505,6 @@ typedef struct {
     uint8_t     preambleLength;
     bool        preambleRxEn;
     bool        preambleTxEn;
-    bool        hugeFramesEnable;
     bool        lengthCheckEnable;
     bool        magicPacketEnable;
     bool        padAndCrcEnable;
@@ -525,9 +535,9 @@ typedef struct {
     t_MiiAccessMemMap           *p_MiiMemMap;     /**< pointer to dTSEC MII memory mapped registers.          */
     uint64_t                    addr;             /**< MAC address of device;                             */
     e_EnetMode                  enetMode;         /**< Ethernet physical interface  */
-    t_FmMacExceptionCallback    *f_Exceptions;
+    t_FmMacExceptionCallback    *f_Exception;
     int                         mdioIrq;
-    t_FmMacExceptionCallback    *f_Events;
+    t_FmMacExceptionCallback    *f_Event;
     bool                        indAddrRegUsed[DTSEC_NUM_OF_PADDRS]; /**< Whether a particular individual address recognition register is being used */
     uint64_t                    paddr[DTSEC_NUM_OF_PADDRS]; /**< MAC address for particular individual address recognition register */
     uint8_t                     numOfIndAddrInRegs; /**< Number of individual addresses in registers for this station. */
@@ -539,11 +549,8 @@ typedef struct {
     uint8_t                     macId;
     uint32_t                    exceptions;
     t_DtsecDriverParam          *p_DtsecDriverParam;
-/* TODO - tmp, for Moti to set names and structs */
-    bool                        support1588;
-    struct{
-            bool    enErrExeption;
-    }structFor1588;
+    bool                        ptpTsuEnabled;
+    bool                        enTsuErrExeption;
 } t_Dtsec;
 
 

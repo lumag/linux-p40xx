@@ -9,6 +9,7 @@ EXTRA_CFLAGS +=-include $(NCSW)/dflags.h
 
 EXTRA_CFLAGS += -I$(DRV_DPA)/
 EXTRA_CFLAGS += -I$(NCSW)/inc
+EXTRA_CFLAGS += -I$(NCSW)/inc/cores
 EXTRA_CFLAGS += -I$(NCSW)/inc/etc
 EXTRA_CFLAGS += -I$(NCSW)/inc/Peripherals
 EXTRA_CFLAGS += -I$(NCSW)/inc/integrations

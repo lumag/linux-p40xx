@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -100,57 +100,68 @@ static void DiscardCurrentTxFrame(t_FmPort *p_FmPort)
     p_FmPort->im.firstBdOfFrameId = IM_ILEGAL_BD_ID;
 }
 
-static t_Error FmPortTxConf(t_FmPort *p_FmPort, e_TxConfType confType)
+static t_Error TxConf(t_FmPort *p_FmPort, e_TxConfType confType)
 {
     t_Error             retVal = E_BUSY;
     uint32_t            bdStatus;
-    uint16_t            savedStartBdId;
+    uint16_t            savedStartBdId, confBdId;
 
     ASSERT_COND(p_FmPort);
 
 //    if (confType==e_TX_CONF_TYPE_CHECK)
 //        return (WfqEntryIsQueueEmpty(p_FmPort->im.h_WfqEntry) ? E_OK : E_BUSY);
 
-    savedStartBdId = p_FmPort->im.currBdId;
-    bdStatus = BD_STATUS_AND_LENGTH(BD_GET(p_FmPort->im.currBdId));
+    confBdId = savedStartBdId = p_FmPort->im.currBdId;
+    bdStatus = BD_STATUS_AND_LENGTH(BD_GET(confBdId));
 
-    /* if R bit is set, we don't enter, or we break.
-    we run till we get to R, or complete the loop */
+    /* If R bit is set, we don't enter, or we break.
+       we run till we get to R, or complete the loop */
     while ((!(bdStatus & BD_R_E) || (confType == e_TX_CONF_TYPE_FLUSH)) && (retVal != E_OK))
     {
         if (confType & e_TX_CONF_TYPE_CALLBACK) /* if it is confirmation with user callbacks */
-            BD_STATUS_AND_LENGTH_SET(BD_GET(p_FmPort->im.currBdId), 0);
+            BD_STATUS_AND_LENGTH_SET(BD_GET(confBdId), 0);
 
         /* case 1: R bit is 0 and Length is set -> confirm! */
         if ((confType & e_TX_CONF_TYPE_CALLBACK) && (bdStatus & BD_LENGTH_MASK))
         {
-            if (p_FmPort->im.f_TxConfCB)
+            if (p_FmPort->im.f_TxConf)
             {
                 if ((confType == e_TX_CONF_TYPE_FLUSH) && (bdStatus & BD_R_E))
-                    p_FmPort->im.f_TxConfCB(p_FmPort->im.h_App,
-                                            BD_BUFFER(BD_GET(p_FmPort->im.currBdId)),
-                                            TX_CONF_STATUS_UNSENT,
-                                            p_FmPort->im.p_BdShadow[p_FmPort->im.currBdId]);
+                    p_FmPort->im.f_TxConf(p_FmPort->h_App,
+                                          BD_BUFFER(BD_GET(confBdId)),
+                                          TX_CONF_STATUS_UNSENT,
+                                          p_FmPort->im.p_BdShadow[confBdId]);
                 else
-                    p_FmPort->im.f_TxConfCB(p_FmPort->im.h_App,
-                                            BD_BUFFER(BD_GET(p_FmPort->im.currBdId)),
-                                            0,
-                                            p_FmPort->im.p_BdShadow[p_FmPort->im.currBdId]);
+                    p_FmPort->im.f_TxConf(p_FmPort->h_App,
+                                          BD_BUFFER(BD_GET(confBdId)),
+                                          0,
+                                          p_FmPort->im.p_BdShadow[confBdId]);
             }
         }
         /* case 2: R bit is 0 and Length is 0 -> not used yet, nop! */
 
-        p_FmPort->im.currBdId = GetNextBdId(p_FmPort, p_FmPort->im.currBdId);
-        if (p_FmPort->im.currBdId == savedStartBdId)
+        confBdId = GetNextBdId(p_FmPort, confBdId);
+        if (confBdId == savedStartBdId)
             retVal = E_OK;
-        bdStatus = BD_STATUS_AND_LENGTH(BD_GET(p_FmPort->im.currBdId));
+        bdStatus = BD_STATUS_AND_LENGTH(BD_GET(confBdId));
     }
-
-    MY_WRITE_UINT16(p_FmPort->im.p_FmPortImPram->txQd.offsetIn, (uint16_t)(p_FmPort->im.currBdId<<4));
 
     return retVal;
 }
 
+t_Error FmPortImEnable(t_FmPort *p_FmPort)
+{
+    uint32_t    tmpReg = GET_UINT32(p_FmPort->im.p_FmPortImPram->mode);
+    WRITE_UINT32(p_FmPort->im.p_FmPortImPram->mode, (uint32_t)(tmpReg & ~IM_MODE_GRC_STP));
+    return E_OK;
+}
+
+t_Error FmPortImDisable(t_FmPort *p_FmPort)
+{
+    uint32_t    tmpReg = GET_UINT32(p_FmPort->im.p_FmPortImPram->mode);
+    WRITE_UINT32(p_FmPort->im.p_FmPortImPram->mode, (uint32_t)(tmpReg | IM_MODE_GRC_STP));
+    return E_OK;
+}
 
 t_Error FmPortImRx(t_FmPort *p_FmPort)
 {
@@ -198,19 +209,7 @@ t_Error FmPortImRx(t_FmPort *p_FmPort)
 
         BD_STATUS_AND_LENGTH_SET(BD_GET(p_FmPort->im.currBdId), BD_R_E);
 
-/* TODO - add here support for errors!!! */
         errors = (uint16_t)((bdStatus & BD_RX_ERRORS) >> 16);
-#if 0
-        /* find out which errors the user wants reported. The BD will
-        still be passed to the user, but first f_Exceptions will be called */
-        reportErrors = (uint16_t)(errors & p_FmPort->im.bdErrorsReport);
-        if(reportErrors)
-        {
-            QUEUE_GET_EXCEPTIONS(reportErrors, exceptions);
-            p_FmPort->im.f_Exceptions(p_FmPort->im.h_App, exceptions, 0);
-        }
-#endif /* 0 */
-
         p_FmPort->im.p_BdShadow[p_FmPort->im.currBdId] = h_NewUserPriv;
 
         p_FmPort->im.currBdId = GetNextBdId(p_FmPort, p_FmPort->im.currBdId);
@@ -222,12 +221,12 @@ t_Error FmPortImRx(t_FmPort *p_FmPort)
         - There is an error, but it was defined to be passed anyway. */
         if ((buffPos != SINGLE_BUF) || !errors || (errors & (uint16_t)(BD_ERROR_PASS_FRAME>>16)))
         {
-            if (p_FmPort->im.f_RxStoreCB(p_FmPort->im.h_App,
-                                         p_CurData,
-                                         length,
-                                         errors,
-                                         buffPos,
-                                         h_CurrUserPriv) == e_RX_STORE_RESPONSE_PAUSE)
+            if (p_FmPort->im.f_RxStore(p_FmPort->h_App,
+                                       p_CurData,
+                                       length,
+                                       errors,
+                                       buffPos,
+                                       h_CurrUserPriv) == e_RX_STORE_RESPONSE_PAUSE)
                 break;
         }
         else if (p_FmPort->im.rxPool.f_PutBuf(p_FmPort->im.rxPool.h_BufferPool,
@@ -247,7 +246,6 @@ t_Error FmPortConfigIM (t_FmPort *p_FmPort, t_FmPortParams *p_FmPortParams)
 
     SANITY_CHECK_RETURN_ERROR(p_FmPort->p_FmPortDriverParam, E_INVALID_HANDLE);
 
-    p_FmPort->im.h_App                          = p_FmPortParams->specificParams.imRxTxParams.h_App;
     p_FmPort->im.h_FmMuram                      = p_FmPortParams->specificParams.imRxTxParams.h_FmMuram;
     p_FmPort->p_FmPortDriverParam->partitionId  = p_FmPortParams->specificParams.imRxTxParams.partitionId;
     p_FmPort->im.dataMemId                      = p_FmPortParams->specificParams.imRxTxParams.dataMemId;
@@ -263,14 +261,22 @@ t_Error FmPortConfigIM (t_FmPort *p_FmPort, t_FmPortParams *p_FmPortParams)
         p_FmPort->im.rxPool.f_GetBuf        = p_FmPortParams->specificParams.imRxTxParams.rxPoolParams.f_GetBuf;
         p_FmPort->im.rxPool.f_PutBuf        = p_FmPortParams->specificParams.imRxTxParams.rxPoolParams.f_PutBuf;
         p_FmPort->im.rxPool.bufferSize      = p_FmPortParams->specificParams.imRxTxParams.rxPoolParams.bufferSize;
-        p_FmPort->im.f_RxStoreCB            = p_FmPortParams->specificParams.imRxTxParams.f_RxStoreCB;
+        p_FmPort->im.f_RxStore              = p_FmPortParams->specificParams.imRxTxParams.f_RxStore;
 
-        p_FmPort->im.mrblr                  = DEFAULT_PORT_ImMaxRxBufLength;
+        p_FmPort->im.mrblr                  = 0x8000;
+        while (p_FmPort->im.mrblr)
+        {
+            if (p_FmPort->im.rxPool.bufferSize & p_FmPort->im.mrblr)
+                break;
+            p_FmPort->im.mrblr >>= 1;
+        }
+        if (p_FmPort->im.mrblr != p_FmPort->im.rxPool.bufferSize)
+            DBG(WARNING, ("Max-Rx-Buffer-Length set to %d", p_FmPort->im.mrblr));
         p_FmPort->im.bdRingSize             = DEFAULT_PORT_rxBdRingLength;
     }
     else
     {
-        p_FmPort->im.f_TxConfCB             = p_FmPortParams->specificParams.imRxTxParams.f_TxConfCB;
+        p_FmPort->im.f_TxConf               = p_FmPortParams->specificParams.imRxTxParams.f_TxConf;
 
         p_FmPort->im.bdRingSize             = DEFAULT_PORT_txBdRingLength;
     }
@@ -308,7 +314,7 @@ t_Error FmPortImCheckInitParameters(t_FmPort *p_FmPort)
 t_Error FmPortImInit(t_FmPort *p_FmPort)
 {
     t_FmImBd    *p_Bd=NULL;
-    t_Handle    h_UserPriv;
+    t_Handle    h_BufContext;
     uint64_t    tmpPhysBase;
     uint16_t    log2Num;
     uint8_t     *p_Data/*, *p_Tmp*/;
@@ -341,30 +347,33 @@ t_Error FmPortImInit(t_FmPort *p_FmPort)
             p_Bd = BD_GET(i);
             BD_STATUS_AND_LENGTH_SET (p_Bd, BD_R_E);
 
-            if ((p_Data = p_FmPort->im.rxPool.f_GetBuf(p_FmPort->im.rxPool.h_BufferPool, &h_UserPriv)) == NULL)
+            if ((p_Data = p_FmPort->im.rxPool.f_GetBuf(p_FmPort->im.rxPool.h_BufferPool, &h_BufContext)) == NULL)
                 RETURN_ERROR(MAJOR, E_NOT_AVAILABLE, ("Data buffer"));
             BD_BUFFER_SET(p_Bd, p_Data);
-            p_FmPort->im.p_BdShadow[i] = h_UserPriv;
+            p_FmPort->im.p_BdShadow[i] = h_BufContext;
         }
 
-        if (p_FmPort->im.dataMemAttributes & MEMORY_ATTR_CACHEABLE)
-            WRITE_UINT32(p_FmPort->im.p_FmPortImPram->mode, IM_MODE_GBL);
+        if ((p_FmPort->im.dataMemAttributes & MEMORY_ATTR_CACHEABLE) ||
+            (p_FmPort->im.fwExtStructsMemAttr & MEMORY_ATTR_CACHEABLE))
+            WRITE_UINT32(p_FmPort->im.p_FmPortImPram->mode, IM_MODE_GBL | IM_MODE_SET_BO(2));
+        else
+            WRITE_UINT32(p_FmPort->im.p_FmPortImPram->mode, IM_MODE_SET_BO(2));
 
         WRITE_UINT32(p_FmPort->im.p_FmPortImPram->rxQdPtr,
-                     (uint32_t)(CAST_POINTER_TO_UINT64(XX_VirtToPhys(p_FmPort->im.p_FmPortImPram)) -
+                     (uint32_t)((uint64_t)(XX_VirtToPhys(p_FmPort->im.p_FmPortImPram)) -
                                 p_FmPort->p_FmPortDriverParam->fmMuramPhysBaseAddr + 0x20));
 
         LOG2((uint64_t)p_FmPort->im.mrblr, log2Num);
         MY_WRITE_UINT16(p_FmPort->im.p_FmPortImPram->mrblr, log2Num);
 
         /* Initialize Rx QD */
-        tmpPhysBase = CAST_POINTER_TO_UINT64(XX_VirtToPhys(p_FmPort->im.p_BdRing));
+        tmpPhysBase = (uint64_t)(XX_VirtToPhys(p_FmPort->im.p_BdRing));
         SET_ADDR(&p_FmPort->im.p_FmPortImPram->rxQd.bdRingBase, tmpPhysBase);
         MY_WRITE_UINT16(p_FmPort->im.p_FmPortImPram->rxQd.bdRingSize, (uint16_t)(sizeof(t_FmImBd)*p_FmPort->im.bdRingSize));
 
         /* Update the IM PRAM address in the BMI */
         WRITE_UINT32(p_FmPort->p_FmPortBmiRegs->rxPortBmiRegs.fmbm_rfqid,
-                     (uint32_t)(CAST_POINTER_TO_UINT64(XX_VirtToPhys(p_FmPort->im.p_FmPortImPram)) -
+                     (uint32_t)((uint64_t)(XX_VirtToPhys(p_FmPort->im.p_FmPortImPram)) -
                                 p_FmPort->p_FmPortDriverParam->fmMuramPhysBaseAddr));
     }
     else
@@ -380,21 +389,24 @@ t_Error FmPortImInit(t_FmPort *p_FmPort)
         memset(p_FmPort->im.p_BdShadow, 0, (uint32_t)(sizeof(t_Handle)*p_FmPort->im.bdRingSize));
         p_FmPort->im.firstBdOfFrameId = IM_ILEGAL_BD_ID;
 
-        if (p_FmPort->im.dataMemAttributes & MEMORY_ATTR_CACHEABLE)
-            WRITE_UINT32(p_FmPort->im.p_FmPortImPram->mode, IM_MODE_GBL);
+        if ((p_FmPort->im.dataMemAttributes & MEMORY_ATTR_CACHEABLE) ||
+            (p_FmPort->im.fwExtStructsMemAttr & MEMORY_ATTR_CACHEABLE))
+            WRITE_UINT32(p_FmPort->im.p_FmPortImPram->mode, IM_MODE_GBL | IM_MODE_SET_BO(2));
+        else
+            WRITE_UINT32(p_FmPort->im.p_FmPortImPram->mode, IM_MODE_SET_BO(2));
 
         WRITE_UINT32(p_FmPort->im.p_FmPortImPram->txQdPtr,
-                     (uint32_t)(CAST_POINTER_TO_UINT64(XX_VirtToPhys(p_FmPort->im.p_FmPortImPram)) -
+                     (uint32_t)((uint64_t)(XX_VirtToPhys(p_FmPort->im.p_FmPortImPram)) -
                                 p_FmPort->p_FmPortDriverParam->fmMuramPhysBaseAddr + 0x40));
 
         /* Initialize Tx QD */
-        tmpPhysBase = CAST_POINTER_TO_UINT64(XX_VirtToPhys(p_FmPort->im.p_BdRing));
+        tmpPhysBase = (uint64_t)(XX_VirtToPhys(p_FmPort->im.p_BdRing));
         SET_ADDR(&p_FmPort->im.p_FmPortImPram->txQd.bdRingBase, tmpPhysBase);
         MY_WRITE_UINT16(p_FmPort->im.p_FmPortImPram->txQd.bdRingSize, (uint16_t)(sizeof(t_FmImBd)*p_FmPort->im.bdRingSize));
 
         /* Update the IM PRAM address in the BMI */
         WRITE_UINT32(p_FmPort->p_FmPortBmiRegs->txPortBmiRegs.fmbm_tcfqid,
-                     (uint32_t)(CAST_POINTER_TO_UINT64(XX_VirtToPhys(p_FmPort->im.p_FmPortImPram)) -
+                     (uint32_t)((uint64_t)(XX_VirtToPhys(p_FmPort->im.p_FmPortImPram)) -
                                 p_FmPort->p_FmPortDriverParam->fmMuramPhysBaseAddr));
     }
 
@@ -436,7 +448,7 @@ void FmPortImFree(t_FmPort *p_FmPort)
         }
     }
     else
-        FmPortTxConf(p_FmPort, e_TX_CONF_TYPE_FLUSH);
+        TxConf(p_FmPort, e_TX_CONF_TYPE_FLUSH);
 
     if (p_FmPort->im.p_BdShadow)
         XX_Free(p_FmPort->im.p_BdShadow);
@@ -485,12 +497,11 @@ t_Error FM_PORT_ConfigIMTxBdRingLength(t_Handle h_FmPort, uint16_t newVal)
     return E_OK;
 }
 
-
 t_Error  FM_PORT_ImTx( t_Handle               h_FmPort,
                        uint8_t                *p_Data,
                        uint16_t               length,
                        bool                   lastBuffer,
-                       t_Handle               h_UserPriv)
+                       t_Handle               h_BufContext)
 {
     t_FmPort            *p_FmPort = (t_FmPort*)h_FmPort;
     uint16_t            nextBdId;
@@ -508,11 +519,11 @@ t_Error  FM_PORT_ImTx( t_Handle               h_FmPort,
     if (!(bdStatus & BD_R_E) && !(nextBdStatus & BD_R_E))
     {
         /* Confirm the current BD - BD is available */
-        if ((bdStatus & BD_LENGTH_MASK) && (p_FmPort->im.f_TxConfCB))
-            p_FmPort->im.f_TxConfCB (p_FmPort->im.h_App,
-                                     BD_BUFFER(BD_GET(p_FmPort->im.currBdId)),
-                                     0,
-                                     p_FmPort->im.p_BdShadow[p_FmPort->im.currBdId]);
+        if ((bdStatus & BD_LENGTH_MASK) && (p_FmPort->im.f_TxConf))
+            p_FmPort->im.f_TxConf (p_FmPort->h_App,
+                                   BD_BUFFER(BD_GET(p_FmPort->im.currBdId)),
+                                   0,
+                                   p_FmPort->im.p_BdShadow[p_FmPort->im.currBdId]);
 
         bdStatus |= length;
 
@@ -529,7 +540,7 @@ t_Error  FM_PORT_ImTx( t_Handle               h_FmPort,
             firstBuffer = FALSE;
 
         BD_BUFFER_SET(BD_GET(p_FmPort->im.currBdId), p_Data);
-        p_FmPort->im.p_BdShadow[p_FmPort->im.currBdId] = h_UserPriv;
+        p_FmPort->im.p_BdShadow[p_FmPort->im.currBdId] = h_BufContext;
 
         /* deal with last */
         if (lastBuffer)
@@ -545,12 +556,12 @@ t_Error  FM_PORT_ImTx( t_Handle               h_FmPort,
                 BD_STATUS_AND_LENGTH_SET(BD_GET(p_FmPort->im.firstBdOfFrameId), p_FmPort->im.txFirstBdStatus);
                 p_FmPort->im.firstBdOfFrameId = IM_ILEGAL_BD_ID;
             }
+            MY_WRITE_UINT16(p_FmPort->im.p_FmPortImPram->txQd.offsetIn, (uint16_t)(GetNextBdId(p_FmPort, p_FmPort->im.currBdId)<<4));
         }
         else if (!firstBuffer) /* mid frame buffer */
             BD_STATUS_AND_LENGTH_SET (BD_GET(p_FmPort->im.currBdId), bdStatus | BD_R_E);
 
         p_FmPort->im.currBdId = GetNextBdId(p_FmPort, p_FmPort->im.currBdId);
-        MY_WRITE_UINT16(p_FmPort->im.p_FmPortImPram->txQd.offsetIn, (uint16_t)(p_FmPort->im.currBdId<<4));
     }
     else
     {
@@ -577,7 +588,7 @@ void FM_PORT_ImTxConf(t_Handle h_FmPort)
     SANITY_CHECK_RETURN(p_FmPort->imEn, E_INVALID_STATE);
     SANITY_CHECK_RETURN(!p_FmPort->p_FmPortDriverParam, E_INVALID_HANDLE);
 
-    FmPortTxConf(p_FmPort, e_TX_CONF_TYPE_CALLBACK);
+    TxConf(p_FmPort, e_TX_CONF_TYPE_CALLBACK);
 }
 
 t_Error  FM_PORT_ImRx(t_Handle h_FmPort)

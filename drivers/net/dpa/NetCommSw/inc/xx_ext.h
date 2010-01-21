@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -47,6 +47,7 @@
 #include "xx_integration_ext.h"
 #endif /* defined(__MWERKS__) && defined(OPTIMIZED_FOR_SPEED) */
 
+
 /**************************************************************************//**
  @Group         xx_id  XX Interface (System call hooks)
 
@@ -78,7 +79,6 @@ void XX_EventById(uint32_t event, t_Handle appId, uint16_t flags, char *msg);
 
 
 #ifdef DEBUG_XX_MALLOC
-
 void * XX_MallocDebug(uint32_t size, char *fname, int line);
 
 void * XX_MallocSmartDebug(uint32_t size,
@@ -94,7 +94,6 @@ void * XX_MallocSmartDebug(uint32_t size,
     XX_MallocSmartDebug((sz), (memt), (al), __FILE__, __LINE__)
 
 #else /* not DEBUG_XX_MALLOC */
-
 /**************************************************************************//**
  @Function      XX_Malloc
 
@@ -120,7 +119,6 @@ void * XX_Malloc(uint32_t size);
  @Return        The address of the newly allocated block on success, NULL on failure.
 *//***************************************************************************/
 void * XX_MallocSmart(uint32_t size, int memPartitionId, uint32_t alignment);
-
 #endif /* not DEBUG_XX_MALLOC */
 
 /**************************************************************************//**
@@ -230,18 +228,21 @@ t_Error XX_DisableIntr(int irq);
 /**************************************************************************//**
  @Function      XX_DisableAllIntr
 
- @Description   Disable interrupts by writing to MSR register at the CPU.
+ @Description   Disable all interrupts by masking them at the CPU.
 
- @Return        intMASK a value that represent the interurupt mask before operation
+ @Return        A value that represents the interrupts state before the
+                operation, and should be passed to the matching
+                XX_RestoreAllIntr() call.
 *//***************************************************************************/
 uint32_t XX_DisableAllIntr(void);
 
 /**************************************************************************//**
  @Function      XX_RestoreAllIntr
 
- @Description   Enable interrupts by writing to MSR register at the CPU.
+ @Description   Restore previous state of interrupts level at the CPU.
 
- @Param[in]     flags           - intMASK, mask of previos level function will set the mask based on it.
+ @Param[in]     flags - A value that represents the interrupts state to restore,
+                        as returned by the matching call for XX_DisableAllIntr().
 
  @Return        None.
 *//***************************************************************************/
@@ -511,7 +512,6 @@ void XX_Unlock(t_MutexHandle h_Mutex);
 /*****************************************************************************/
 /*                        Spinlock Service Routines                          */
 /*****************************************************************************/
-typedef t_Handle t_SpinlockHandle;
 
 /**************************************************************************//**
  @Function      XX_InitSpinlock
@@ -520,7 +520,7 @@ typedef t_Handle t_SpinlockHandle;
 
  @Return        Spinlock handle is returned on success; NULL otherwise.
 *//***************************************************************************/
-t_SpinlockHandle  XX_InitSpinlock(void);
+t_Handle XX_InitSpinlock(void);
 
 /**************************************************************************//**
  @Function      XX_FreeSpinlock
@@ -531,10 +531,10 @@ t_SpinlockHandle  XX_InitSpinlock(void);
 
  @Return        None.
 *//***************************************************************************/
-void XX_FreeSpinlock(t_SpinlockHandle h_Spinlock);
+void XX_FreeSpinlock(t_Handle h_Spinlock);
 
 /**************************************************************************//**
- @Function      XX_Spinlock
+ @Function      XX_LockSpinlock
 
  @Description   Locks a spinlock.
 
@@ -542,10 +542,10 @@ void XX_FreeSpinlock(t_SpinlockHandle h_Spinlock);
 
  @Return        None.
 *//***************************************************************************/
-void XX_Spinlock(t_SpinlockHandle h_Spinlock);
+void XX_LockSpinlock(t_Handle h_Spinlock);
 
 /**************************************************************************//**
- @Function      XX_Spinunlock
+ @Function      XX_UnlockSpinlock
 
  @Description   Unlocks a spinlock.
 
@@ -553,35 +553,39 @@ void XX_Spinlock(t_SpinlockHandle h_Spinlock);
 
  @Return        None.
 *//***************************************************************************/
-void XX_Spinunlock(t_SpinlockHandle h_Spinlock);
+void XX_UnlockSpinlock(t_Handle h_Spinlock);
 
 /**************************************************************************//**
- @Function      XX_IntrSpinlock
+ @Function      XX_LockIntrSpinlock
 
  @Description   Locks a spinlock (interrupt safe).
 
  @Param[in]     h_Spinlock - A handle to a spinlock.
 
- @Return        None.
+ @Return        A value that represents the interrupts state before the
+                operation, and should be passed to the matching
+                XX_UnlockIntrSpinlock() call.
 *//***************************************************************************/
-void XX_IntrSpinlock(t_SpinlockHandle h_Spinlock);
+uint32_t XX_LockIntrSpinlock(t_Handle h_Spinlock);
 
 /**************************************************************************//**
- @Function      XX_IntrSpinunlock
+ @Function      XX_UnlockIntrSpinlock
 
  @Description   Unlocks a spinlock (interrupt safe).
 
- @Param[in]     h_Spinlock - A handle to a spinlock.
+ @Param[in]     h_Spinlock  - A handle to a spinlock.
+ @Param[in]     intrFlags   - A value that represents the interrupts state to
+                              restore, as returned by the matching call for
+                              XX_LockIntrSpinlock().
 
  @Return        None.
 *//***************************************************************************/
-void XX_IntrSpinunlock(t_SpinlockHandle h_Spinlock);
+void XX_UnlockIntrSpinlock(t_Handle h_Spinlock, uint32_t intrFlags);
 
 
 /*****************************************************************************/
 /*                        Timers Service Routines                            */
 /*****************************************************************************/
-typedef t_Handle t_TimerHandle;
 
 /**************************************************************************//**
  @Function      XX_CurrentTime
@@ -599,7 +603,7 @@ uint32_t XX_CurrentTime(void);
 
  @Return        Timer handle is returned on success; NULL otherwise.
 *//***************************************************************************/
-t_TimerHandle XX_CreateTimer(void);
+t_Handle XX_CreateTimer(void);
 
 /**************************************************************************//**
  @Function      XX_FreeTimer
@@ -610,7 +614,7 @@ t_TimerHandle XX_CreateTimer(void);
 
  @Return        None.
 *//***************************************************************************/
-void XX_FreeTimer(t_TimerHandle h_Timer);
+void XX_FreeTimer(t_Handle h_Timer);
 
 /**************************************************************************//**
  @Function      XX_StartTimer
@@ -632,11 +636,11 @@ void XX_FreeTimer(t_TimerHandle h_Timer);
 
  @Return        None.
 *//***************************************************************************/
-void XX_StartTimer(t_TimerHandle    h_Timer,
-                   uint32_t         msecs,
-                   bool             periodic,
-                   void             (*f_TimerExpired)(t_Handle h_Arg),
-                   t_Handle         h_Arg);
+void XX_StartTimer(t_Handle h_Timer,
+                   uint32_t msecs,
+                   bool     periodic,
+                   void     (*f_TimerExpired)(t_Handle h_Arg),
+                   t_Handle h_Arg);
 
 /**************************************************************************//**
  @Function      XX_StopTimer
@@ -647,7 +651,7 @@ void XX_StartTimer(t_TimerHandle    h_Timer,
 
  @Return        None.
 *//***************************************************************************/
-void XX_StopTimer(t_TimerHandle h_Timer);
+void XX_StopTimer(t_Handle h_Timer);
 
 /**************************************************************************//**
  @Function      XX_GetExpirationTime
@@ -659,7 +663,7 @@ void XX_StopTimer(t_TimerHandle h_Timer);
 
  @Return        The time left until the timer expires.
 *//***************************************************************************/
-uint32_t XX_GetExpirationTime(t_TimerHandle h_Timer);
+uint32_t XX_GetExpirationTime(t_Handle h_Timer);
 
 /**************************************************************************//**
  @Function      XX_ModTimer
@@ -675,7 +679,7 @@ uint32_t XX_GetExpirationTime(t_TimerHandle h_Timer);
 
  @Return        None.
 *//***************************************************************************/
-void XX_ModTimer(t_TimerHandle h_Timer, uint32_t msecs);
+void XX_ModTimer(t_Handle h_Timer, uint32_t msecs);
 
 /**************************************************************************//**
  @Function      XX_TimerIsActive
@@ -686,7 +690,7 @@ void XX_ModTimer(t_TimerHandle h_Timer, uint32_t msecs);
 
  @Return        0 - the timer is inactive; Non-zero value - the timer is active;
 *//***************************************************************************/
-int XX_TimerIsActive(t_TimerHandle h_Timer);
+int XX_TimerIsActive(t_Handle h_Timer);
 
 /**************************************************************************//**
  @Function      XX_Sleep
@@ -731,7 +735,7 @@ void XX_UDelay(uint32_t usecs);
 
  @Return        Virtual address.
 *//***************************************************************************/
-void * XX_PhysToVirt(void *addr);
+void * XX_PhysToVirt(physAddress_t addr);
 
 /**************************************************************************//**
  @Function      XX_VirtToPhys
@@ -742,11 +746,9 @@ void * XX_PhysToVirt(void *addr);
 
  @Return        Physical address.
 *//***************************************************************************/
-void * XX_VirtToPhys(void *addr);
+physAddress_t XX_VirtToPhys(void *addr);
 
-#define XXX_PhysToVirt(addr)  (CAST_POINTER_TO_UINT32(XX_PhysToVirt(CAST_UINT32_TO_POINTER(addr))))
-#define XXX_VirtToPhys(addr)  (CAST_POINTER_TO_UINT32(XX_VirtToPhys(CAST_UINT32_TO_POINTER(addr))))
-
+#define XXX_VirtToPhys(addr)  XX_VirtToPhys(CAST_UINT32_TO_POINTER(addr))
 
 #define MSG_BODY_SIZE       512
 #ifdef CONFIG_MULTI_PARTITION_SUPPORT

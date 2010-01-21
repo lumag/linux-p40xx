@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -39,8 +39,8 @@
 #ifndef __PART_INTEGRATION_EXT_H
 #define __PART_INTEGRATION_EXT_H
 
-//#include "ddr_std_ext.h"
-
+#include "std_ext.h"
+#include "dpaa_integration_ext.h"
 /**************************************************************************//**
  @Group         P4080_chip_id P4080 Application Programming Interface
 
@@ -48,6 +48,11 @@
 
  @{
 *//***************************************************************************/
+
+#define CORE_E500MC
+
+#define INTG_MAX_NUM_OF_CORES   8
+
 
 /**************************************************************************//**
  @Description   Module types.
@@ -97,6 +102,7 @@ typedef enum e_ModuleId
     e_MODULE_ID_BM_CI_PORTAL_7,
     e_MODULE_ID_BM_CI_PORTAL_8,
     e_MODULE_ID_FM1,                /**< Frame manager #1 module */
+    e_MODULE_ID_FM1_RTC,            /**< FM Real-Time-Clock */
     e_MODULE_ID_FM1_MURAM,          /**< FM Multi-User-RAM */
     e_MODULE_ID_FM1_BMI,            /**< FM BMI block */
     e_MODULE_ID_FM1_QMI,            /**< FM QMI block */
@@ -138,6 +144,7 @@ typedef enum e_ModuleId
     e_MODULE_ID_FM1_10GMAC0,        /**< FM 10G MAC #0 */
 
     e_MODULE_ID_FM2,                /**< Frame manager #2 module */
+    e_MODULE_ID_FM2_RTC,            /**< FM Real-Time-Clock */
     e_MODULE_ID_FM2_MURAM,          /**< FM Multi-User-RAM */
     e_MODULE_ID_FM2_BMI,            /**< FM BMI block */
     e_MODULE_ID_FM2_QMI,            /**< FM QMI block */
@@ -216,7 +223,8 @@ typedef enum e_TransSrc
 typedef enum e_P4080DeviceName
 {
     e_P4080_REV_INVALID   = 0x00000000,   /**< Invalid revision      */
-    e_P4080E_REV_1_0      = 0x82080010    /**< P4080E with security, revision 1.0 */
+    e_P4080E_REV_1_0      = 0x82080010,   /**< P4080E with security, revision 1.0 */
+    e_P4080E_REV_2_0      = 0x82080020    /**< P4080E with security, revision 2.0 */
 } e_P4080DeviceName;
 
 /**************************************************************************//**
@@ -225,7 +233,8 @@ typedef enum e_P4080DeviceName
 typedef struct
 {
     uint64_t        ccsrBaseAddress;        /**< CCSR base address (virtual) */
-    uint64_t        portalsBaseAddress;     /**< Portals base address (virtual) */
+    uint64_t        bmPortalsBaseAddress;   /**< Portals base address (virtual) */
+    uint64_t        qmPortalsBaseAddress;   /**< Portals base address (virtual) */
     bool            (*f_BoardIsValidSerDesConfigurationCB) (uint8_t val);
 } t_P4080Params;
 
@@ -292,7 +301,7 @@ t_Handle P4080_ConfigAndInit(t_P4080Params *p_P4080Params);
 t_Error P4080_Free(t_Handle h_P4080);
 
 /**************************************************************************//**
- @Function      P4080_GetModuleBase
+ @Function      P4080_GetModulePhysBase
 
  @Description   returns the base address of a P4080 module's
                 memory mapped registers.
@@ -303,7 +312,7 @@ t_Error P4080_Free(t_Handle h_P4080);
  @Return        Base address of module's memory mapped registers.
                 ILLEGAL_BASE in case of non-existent module
 *//***************************************************************************/
-uint64_t P4080_GetModuleBase(t_Handle h_P4080, e_ModuleId module);
+uint64_t P4080_GetModulePhysBase(t_Handle h_P4080, e_ModuleId module);
 
 /**************************************************************************//**
  @Function      P4080_GetRevInfo
@@ -380,6 +389,15 @@ uint32_t P4080_GetDdrFactor(t_Handle h_P4080);
 *//***************************************************************************/
 t_Error  P4080_GetFmFactor(t_Handle h_P4080, uint8_t fmIndex, uint32_t *p_FmMulFactor, uint32_t *p_FmDivFactor);
 
+/**************************************************************************//**
+ @Function      P4080_Reset
+
+ @Description   Reset the chip.
+
+ @Param[in]     h_P4080 - The handle of the initialized P4080 object.
+*//***************************************************************************/
+void P4080_Reset(t_Handle h_P4080);
+
 t_Error P4080_CoreTimeBaseEnable(t_Handle h_P4080);
 t_Error P4080_CoreTimeBaseDisable(t_Handle h_P4080);
 
@@ -402,12 +420,43 @@ t_Error P4080_DeviceEnable(t_Handle h_P4080,e_ModuleId module, bool enable);
 #define MODULE_P4080_PLTFRM     0x00060000
 #define MODULE_MMU              0x00070000
 #define MODULE_EPIC             0x00080000
-#define MODULE_FM               0x00090000
-#define MODULE_QM               0x000a0000
-#define MODULE_BM               0x000b0000
-#define MODULE_DUART            0x000c0000
-#define MODULE_SERDES           0x000d0000
-#define MODULE_PIO              0x000e0000
+#define MODULE_DUART            0x00090000
+#define MODULE_SERDES           0x000a0000
+#define MODULE_PIO              0x000b0000
+#define MODULE_QM               0x000c0000
+#define MODULE_BM               0x000d0000
+#define MODULE_FM               0x000e0000
+#define MODULE_FM_MURAM         0x000f0000
+#define MODULE_FM_PCD           0x00100000
+#define MODULE_FM_RTC           0x00110000
+#define MODULE_FM_MAC           0x00120000
+#define MODULE_FM_PORT          0x00130000
+
+/*****************************************************************************
+ LA INTEGRATION-SPECIFIC DEFINITIONS
+******************************************************************************/
+#define LA_NUM_OF_WINDOWS       32                      /**< Number of local access windows */
+
+/**************************************************************************//**
+ @Description   Local Access Window Target interface ID
+*//***************************************************************************/
+typedef enum e_LaTgtId
+{
+    e_LA_ID_PCIE1   = 0x00,  /**< PCI Express 1 target interface ID */
+    e_LA_ID_PCIE2   = 0x01,  /**< PCI Express 2 target interface ID */
+    e_LA_ID_PCIE3   = 0x02,  /**< PCI Express 3 target interface ID */
+    e_LA_ID_RIO1    = 0x08,  /**< RapidIO 1 target interface ID */
+    e_LA_ID_RIO2    = 0x09,  /**< RapidIO 2 target interface ID */
+    e_LA_ID_LS      = 0x0F,  /**< Local Space target interface ID */
+    e_LA_ID_MC1     = 0x10,  /**< DDR controller 1 or CPC1 SRAM target interface ID */
+    e_LA_ID_MC2     = 0x11,  /**< DDR controller 2 or CPC2 SRAM target interface ID */
+    e_LA_ID_IM      = 0x14,  /**< Interleaved DDR controllers or CPC SRAM target interface ID */
+    e_LA_ID_BMAN    = 0x18,  /**< BMAN target interface ID */
+    e_LA_ID_DCSR    = 0x1D,  /**< DCSR target interface ID */
+    e_LA_ID_LBC     = 0x1F,  /**< Local Bus target interface ID */
+    e_LA_ID_QMAN    = 0x3C,  /**< QMAN target interface ID */
+    e_LA_ID_NONE    = 0xFF  /**< None */
+} e_LaTgtId;
 
 /*****************************************************************************
  GPIO INTEGRATION-SPECIFIC DEFINITIONS
@@ -429,13 +478,13 @@ t_Error P4080_DeviceEnable(t_Handle h_P4080,e_ModuleId module, bool enable);
 /*****************************************************************************
  MPIC INTEGRATION-SPECIFIC DEFINITIONS
 ******************************************************************************/
-#define EPIC_MULTICORE_SUPPORT
+#define EPIC_MODE_MPIC
 
-/*****************************************************************************
- QMan INTEGRATION-SPECIFIC DEFINITIONS
-******************************************************************************/
-#define QMAN_WQ_CS_CFG_ERRATA
-#define QMAN_SFDR_LEAK_ERRATA
+#define EPIC_NUM_OF_EXT_INTRS           12
+#define EPIC_NUM_OF_INT_INTRS           112
+#define EPIC_NUM_OF_TIMERS              8
+#define EPIC_NUM_OF_MSG_INTRS           8
+#define EPIC_NUM_OF_SMSG_INTRS          24
 
 /*****************************************************************************
  SerDes INTEGRATION-SPECIFIC DEFINITIONS
@@ -443,107 +492,5 @@ t_Error P4080_DeviceEnable(t_Handle h_P4080,e_ModuleId module, bool enable);
 #ifndef SIMULATOR
 #define SERDES_ERRATA
 #endif /* !SIMULATOR */
-
-/*****************************************************************************
- FM INTEGRATION-SPECIFIC DEFINITIONS
-******************************************************************************/
-#define INTG_MAX_NUM_OF_FM          2
-
-#define FM_MAX_NUM_OF_1G_RX_PORTS   4
-#define FM_MAX_NUM_OF_10G_RX_PORTS  1
-#define FM_MAX_NUM_OF_RX_PORTS      (FM_MAX_NUM_OF_10G_RX_PORTS+FM_MAX_NUM_OF_1G_RX_PORTS)
-#define FM_MAX_NUM_OF_1G_TX_PORTS   4
-#define FM_MAX_NUM_OF_10G_TX_PORTS  1
-#define FM_MAX_NUM_OF_TX_PORTS      (FM_MAX_NUM_OF_10G_TX_PORTS+FM_MAX_NUM_OF_1G_TX_PORTS)
-#define FM_MAX_NUM_OF_OH_PORTS      7
-#define FM_MAX_NUM_OF_1G_MACS       (FM_MAX_NUM_OF_1G_RX_PORTS)
-#define FM_MAX_NUM_OF_10G_MACS      (FM_MAX_NUM_OF_10G_RX_PORTS)
-#define FM_MAX_NUM_OF_MACS          (FM_MAX_NUM_OF_1G_MACS+FM_MAX_NUM_OF_10G_MACS)
-#define FM_MAX_NUM_OF_PCD_PORTS     (FM_MAX_NUM_OF_RX_PORTS+FM_MAX_NUM_OF_OH_PORTS)
-
-#define FM_MURAM_SIZE               (160*KILOBYTE)
-#define FM_PCD_PLCR_NUM_ENTRIES     256                 /**< Total number of policer profiles */
-#define FM_PCD_KG_NUM_OF_SCHEMES    32                  /**< Total number of KG schemes */
-#define FM_PCD_MAX_NUM_OF_CLS_PLANS 256                 /**< Number of classification plan entries. */
-
-/**************************************************************************//**
- @Description   Enum for inter-module interrupts registration
-*//***************************************************************************/
-typedef enum e_FmEventModules{
-    e_FM_MOD_PRS,                   /**< Parser event */
-    e_FM_MOD_KG,                    /**< Keygen event */
-    e_FM_MOD_PLCR,                  /**< Policer event */
-    e_FM_MOD_10G_MAC,               /**< 10G MAC  error event */
-    e_FM_MOD_1G_MAC,                /**< 1G MAC  error event */
-    e_FM_MOD_TMR,                   /**< Timer event */
-    e_FM_MOD_1G_MAC_TMR,            /**< 1G MAC  Timer event */
-    e_FM_MOD_DUMMY_LAST
-} e_FmEventModules;
-
-/**************************************************************************//**
- @Description   Enum for interrupts types
-*//***************************************************************************/
-typedef enum e_FmIntrType {
-    e_FM_INTR_TYPE_ERR,
-    e_FM_INTR_TYPE_NORMAL
-}e_FmIntrType;
-
-#define GET_MODULE_EVENT(mod, id, intrType, event)                                                  \
-    switch(mod){                                                                                    \
-        case e_FM_MOD_PRS:                                                                          \
-            if (id) event = e_FM_EV_DUMMY_LAST;                                                     \
-            else event = (intrType == e_FM_INTR_TYPE_ERR) ? e_FM_EV_ERR_PRS:e_FM_EV_PRS;            \
-            break;                                                                                  \
-        case e_FM_MOD_KG:                                                                           \
-            if (id) event = e_FM_EV_DUMMY_LAST;                                                     \
-            else event = (intrType == e_FM_INTR_TYPE_ERR) ? e_FM_EV_ERR_KG:e_FM_EV_DUMMY_LAST;      \
-            break;                                                                                  \
-        case e_FM_MOD_PLCR:                                                                         \
-            if (id) event = e_FM_EV_DUMMY_LAST;                                                     \
-            else event = (intrType == e_FM_INTR_TYPE_ERR) ? e_FM_EV_ERR_PLCR:e_FM_EV_PLCR;          \
-            break;                                                                                  \
-        case e_FM_MOD_10G_MAC:                                                                      \
-            if (id) event = e_FM_EV_DUMMY_LAST;                                                     \
-            else event = (intrType == e_FM_INTR_TYPE_ERR) ? e_FM_EV_ERR_10G_MAC0:e_FM_EV_DUMMY_LAST;\
-            break;                                                                                  \
-        case e_FM_MOD_1G_MAC:                                                                       \
-            switch(id){                                                                             \
-                 case(0): event = (intrType == e_FM_INTR_TYPE_ERR) ? e_FM_EV_ERR_1G_MAC0:e_FM_EV_DUMMY_LAST; break; \
-                 case(1): event = (intrType == e_FM_INTR_TYPE_ERR) ? e_FM_EV_ERR_1G_MAC1:e_FM_EV_1G_MAC1; break;    \
-                 case(2): event = (intrType == e_FM_INTR_TYPE_ERR) ? e_FM_EV_ERR_1G_MAC2:e_FM_EV_1G_MAC2; break;    \
-                 case(3): event = (intrType == e_FM_INTR_TYPE_ERR) ? e_FM_EV_ERR_1G_MAC3:e_FM_EV_1G_MAC3; break;    \
-                 }                                                                                  \
-            break;                                                                                  \
-        case e_FM_MOD_TMR:                                                                          \
-            if (id) event = e_FM_EV_DUMMY_LAST;                                                     \
-            else event = (intrType == e_FM_INTR_TYPE_ERR) ? e_FM_EV_DUMMY_LAST:e_FM_EV_TMR;         \
-            break;                                                                                  \
-        case e_FM_MOD_1G_MAC_TMR:                                                                   \
-            switch(id){                                                                             \
-                 case(0): event = (intrType == e_FM_INTR_TYPE_ERR) ? e_FM_EV_DUMMY_LAST:e_FM_EV_1G_MAC0_TMR; break; \
-                 case(1): event = (intrType == e_FM_INTR_TYPE_ERR) ? e_FM_EV_DUMMY_LAST:e_FM_EV_1G_MAC1_TMR; break; \
-                 case(2): event = (intrType == e_FM_INTR_TYPE_ERR) ? e_FM_EV_DUMMY_LAST:e_FM_EV_1G_MAC2_TMR; break; \
-                 case(3): event = (intrType == e_FM_INTR_TYPE_ERR) ? e_FM_EV_DUMMY_LAST:e_FM_EV_1G_MAC3_TMR; break; \
-                 }                                                                                  \
-            break;                                                                                  \
-        default:event = e_FM_EV_DUMMY_LAST;                                                         \
-        break;}
-
-#ifndef SIMULATOR
-#define FM_10G_MAC_NO_CTRL_LOOPBACK
-#endif /* !SIMULATOR */
-
-/* FM erratas */
-#define FM_OP_PARTITION_ERRATA
-#ifndef SIMULATOR
-#define FM_ENET_PAUSE_FRM_ERRATA
-#define FM_MURAM_ERR_IRQ_ERRATA
-#define FM_PORT_SYNC_ERRATA
-#define FM_PRS_MEM_ERRATA
-#define BUP_FM_PORT_DISABLE_ERRATA
-#define BUP_FM_HALT_SIG_ERRATA
-#define BUP_ERRATA_RAM_INTR
-#endif /* !SIMULATOR */
-
 
 #endif /* __PART_INTEGRATION_EXT_H */

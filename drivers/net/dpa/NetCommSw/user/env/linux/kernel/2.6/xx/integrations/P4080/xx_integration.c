@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -154,14 +154,14 @@ int GetDeviceIrqNum(int irq)
 #endif    /* LINUX_VERSION_CODE */
 
 
-void * XX_PhysToVirt(void * addr)
+void * XX_PhysToVirt(physAddress_t addr)
 {
-    return CAST_UINT64_TO_POINTER(SYS_PhysToVirt(CAST_POINTER_TO_UINT64(addr)));
+    return CAST_UINT64_TO_POINTER(SYS_PhysToVirt((uint64_t)addr));
 }
 
-void * XX_VirtToPhys(void * addr)
+physAddress_t XX_VirtToPhys(void * addr)
 {
-    return CAST_UINT64_TO_POINTER(SYS_VirtToPhys(CAST_POINTER_TO_UINT64(addr)));
+    return (physAddress_t)SYS_VirtToPhys(CAST_POINTER_TO_UINT64(addr));
 }
 
 /*****************************************************************************/

@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -39,9 +39,10 @@
 #include "string_ext.h"
 #include "sprint_ext.h"
 #include "error_ext.h"
-
-#include "fm_mac.h"
 #include "fm_ext.h"
+
+#include "fm_common.h"
+#include "fm_mac.h"
 
 
 /* ........................................................................... */
@@ -81,6 +82,9 @@ t_Error FM_MAC_Init (t_Handle h_FmMac)
                     ((ENET_INTERFACE_FROM_MODE(p_FmMacControllerDriver->enetMode) == e_ENET_IF_XGMII) ? e_FM_MAC_10G : e_FM_MAC_1G),
                      p_FmMacControllerDriver->macId) != E_OK))
         RETURN_ERROR(MAJOR, E_INVALID_STATE, ("Can't reset MAC!"));
+
+    if ((p_FmMacControllerDriver->clkFreq = FmGetClockFreq(p_FmMacControllerDriver->h_Fm)) == 0)
+        RETURN_ERROR(MAJOR, E_INVALID_STATE, ("Can't get clock for MAC!"));
 
     if (p_FmMacControllerDriver->f_FM_MAC_Init)
         return p_FmMacControllerDriver->f_FM_MAC_Init(h_FmMac);
@@ -199,19 +203,20 @@ t_Error FM_MAC_ConfigHalfDuplex (t_Handle h_FmMac, bool newVal)
 
 /* ........................................................................... */
 
-t_Error FM_MAC_ConfigHugeFrames (t_Handle h_FmMac, bool newVal)
+t_Error FM_MAC_ConfigLengthCheck (t_Handle h_FmMac, bool newVal)
 {
     t_FmMacControllerDriver *p_FmMacControllerDriver = (t_FmMacControllerDriver *)h_FmMac;
 
     SANITY_CHECK_RETURN_ERROR(p_FmMacControllerDriver, E_INVALID_HANDLE);
 
-    if (p_FmMacControllerDriver->f_FM_MAC_ConfigHugeFrames)
-        return p_FmMacControllerDriver->f_FM_MAC_ConfigHugeFrames(h_FmMac, newVal);
+    if (p_FmMacControllerDriver->f_FM_MAC_ConfigLengthCheck)
+        return p_FmMacControllerDriver->f_FM_MAC_ConfigLengthCheck(h_FmMac,newVal);
 
     RETURN_ERROR(MINOR, E_NOT_SUPPORTED, NO_MSG);
 }
 
 /* ........................................................................... */
+
 t_Error FM_MAC_ConfigException (t_Handle h_FmMac, e_FmMacExceptions ex, bool enable)
 {
     t_FmMacControllerDriver *p_FmMacControllerDriver = (t_FmMacControllerDriver *)h_FmMac;
@@ -260,28 +265,42 @@ t_Error FM_MAC_Disable (t_Handle h_FmMac, e_CommMode mode)
 
 /* ........................................................................... */
 
-t_Error FM_MAC_Restart (t_Handle h_FmMac, e_CommMode mode)
+t_Error FM_MAC_Enable1588TimeStamp (t_Handle h_FmMac)
 {
     t_FmMacControllerDriver *p_FmMacControllerDriver = (t_FmMacControllerDriver *)h_FmMac;
 
     SANITY_CHECK_RETURN_ERROR(p_FmMacControllerDriver, E_INVALID_HANDLE);
 
-    if (p_FmMacControllerDriver->f_FM_MAC_Restart)
-        return p_FmMacControllerDriver->f_FM_MAC_Restart(h_FmMac, mode);
+    if (p_FmMacControllerDriver->f_FM_MAC_Enable1588TimeStamp)
+        return p_FmMacControllerDriver->f_FM_MAC_Enable1588TimeStamp(h_FmMac);
 
     RETURN_ERROR(MINOR, E_NOT_SUPPORTED, NO_MSG);
 }
 
 /* ........................................................................... */
 
-t_Error FM_MAC_TxMacPause (t_Handle h_FmMac, uint16_t pauseTime, uint16_t exPauseTime)
+t_Error FM_MAC_Disable1588TimeStamp (t_Handle h_FmMac)
+{
+    t_FmMacControllerDriver *p_FmMacControllerDriver = (t_FmMacControllerDriver *)h_FmMac;
+
+    SANITY_CHECK_RETURN_ERROR(p_FmMacControllerDriver, E_INVALID_HANDLE);
+
+    if (p_FmMacControllerDriver->f_FM_MAC_Disable1588TimeStamp)
+        return p_FmMacControllerDriver->f_FM_MAC_Disable1588TimeStamp(h_FmMac);
+
+    RETURN_ERROR(MINOR, E_NOT_SUPPORTED, NO_MSG);
+}
+
+/* ........................................................................... */
+
+t_Error FM_MAC_TxMacPause (t_Handle h_FmMac, uint16_t pauseTime)
 {
     t_FmMacControllerDriver *p_FmMacControllerDriver = (t_FmMacControllerDriver *)h_FmMac;
 
     SANITY_CHECK_RETURN_ERROR(p_FmMacControllerDriver, E_INVALID_HANDLE);
 
     if (p_FmMacControllerDriver->f_FM_MAC_TxMacPause)
-        return p_FmMacControllerDriver->f_FM_MAC_TxMacPause(h_FmMac, pauseTime, exPauseTime);
+        return p_FmMacControllerDriver->f_FM_MAC_TxMacPause(h_FmMac, pauseTime);
 
     RETURN_ERROR(MINOR, E_NOT_SUPPORTED, NO_MSG);
 }
@@ -483,6 +502,20 @@ t_Error FM_MAC_MII_ReadPhyReg(t_Handle h_FmMac,  uint8_t phyAddr, uint8_t reg, u
     RETURN_ERROR(MINOR, E_NOT_SUPPORTED, NO_MSG);
 }
 
+/* ........................................................................... */
+
+uint16_t FM_MAC_GetMaxFrameLength(t_Handle h_FmMac)
+{
+    t_FmMacControllerDriver *p_FmMacControllerDriver = (t_FmMacControllerDriver *)h_FmMac;
+
+    SANITY_CHECK_RETURN_VALUE(p_FmMacControllerDriver, E_INVALID_HANDLE, 0);
+
+    if (p_FmMacControllerDriver->f_FM_MAC_GetMaxFrameLength)
+        return p_FmMacControllerDriver->f_FM_MAC_GetMaxFrameLength(h_FmMac);
+
+    REPORT_ERROR(MINOR, E_NOT_SUPPORTED, NO_MSG);
+    return 0;
+}
 
 #if (defined(DEBUG_ERRORS) && (DEBUG_ERRORS > 0))
 /*****************************************************************************/

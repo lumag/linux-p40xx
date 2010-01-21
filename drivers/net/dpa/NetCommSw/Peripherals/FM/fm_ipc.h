@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -212,9 +212,9 @@ typedef enum e_FmIpcPortType {
     e_FM_IPC_PORT_TYPE_DUMMY
 } e_FmIpcPortType;
 
-#ifdef __MWERKS__
+#if defined(__MWERKS__) && !defined(__GNUC__)
 #pragma pack(push,1)
-#endif /*__MWERKS__ */
+#endif /* defined(__MWERKS__) && ... */
 #define MEM_MAP_START
 
 /**************************************************************************//**
@@ -224,12 +224,13 @@ typedef _Packed struct t_FmIpcPhysAddr
 {
     volatile uint16_t high;
     volatile uint32_t low;
-}_PackedType t_FmIpcPhysAddr;
+} _PackedType t_FmIpcPhysAddr;
 
 #define MEM_MAP_END
-#ifdef __MWERKS__
+#if defined(__MWERKS__) && !defined(__GNUC__)
 #pragma pack(pop)
-#endif /* __MWERKS__ */
+#endif /* defined(__MWERKS__) && ... */
+
 
 #define FM_GET_TIMESTAMP            1
 #define FM_GET_TIMESTAMP_PERIOD     2
@@ -244,6 +245,8 @@ typedef _Packed struct t_FmIpcPhysAddr
 #define FM_GET_REV                  11
 #define FM_REGISTER_INTR            12
 #define FM_GUEST_ISR                13
+#define FM_GET_CLK_FREQ             14
+
 /**************************************************************************//**
  @Description   Structure for IPC communication during FM_PORT_Init.
                 Fields commented 'IN' are passed by the port module to be used

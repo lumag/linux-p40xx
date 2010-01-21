@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -122,8 +122,8 @@
 /* Ceiling division - not the fastest way, but safer in terms of overflow */
 #define DIV_CEIL(x,y)   ((uint32_t)((x)/(y)) + (((((uint32_t)((x)/(y)))*(y)) == (x)) ? 0 : 1))
 
-/* Round division */
-#define DIV_ROUND(x,y)  (((x)+((y)>>1))/(y))
+/* Round up a number to be a multiple of a second number */
+#define ROUND_UP(x,y)   ((((x) + (y) - 1) / (y)) * (y))
 
 /* Timing macro for converting usec units to number of ticks.   */
 /* (number of usec *  clock_Hz) / 1,000,000) - since            */
@@ -159,6 +159,9 @@
 #define WORD_ALIGNED            0x00000003
 #define DOUBLE_WORD_ALIGNED     0x00000007
 #define BURST_ALIGNED           0x0000001f
+#ifndef IS_ALIGNED
+#define IS_ALIGNED(n,align)     (!((uint32_t)(n) & (align - 1)))
+#endif /* IS_ALIGNED */
 
 
 #define LAST_BUF        1
@@ -206,16 +209,14 @@ typedef enum e_CommMode
 *//***************************************************************************/
 typedef enum e_DiagMode
 {
-    e_DIAG_MODE_NONE = 0,
-    e_DIAG_MODE_CTRL_LOOPBACK,      /**< loopback in the controller; E.g. MAC, TDM, etc. */
-#ifdef P4080
-    e_DIAG_MODE_CHIP_LOOPBACK,      /**< loopback in the chip but not in controller;
-                                         E.g. IO-pins, SerDes, etc. */
-#endif /* P4080 */
-    e_DIAG_MODE_PHY_LOOPBACK,       /**< loopback in the external PHY */
-    e_DIAG_MODE_LINE_LOOPBACK,      /**< loopback in the external line */
-    e_DIAG_MODE_CTRL_ECHO,          /**< */
-    e_DIAG_MODE_PHY_ECHO            /**< */
+    e_DIAG_MODE_NONE = 0,       /**< Normal operation; no diagnostic mode */
+    e_DIAG_MODE_CTRL_LOOPBACK,  /**< Loopback in the controller */
+    e_DIAG_MODE_CHIP_LOOPBACK,  /**< Loopback in the chip but not in the
+                                     controller; e.g. IO-pins, SerDes, etc. */
+    e_DIAG_MODE_PHY_LOOPBACK,   /**< Loopback in the external PHY */
+    e_DIAG_MODE_EXT_LOOPBACK,   /**< Loopback in the external line */
+    e_DIAG_MODE_CTRL_ECHO,      /**< Echo incoming data by the controller */
+    e_DIAG_MODE_PHY_ECHO        /**< Echo incoming data by the PHY */
 } e_DiagMode;
 
 /**************************************************************************//**

@@ -7,5 +7,3 @@ EXTRA_CFLAGS           += -DVERSION=\"\"
 include $(srctree)/drivers/net/dpa/NetCommSw/ncsw_config.mk
 
 obj-y		+= module_strings.o
-
-

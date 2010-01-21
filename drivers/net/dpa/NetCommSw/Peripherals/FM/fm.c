@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -60,9 +60,6 @@ static t_Error CheckFmParameters(t_Fm *p_Fm)
 {
     uint8_t     i;
 
-    if(p_Fm->p_FmDriverParam->enTimeStamp)
-        if(!p_Fm->timeStampPeriod)
-            RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("timeStampPeriod may not be 0"));
     if(!p_Fm->p_FmDriverParam->dmaAxiDbgNumOfBeats || (p_Fm->p_FmDriverParam->dmaAxiDbgNumOfBeats > DMA_MODE_MAX_AXI_DBG_NUM_OF_BEATS))
         RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("axiDbgNumOfBeats has to be in the range 1 - %d", DMA_MODE_MAX_AXI_DBG_NUM_OF_BEATS));
     if(p_Fm->p_FmDriverParam->dmaCamNumOfEntries % DMA_CAM_UNITS)
@@ -92,8 +89,9 @@ static t_Error CheckFmParameters(t_Fm *p_Fm)
         RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("fmClkFreq must be set."));
     if(USEC_TO_CLK(p_Fm->p_FmDriverParam->dmaWatchdog, p_Fm->fmClkFreq) > DMA_MAX_WATCHDOG)
         RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("dmaWatchdog depends on FM clock. dmaWatchdog(in microseconds) * clk (in Mhz), may not exceed 0xffffffff"));
-    for (i=0 ; i<FM_MAX_NUM_OF_PARTITIONS ; i++)
-        if(p_Fm->p_FmDriverParam->liodnPerPartition[i] & ~FM_LIODN_MASK)
+
+    for (i=0; i<FM_MAX_NUM_OF_PARTITIONS; i++)
+        if (p_Fm->p_FmDriverParam->liodnPerPartition[i] & ~FM_LIODN_BASE_MASK)
             RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("liodn number is out of range"));
 
     if(p_Fm->totalFifoSize % BMI_FIFO_UNITS)
@@ -108,7 +106,7 @@ static t_Error CheckFmParameters(t_Fm *p_Fm)
     if(p_Fm->p_FmDriverParam->thresholds.dispLimit > FPM_MAX_DISP_LIMIT)
         RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("thresholds.dispLimit can't be greater than %d", FPM_MAX_DISP_LIMIT));
 
-    if(!p_Fm->f_Exceptions)
+    if(!p_Fm->f_Exception)
         RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("Exceptions callback not provided"));
     if(!p_Fm->f_BusError)
         RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("Exceptions callback not provided"));
@@ -172,11 +170,11 @@ static void    BmiErrEvent(t_Fm *p_Fm)
     WRITE_UINT32(p_Fm->p_FmBmiRegs->fmbm_ievr, event);
 
     if(event & BMI_ERR_INTR_EN_PIPELINE_ECC)
-        p_Fm->f_Exceptions(p_Fm->h_App,e_FM_EX_BMI_PIPELINE_ECC);
+        p_Fm->f_Exception(p_Fm->h_App,e_FM_EX_BMI_PIPELINE_ECC);
     if(event & BMI_ERR_INTR_EN_LIST_RAM_ECC)
-        p_Fm->f_Exceptions(p_Fm->h_App,e_FM_EX_BMI_LIST_RAM_ECC);
+        p_Fm->f_Exception(p_Fm->h_App,e_FM_EX_BMI_LIST_RAM_ECC);
     if(event & BMI_ERR_INTR_EN_STATISTICS_RAM_ECC)
-        p_Fm->f_Exceptions(p_Fm->h_App,e_FM_EX_BMI_STATISTICS_RAM_ECC);
+        p_Fm->f_Exception(p_Fm->h_App,e_FM_EX_BMI_STATISTICS_RAM_ECC);
 }
 
 static void    QmiErrEvent(t_Fm *p_Fm)
@@ -195,9 +193,9 @@ static void    QmiErrEvent(t_Fm *p_Fm)
     WRITE_UINT32(p_Fm->p_FmQmiRegs->fmqm_eie, event);
 
     if(event & QMI_ERR_INTR_EN_DOUBLE_ECC)
-        p_Fm->f_Exceptions(p_Fm->h_App,e_FM_EX_QMI_DOUBLE_ECC);
+        p_Fm->f_Exception(p_Fm->h_App,e_FM_EX_QMI_DOUBLE_ECC);
     if(event & QMI_ERR_INTR_EN_DEQ_FROM_DEF)
-        p_Fm->f_Exceptions(p_Fm->h_App,e_FM_EX_QMI_DEQ_FROM_DEFQ);
+        p_Fm->f_Exception(p_Fm->h_App,e_FM_EX_QMI_DEQ_FROM_UNKNOWN_PORTID);
 }
 
 static void    DmaErrEvent(t_Fm *p_Fm)
@@ -237,11 +235,11 @@ static void    DmaErrEvent(t_Fm *p_Fm)
     if(mask & DMA_MODE_ECC)
     {
         if (status & DMA_STATUS_READ_ECC)
-            p_Fm->f_Exceptions(p_Fm->h_App, e_FM_EX_DMA_READ_ECC) ;
+            p_Fm->f_Exception(p_Fm->h_App, e_FM_EX_DMA_READ_ECC) ;
         if (status & DMA_STATUS_SYSTEM_WRITE_ECC)
-            p_Fm->f_Exceptions(p_Fm->h_App, e_FM_EX_DMA_SYSTEM_WRITE_ECC) ;
+            p_Fm->f_Exception(p_Fm->h_App, e_FM_EX_DMA_SYSTEM_WRITE_ECC) ;
         if (status & DMA_STATUS_FM_WRITE_ECC)
-            p_Fm->f_Exceptions(p_Fm->h_App, e_FM_EX_DMA_FM_WRITE_ECC) ;
+            p_Fm->f_Exception(p_Fm->h_App, e_FM_EX_DMA_FM_WRITE_ECC) ;
     }
 }
 
@@ -255,11 +253,11 @@ static void    FpmErrEvent(t_Fm *p_Fm)
     WRITE_UINT32(p_Fm->p_FmFpmRegs->fpmem, event);
 
     if((event  & FPM_EV_MASK_DOUBLE_ECC) && (event & FPM_EV_MASK_DOUBLE_ECC_EN))
-        p_Fm->f_Exceptions(p_Fm->h_App,e_FM_EX_FPM_DOUBLE_ECC);
+        p_Fm->f_Exception(p_Fm->h_App,e_FM_EX_FPM_DOUBLE_ECC);
     if((event  & FPM_EV_MASK_STALL) && (event & FPM_EV_MASK_STALL_EN))
-        p_Fm->f_Exceptions(p_Fm->h_App,e_FM_EX_FPM_STALL_ON_TASKS);
+        p_Fm->f_Exception(p_Fm->h_App,e_FM_EX_FPM_STALL_ON_TASKS);
     if((event  & FPM_EV_MASK_SINGLE_ECC) && (event & FPM_EV_MASK_SINGLE_ECC_EN))
-        p_Fm->f_Exceptions(p_Fm->h_App,e_FM_EX_FPM_SINGLE_ECC);
+        p_Fm->f_Exception(p_Fm->h_App,e_FM_EX_FPM_SINGLE_ECC);
 }
 
 static void    MuramErrIntr(t_Fm *p_Fm)
@@ -267,47 +265,35 @@ static void    MuramErrIntr(t_Fm *p_Fm)
     uint32_t    event, mask;
 
     event = GET_UINT32(p_Fm->p_FmFpmRegs->fmrcr);
-    mask = GET_UINT32(p_Fm->p_FmFpmRegs->fmeie);
+    mask = GET_UINT32(p_Fm->p_FmFpmRegs->fmrie);
 
     /* clear MURAM event bit */
     WRITE_UINT32(p_Fm->p_FmFpmRegs->fmrcr, event & ~FPM_RAM_CTL_IRAM_ECC);
 
-
-    ASSERT_COND(event  & FPM_RAM_CTL_MURAM_ECC);
-    ASSERT_COND(event  & FPM_RAM_CTL_RAMS_ECC_EN);
+    ASSERT_COND(event & FPM_RAM_CTL_MURAM_ECC);
+    ASSERT_COND(event & FPM_RAM_CTL_RAMS_ECC_EN);
 
     if ((mask & FPM_MURAM_ECC_ERR_EX_EN))
-        p_Fm->f_Exceptions(p_Fm->h_App, e_FM_EX_MURAM_ECC);
-
-#ifdef BUP_ERRATA_RAM_INTR
-    else
-        DBG(WARNING, ("MURAM masked Interrupt ..."));
-#endif /* BUP_ERRATA_RAM_INTR */
-
+        p_Fm->f_Exception(p_Fm->h_App, e_FM_EX_MURAM_ECC);
 }
 
-static void    IramErrIntr(t_Fm *p_Fm)
+static void IramErrIntr(t_Fm *p_Fm)
 {
     uint32_t    event, mask;
 
     event = GET_UINT32(p_Fm->p_FmFpmRegs->fmrcr) ;
-    mask = GET_UINT32(p_Fm->p_FmFpmRegs->fmeie);
+    mask = GET_UINT32(p_Fm->p_FmFpmRegs->fmrie);
     /* clear the acknowledged events (do not clear IRAM event) */
-    WRITE_UINT32(p_Fm->p_FmFpmRegs->fmrcr, event & ~FPM_RAM_CTL_MURAM_ECC );
+    WRITE_UINT32(p_Fm->p_FmFpmRegs->fmrcr, event & ~FPM_RAM_CTL_MURAM_ECC);
 
-    ASSERT_COND(event  & FPM_RAM_CTL_IRAM_ECC);
-    ASSERT_COND(event  & FPM_RAM_CTL_IRAM_ECC_EN);
+    ASSERT_COND(event & FPM_RAM_CTL_IRAM_ECC);
+    ASSERT_COND(event & FPM_RAM_CTL_IRAM_ECC_EN);
 
     if ((mask & FPM_IRAM_ECC_ERR_EX_EN))
-        p_Fm->f_Exceptions(p_Fm->h_App, e_FM_EX_IRAM_ECC);
-
-#ifdef BUP_ERRATA_RAM_INTR
-    else
-        DBG(WARNING, ("IRAM masked Interrupt ..."));
-#endif /* BUP_ERRATA_RAM_INTR */
+        p_Fm->f_Exception(p_Fm->h_App, e_FM_EX_IRAM_ECC);
 }
 
-static void     QmiEvent(t_Fm *p_Fm)
+static void QmiEvent(t_Fm *p_Fm)
 {
     uint32_t    event, mask;
 
@@ -323,10 +309,10 @@ static void     QmiEvent(t_Fm *p_Fm)
     WRITE_UINT32(p_Fm->p_FmQmiRegs->fmqm_ie, event);
 
     if(event & QMI_INTR_EN_SINGLE_ECC)
-        p_Fm->f_Exceptions(p_Fm->h_App,e_FM_EX_QMI_SINGLE_ECC);
+        p_Fm->f_Exception(p_Fm->h_App,e_FM_EX_QMI_SINGLE_ECC);
 }
 
-static void     FmCtlEvent(t_Fm *p_Fm, uint32_t pending)
+static void CtlEvent(t_Fm *p_Fm, uint32_t pending)
 {
     uint32_t    eventRegBitMask = FPM_EVENT_FM_CTL_0;
     uint8_t     i;
@@ -359,7 +345,40 @@ static void UnimplementedFmCtlIsr(t_Handle h_Arg, uint32_t event)
     REPORT_ERROR(MAJOR, E_NOT_SUPPORTED, ("Unimplemented FmCtl Isr!"));
 }
 
-static void FmFreeInitResources(t_Fm *p_Fm)
+static void FmEnableTimeStamp(t_Fm *p_Fm)
+{
+    uint32_t                tmpReg;
+    uint64_t                fraction;
+    uint32_t                integer;
+    uint8_t                 count1MicroBit = 8;
+    uint32_t                tsFrequency = (uint32_t)(1<<count1MicroBit); /* in Mhz */
+
+    /* configure timestamp so that bit 8 will count 1 microsecond */
+    /* Find effective count rate at TIMESTAMP least significant bits:
+       Effective_Count_Rate = 1MHz x 2^8 = 256MHz
+       Find frequency ratio between effective count rate and the clock:
+       Effective_Count_Rate / CLK e.g. for 600 MHz clock:
+       256/600 = 0.4266666... */
+    integer = tsFrequency/p_Fm->fmClkFreq;
+    /* we multiply by 2^16 to keep the fraction of the division */
+    /* we do not divid back, since we write this value as fraction - see spec */
+    fraction = ((tsFrequency << 16) - (integer << 16)*p_Fm->fmClkFreq)/p_Fm->fmClkFreq;
+    /* we check remainder of the division in order to round up if not interger */
+    if(((tsFrequency << 16) - (integer << 16)*p_Fm->fmClkFreq) % p_Fm->fmClkFreq)
+        fraction++;
+
+    tmpReg = (integer << FPM_TS_INT_SHIFT) | (uint16_t)fraction;
+    WRITE_UINT32(p_Fm->p_FmFpmRegs->fpmtsc2, tmpReg);
+
+    /* enable timestamp with original clock */
+    WRITE_UINT32(p_Fm->p_FmFpmRegs->fpmtsc1, FPM_TS_CTL_EN);
+
+    p_Fm->count1MicroBit = count1MicroBit;
+    p_Fm->enabledTimeStamp = TRUE;
+}
+
+
+static void FreeInitResources(t_Fm *p_Fm)
 {
     if (p_Fm->camBaseAddr)
        FM_MURAM_FreeMem(p_Fm->h_FmMuram, CAST_UINT64_TO_POINTER(p_Fm->camBaseAddr));
@@ -367,33 +386,47 @@ static void FmFreeInitResources(t_Fm *p_Fm)
        FM_MURAM_FreeMem(p_Fm->h_FmMuram, CAST_UINT64_TO_POINTER(p_Fm->fifoBaseAddr));
 }
 
-static t_Error LoadUCode(t_Fm *p_Fm)
+static t_Error ClearIRam(t_Fm *p_Fm)
 {
     t_FMIramRegs    *p_Iram = CAST_UINT64_TO_POINTER_TYPE(t_FMIramRegs, (p_Fm->baseAddr + FM_MM_IMEM));
-    uint32_t        *p_Muram = CAST_UINT64_TO_POINTER_TYPE(uint32_t, (p_Fm->baseAddr + FM_MM_MURAM));
+    int             i;
+
+    SANITY_CHECK_RETURN_ERROR(p_Fm, E_INVALID_HANDLE);
+
+    /* Enable the auto-increment */
+    WRITE_UINT32(p_Iram->iadd, IRAM_IADD_AIE);
+    while (GET_UINT32(p_Iram->iadd) != IRAM_IADD_AIE) ;
+
+    for (i=0; i < (FM_IRAM_SIZE / 4); i++)
+        WRITE_UINT32(p_Iram->idata, 0xffffffff);
+
+    WRITE_UINT32(p_Iram->iadd,0x0);
+    /* verify that writing has completed */
+    while (GET_UINT32(p_Iram->idata) != 0xffffffff) ;
+
+    return E_OK;
+}
+
+static t_Error LoadFmanCtrlCode(t_Fm *p_Fm)
+{
+    t_FMIramRegs    *p_Iram = CAST_UINT64_TO_POINTER_TYPE(t_FMIramRegs, (p_Fm->baseAddr + FM_MM_IMEM));
     int             i;
     uint32_t        tmp;
     uint8_t         compTo16;
 
     SANITY_CHECK_RETURN_ERROR(p_Fm, E_INVALID_HANDLE);
 
-    /* clear MURAM */
-    for (i=0; i < FM_MURAM_SIZE/4; i++)
-        WRITE_UINT32(*(p_Muram+i), 0);
-
-    DBG(TRACE, ("Loading firmware to IRAM ..."));
-
-    /* Applying patch to IRAM */
+    /* Enable the auto-increment */
     WRITE_UINT32(p_Iram->iadd, IRAM_IADD_AIE);
     while (GET_UINT32(p_Iram->iadd) != IRAM_IADD_AIE) ;
 
     for (i=0; i < (p_Fm->p_FmDriverParam->firmware.size / 4); i++)
         WRITE_UINT32(p_Iram->idata, p_Fm->p_FmDriverParam->firmware.p_Code[i]);
 
-    compTo16 = p_Fm->p_FmDriverParam->firmware.size %16;
+    compTo16 = (uint8_t)(p_Fm->p_FmDriverParam->firmware.size % 16);
     if(compTo16)
         for (i=0; i < ((16-compTo16) / 4); i++)
-            WRITE_UINT32(p_Iram->idata, 0);
+            WRITE_UINT32(p_Iram->idata, 0xffffffff);
 
     WRITE_UINT32(p_Iram->iadd,0x0);
     /* verify that writing has completed */
@@ -408,11 +441,15 @@ static t_Error LoadUCode(t_Fm *p_Fm)
                 RETURN_ERROR(MAJOR, E_WRITE_FAILED,
                              ("UCode write error : write 0x%x, read 0x%x",
                               p_Fm->p_FmDriverParam->firmware.p_Code[i],tmp));
-        WRITE_UINT32(p_Iram->iadd,0x0);
+        WRITE_UINT32(p_Iram->iadd, 0x0);
     }
 
     /* Enable patch from IRAM */
     WRITE_UINT32(p_Iram->iready, IRAM_READY);
+
+    DBG(INFO, ("FMan-Controller code (ver %d.%d) loaded to IRAM.",
+               ((uint8_t *)p_Fm->p_FmDriverParam->firmware.p_Code)[5],
+               ((uint8_t *)p_Fm->p_FmDriverParam->firmware.p_Code)[7]));
 
     return E_OK;
 }
@@ -443,6 +480,9 @@ t_Error     FmHandleIpcMsg(t_Handle h_Fm, uint32_t msgId, uint8_t msgBody[MSG_BO
             memcpy(msgBody, (uint8_t *)&ipcParams, sizeof(t_FmIpcMacReset));
             return FmResetMac(p_Fm, (e_FmMacType)ipcParams.type, ipcParams.id);
         }
+        case (FM_GET_CLK_FREQ):
+            *(uint16_t*)msgBody = p_Fm->fmClkFreq;
+            break;
         case (FM_FREE_PORT):
             FmFreePortParams(h_Fm, (t_FmInterModulePortFreeParams*)msgBody);
             break;
@@ -453,6 +493,11 @@ t_Error     FmHandleIpcMsg(t_Handle h_Fm, uint32_t msgId, uint8_t msgBody[MSG_BO
         case (FM_DUMP_PORT_REGS):
             return FmDumpPortRegs(h_Fm, msgBody[0]);
 #endif /* (defined(DEBUG_ERRORS) && ... */
+        case (FM_GET_REV):
+        case (FM_GET_COUNTER):
+        case (FM_GET_TIMESTAMP):
+        case (FM_GET_TIMESTAMP_PERIOD):
+            RETURN_ERROR(MINOR, E_NOT_SUPPORTED, NO_MSG);
         default:
             RETURN_ERROR(MINOR, E_INVALID_SELECTION, ("command not found!!!"));
     }
@@ -503,12 +548,11 @@ t_Error FmGetPhysicalMuramBase(t_Handle h_Fm, t_FmPhysAddr *fmPhysAddr)
     SANITY_CHECK_RETURN_ERROR(p_Fm, E_INVALID_HANDLE);
 
     /* General FM driver initialization */
-    fmPhysAddr->low=(uint32_t)p_Fm->fmMuramPhysBaseAddr;
-    fmPhysAddr->high=(uint16_t)((p_Fm->fmMuramPhysBaseAddr & 0x0000ffff00000000LL) >> 32);
+    fmPhysAddr->low = (uint32_t)p_Fm->fmMuramPhysBaseAddr;
+    fmPhysAddr->high = (uint8_t)((p_Fm->fmMuramPhysBaseAddr & 0x000000ff00000000LL) >> 32);
 
     return E_OK;
 }
-
 
 void FmRegisterIntr(t_Handle h_Fm,
                         e_FmEventModules        module,
@@ -520,11 +564,26 @@ void FmRegisterIntr(t_Handle h_Fm,
     t_Fm       *p_Fm = (t_Fm*)h_Fm;
     uint8_t     event= 0;
 
-    GET_MODULE_EVENT(module, modId,intrType, event);
+    GET_FM_MODULE_EVENT(module, modId,intrType, event);
 
     ASSERT_COND(event != e_FM_EV_DUMMY_LAST);
     p_Fm->intrMng[event].f_Isr = f_Isr;
     p_Fm->intrMng[event].h_SrcHandle = h_Arg;
+}
+
+void FmUnregisterIntr(t_Handle h_Fm,
+                        e_FmEventModules        module,
+                        uint8_t                 modId,
+                        e_FmIntrType            intrType)
+{
+    t_Fm       *p_Fm = (t_Fm*)h_Fm;
+    uint8_t     event= 0;
+
+    GET_FM_MODULE_EVENT(module, modId,intrType, event);
+
+    ASSERT_COND(event != e_FM_EV_DUMMY_LAST);
+    p_Fm->intrMng[event].f_Isr = NULL;
+    p_Fm->intrMng[event].h_SrcHandle = NULL;
 }
 
 void  FmRegisterFmCtlIntr(t_Handle h_Fm, uint8_t eventRegId, void (*f_Isr) (t_Handle h_Fm, uint32_t event))
@@ -542,6 +601,17 @@ void  FmRegisterPcd(t_Handle h_Fm, t_Handle h_FmPcd)
         REPORT_ERROR(MAJOR, E_ALREADY_EXISTS, ("PCD already set"));
 
     p_Fm->h_Pcd = h_FmPcd;
+
+}
+
+void  FmUnregisterPcd(t_Handle h_Fm)
+{
+    t_Fm       *p_Fm = (t_Fm*)h_Fm;
+
+    if(!p_Fm->h_Pcd)
+        REPORT_ERROR(MAJOR, E_ALREADY_EXISTS, ("No PCD"));
+
+    p_Fm->h_Pcd = NULL;
 
 }
 
@@ -574,7 +644,12 @@ t_Error FmGetSetPortParams(t_Handle h_Fm,t_FmInterModulePortInitParams *p_PortPa
     SANITY_CHECK_RETURN_ERROR(p_Fm, E_INVALID_HANDLE);
 
     /* return parameters */
-    p_PortParams->timeStampPeriod = p_Fm->timeStampPeriod;
+    if (p_PortParams->useRateLimit)
+    {
+        if(!p_Fm->enabledTimeStamp)
+            FmEnableTimeStamp(p_Fm);
+        p_PortParams->count1MicroBit = p_Fm->count1MicroBit;
+    }
 
     if(p_PortParams->independentMode)
     {
@@ -584,7 +659,7 @@ t_Error FmGetSetPortParams(t_Handle h_Fm,t_FmInterModulePortInitParams *p_PortPa
         WRITE_UINT32(p_Fm->p_FmFpmRegs->fpmflc, 0);
     }
 
-    if(p_PortParams->portType == e_FM_PORT_TYPE_HOST_COMMAND)
+    if(p_PortParams->portType == e_FM_PORT_TYPE_OH_HOST_COMMAND)
     {
         if(p_Fm->hcPortInitialized)
             RETURN_ERROR(MAJOR, E_INVALID_STATE, ("Only one host command port is allowed."));
@@ -707,7 +782,7 @@ void FmFreePortParams(t_Handle h_Fm,t_FmInterModulePortFreeParams *p_PortParams)
 
     SANITY_CHECK_RETURN(p_Fm, E_INVALID_HANDLE);
 
-    if(p_PortParams->portType == e_FM_PORT_TYPE_HOST_COMMAND)
+    if(p_PortParams->portType == e_FM_PORT_TYPE_OH_HOST_COMMAND)
     {
         ASSERT_COND(p_Fm->hcPortInitialized);
         p_Fm->hcPortInitialized = FALSE;
@@ -737,7 +812,7 @@ void FmFreePortParams(t_Handle h_Fm,t_FmInterModulePortFreeParams *p_PortParams)
     if((p_PortParams->portType != e_FM_PORT_TYPE_RX) && (p_PortParams->portType != e_FM_PORT_TYPE_RX_10G))
     /* for transmit & O/H ports */
     {
-        tmpReg = 0;
+        tmpReg = GET_UINT32(p_Fm->p_FmQmiRegs->fmqm_gc);
         /* update qmi ENQ/DEQ threshold */
         p_Fm->accumulatedNumOfDeqTnums -= p_PortParams->deqPipelineDepth;
 
@@ -748,7 +823,7 @@ void FmFreePortParams(t_Handle h_Fm,t_FmInterModulePortFreeParams *p_PortParams)
         tmpReg |= ((uint32_t)enqTh << QMI_CFG_ENQ_SHIFT);
 
          /* p_Fm->accumulatedNumOfDeqTnums is now smaller,
-           so we can reduce enqTh */
+           so we can reduce deqTh */
         deqTh = (uint8_t)(p_Fm->accumulatedNumOfDeqTnums + 1);
         tmpReg &= ~QMI_CFG_DEQ_MASK;
         tmpReg |= (uint32_t)deqTh;
@@ -758,7 +833,6 @@ void FmFreePortParams(t_Handle h_Fm,t_FmInterModulePortFreeParams *p_PortParams)
 
     return;
 }
-
 
 bool FmIsPortStalled(t_Handle h_Fm, uint8_t hardwarePortId)
 {
@@ -835,14 +909,23 @@ t_Error FmResetMac(t_Handle h_Fm, e_FmMacType type, uint8_t macId)
     return E_OK;
 }
 
-uint32_t    FmGetTimeStampPeriod(t_Handle h_Fm)
+uint16_t FmGetClockFreq(t_Handle h_Fm)
 {
     t_Fm *p_Fm = (t_Fm*)h_Fm;
 
     SANITY_CHECK_RETURN_VALUE(p_Fm, E_INVALID_HANDLE, 0);
-    SANITY_CHECK_RETURN_VALUE(p_Fm->timeStampPeriod, E_INVALID_HANDLE, 0);
 
-    return p_Fm->timeStampPeriod;
+    return p_Fm->fmClkFreq;
+}
+uint32_t    FmGetTimeStampScale(t_Handle h_Fm)
+{
+    t_Fm *p_Fm = (t_Fm*)h_Fm;
+
+    SANITY_CHECK_RETURN_VALUE(p_Fm, E_INVALID_HANDLE, 0);
+
+    if(!p_Fm->enabledTimeStamp)
+        FmEnableTimeStamp(h_Fm);
+    return p_Fm->count1MicroBit;
 }
 
 bool FmRamsEccIsExternalCtl(t_Handle h_Fm)
@@ -855,6 +938,40 @@ bool FmRamsEccIsExternalCtl(t_Handle h_Fm)
         return TRUE;
     else
         return FALSE;
+}
+
+t_Error FmEnableRamsEcc(t_Handle h_Fm)
+{
+    t_Fm        *p_Fm = (t_Fm*)h_Fm;
+
+    SANITY_CHECK_RETURN_ERROR(p_Fm, E_INVALID_HANDLE);
+
+    p_Fm->ramsEccOwners++;
+    p_Fm->internalCall = TRUE;
+
+    return FM_EnableRamsEcc(p_Fm);
+}
+
+t_Error FmDisableRamsEcc(t_Handle h_Fm)
+{
+    t_Fm        *p_Fm = (t_Fm*)h_Fm;
+
+    SANITY_CHECK_RETURN_ERROR(p_Fm, E_INVALID_HANDLE);
+
+    ASSERT_COND(p_Fm->ramsEccOwners);
+    p_Fm->ramsEccOwners--;
+
+    if(p_Fm->ramsEccOwners==0)
+    {
+        p_Fm->internalCall = TRUE;
+        return FM_DisableRamsEcc(p_Fm);
+    }
+    return E_OK;
+}
+
+void FmGetRevision(t_Handle h_Fm, t_FmRevisionInfo *p_FmRevisionInfo)
+{
+    FM_GetRevision(h_Fm, p_FmRevisionInfo);
 }
 
 #ifdef CONFIG_MULTI_PARTITION_SUPPORT
@@ -925,7 +1042,7 @@ t_Handle FM_Config(t_FmParams *p_FmParam)
     p_Fm->h_FmMuram         = p_FmParam->h_FmMuram;
     p_Fm->h_App             = p_FmParam->h_App;
     p_Fm->fmClkFreq         = p_FmParam->fmClkFreq;
-    p_Fm->f_Exceptions      = p_FmParam->f_Exceptions;
+    p_Fm->f_Exception      = p_FmParam->f_Exception;
     p_Fm->f_BusError        = p_FmParam->f_BusError;
     p_Fm->p_FmFpmRegs       = CAST_UINT64_TO_POINTER_TYPE(t_FmFpmRegs, (baseAddr + FM_MM_FPM));
     p_Fm->p_FmBmiRegs       = CAST_UINT64_TO_POINTER_TYPE(t_FmBmiRegs, (baseAddr + FM_MM_BMI));
@@ -942,11 +1059,30 @@ t_Handle FM_Config(t_FmParams *p_FmParam)
     p_Fm->maxNumOfOpenDmas  = DEFAULT_maxNumOfOpenDmas;
     p_Fm->extraFifoPoolSize     = FM_MAX_NUM_OF_RX_PORTS*BMI_FIFO_UNITS;
 
-    p_Fm->exceptions        = DEFAULT_exceptions;
+    p_Fm->exceptions            = DEFAULT_exceptions;
+
+#ifdef FM_RAM_LIST_ERR_IRQ_ERRATA_FMAN11
+    {
+        t_FmRevisionInfo revInfo;
+        FmGetRevision(p_Fm, &revInfo);
+        if ((revInfo.majorRev == 1) && (revInfo.minorRev == 0))
+            p_Fm->exceptions  &= ~FM_EX_BMI_LIST_RAM_ECC;
+    }
+#endif   /* FM_RAM_LIST_ERR_IRQ_ERRATA_FMAN11 */
+
+#ifdef FM_IRAM_ECC_ERR_IRQ_ERRATA
+    {
+        t_FmRevisionInfo revInfo;
+        FmGetRevision(p_Fm, &revInfo);
+        if ((revInfo.majorRev == 1) && (revInfo.minorRev == 0))
+            p_Fm->exceptions  &= ~FM_EX_IRAM_ECC;
+    }
+#endif   /* FM_IRAM_ECC_ERR_IRQ_ERRATA */
+
     for(i = 0;i<FM_MAX_NUM_OF_PORTS;i++)
         p_Fm->portsTypes[i] = e_FM_PORT_TYPE_DUMMY;
     /* Initialize FM driver parameters parameters (for initialization phase only) */
-    memcpy(p_Fm->p_FmDriverParam->liodnPerPartition, p_FmParam->liodnPerPartition, FM_MAX_NUM_OF_PARTITIONS);
+    memcpy(p_Fm->p_FmDriverParam->liodnPerPartition, p_FmParam->liodnPerPartition, FM_MAX_NUM_OF_PARTITIONS*sizeof(uint16_t));
 
     /*p_Fm->p_FmDriverParam->numOfPartitions                      = p_FmParam->numOfPartitions;    */
     p_Fm->p_FmDriverParam->enCounters                           = FALSE;
@@ -962,8 +1098,6 @@ t_Handle FM_Config(t_FmParams *p_FmParam)
     p_Fm->p_FmDriverParam->thresholds.qmiDeqDispTh              = DEFAULT_qmiDeqDispTh;
     p_Fm->p_FmDriverParam->thresholds.fmCtl1DispTh               = DEFAULT_fmCtl1DispTh;
     p_Fm->p_FmDriverParam->thresholds.fmCtl2DispTh               = DEFAULT_fmCtl2DispTh;
-
-    p_Fm->p_FmDriverParam->enTimeStamp                          = FALSE;
 
     p_Fm->p_FmDriverParam->dmaStopOnBusError                    = DEFAULT_dmaStopOnBusError;
     p_Fm->p_FmDriverParam->dmaBusProtect.privilegeBusProtect    = DEFAULT_privilegeBusProtect;
@@ -999,7 +1133,6 @@ t_Handle FM_Config(t_FmParams *p_FmParam)
     p_Fm->p_FmDriverParam->dmaErr                               = DEFAULT_dmaErr;
     p_Fm->p_FmDriverParam->haltOnExternalActivation             = DEFAULT_haltOnExternalActivation;
     p_Fm->p_FmDriverParam->haltOnUnrecoverableEccError          = DEFAULT_haltOnUnrecoverableEccError;
-
     p_Fm->p_FmDriverParam->enIramTestMode                       = FALSE;
     p_Fm->p_FmDriverParam->enMuramTestMode                      = FALSE;
     p_Fm->p_FmDriverParam->externalEccRamsEnable                = DEFAULT_externalEccRamsEnable;
@@ -1020,7 +1153,7 @@ t_Handle FM_Config(t_FmParams *p_FmParam)
     }
 
 #ifdef CONFIG_MULTI_PARTITION_SUPPORT
-    /* register to inter-core messaging mechanism */
+    /* build the FM master partition IPC address */
     memset(p_Fm->fmModuleName, 0, MODULE_NAME_SIZE);
     if(Sprint (p_Fm->fmModuleName, "FM-%d-Master",p_Fm->fmId) != 11)
     {
@@ -1052,8 +1185,6 @@ t_Error FM_Init(t_Handle h_Fm)
 #endif /* FM_MASTER_PARTITION */
     uint32_t                tmpReg, cfgReg = 0;
     int                     i;
-    uint64_t                fraction;
-    uint32_t                prescalar, integer, period;
 
     SANITY_CHECK_RETURN_ERROR(h_Fm, E_INVALID_HANDLE);
     SANITY_CHECK_RETURN_ERROR(p_Fm->p_FmDriverParam, E_INVALID_HANDLE);
@@ -1065,15 +1196,17 @@ t_Error FM_Init(t_Handle h_Fm)
     if(p_FmDriverParam->resetOnInit)
         WRITE_UINT32(p_Fm->p_FmFpmRegs->fmrstc, FPM_RSTC_FM_RESET);
 
-    /**********************/
-    /* Load patch to Iram */
-    /**********************/
+    /*************************************/
+    /* Load FMan-Controller code to Iram */
+    /*************************************/
+    if (ClearIRam(p_Fm) != E_OK)
+        RETURN_ERROR(MAJOR, E_INVALID_STATE, NO_MSG);
     if (p_Fm->p_FmDriverParam->firmware.p_Code &&
-        (LoadUCode(p_Fm) != E_OK))
+        (LoadFmanCtrlCode(p_Fm) != E_OK))
         RETURN_ERROR(MAJOR, E_INVALID_STATE, NO_MSG);
 
     /* General FM driver initialization */
-    p_Fm->fmMuramPhysBaseAddr = CAST_POINTER_TO_UINT64(XX_VirtToPhys(CAST_UINT64_TO_POINTER(p_Fm->baseAddr + FM_MM_MURAM)));
+    p_Fm->fmMuramPhysBaseAddr = (uint64_t)(XX_VirtToPhys(CAST_UINT64_TO_POINTER(p_Fm->baseAddr + FM_MM_MURAM)));
     for(i=0;i<e_FM_EV_DUMMY_LAST;i++)
         p_Fm->intrMng[i].f_Isr = UnimplementedIsr;
     for(i=0;i<NUM_OF_FM_CTL_EVENT_REGS;i++)
@@ -1147,7 +1280,7 @@ t_Error FM_Init(t_Handle h_Fm)
 #endif /* VERIFICATION_SUPPORT */
     /* VirtToPhys */
     WRITE_UINT32(p_Fm->p_FmDmaRegs->fmdmebcr,
-                 (uint32_t)(CAST_POINTER_TO_UINT64(XX_VirtToPhys(CAST_UINT64_TO_POINTER(p_Fm->camBaseAddr))) -
+                 (uint32_t)((uint64_t)(XX_VirtToPhys(CAST_UINT64_TO_POINTER(p_Fm->camBaseAddr))) -
                             p_Fm->fmMuramPhysBaseAddr));
 
     /* liodn-partitions */
@@ -1199,65 +1332,13 @@ t_Error FM_Init(t_Handle h_Fm)
     for(i=0;i<NUM_OF_FM_CTL_EVENT_REGS;i++)
         WRITE_UINT32(p_Fm->p_FmFpmRegs->fpmcev[i], 0xFFFFFFFF);
 
-    /* timeStamp */
-    if(p_FmDriverParam->enTimeStamp)
-    {
-        period = p_Fm->timeStampPeriod;
-
-        /* calculate the prescalar, considering fmClkFreq is in Mhz, and
-        timeStampPeriod is in nanoseconds */
-        prescalar = (period * p_Fm->fmClkFreq)/1000;
-        if(!prescalar)
-            RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("timeStampPeriod is too small"));
-        if(prescalar > 256)
-            RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("timeStampPeriod is too large"));
-        WRITE_UINT32(p_Fm->p_FmFpmRegs->fpmtsc1, (uint32_t)((prescalar - 1) | FPM_TS_CTL_EN));
-
-        /* the FM HW allows to increase precision by enlarging timeStamp value by value
-        different than 1, possibly by fraction. */
-        integer  = (prescalar * 1000)/ (period * p_Fm->fmClkFreq); /* always 0 */
-        if(integer > 255)
-            RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("timeStampPeriod  is too large"));
-
-        /* Since the prescalar may have been be rounded down, we increase the timeStamp by
-        value smaller than the resolution required (and smaller than 1 when resolution is normally 1).
-        Here we calculate the fraction that will give us the nearest result.
-        Since we prefer not to use floating variables, we need to multiply by a large factor in
-        order to get a precise enough number. Since the HW implementation uses 24-bit-fixed-point
-        representation, a 16 bit fraction is used. In order to calculate the fraction value, we should
-        multiply the number by 2^16. We therefor use the 2^16 also as the factor for
-        the multiplication, and do not use another one for enlarging the fraction. */
-        fraction = ((uint64_t)((uint64_t)(prescalar * 1000) << 16)/ (period * p_Fm->fmClkFreq)) - (integer << 16);
-        ASSERT_COND((fraction & ~FPM_TS_FRACTION_MASK) == 0);
-        tmpReg = (integer << FPM_TS_INT_SHIFT) | (uint16_t)fraction;
-        WRITE_UINT32(p_Fm->p_FmFpmRegs->fpmtsc2, tmpReg);
-    }
-
 #ifndef VERIFICATION_SUPPORT
     /* RAM ECC -  enable and clear events*/
     /* first we need to clear all parser memory, as it is uninitialized and
     may cause ECC errors */
-   /* for(i=0;i<FM_SW_PRS_SIZE;i+=4)
-        WRITE_UINT32(*CAST_UINT64_TO_POINTER_TYPE(uint32_t, (p_Fm->baseAddr + FM_MM_PRS + i)), 0);
-*/
     tmpReg = 0;
-    if(p_Fm->exceptions & FM_EX_IRAM_ECC)
-    {
-        p_Fm->ramsEccEnable = TRUE;
-        tmpReg |= FPM_IRAM_ECC_ERR_EX_EN;
-    }
-    if(p_Fm->exceptions & FM_EX_NURAM_ECC)
-    {
-        p_Fm->ramsEccEnable = TRUE;
-        tmpReg |= FPM_MURAM_ECC_ERR_EX_EN;
-    }
-    WRITE_UINT32(p_Fm->p_FmFpmRegs->fmeie, tmpReg);
-
     /* event bits */
     tmpReg = (FPM_RAM_CTL_MURAM_ECC | FPM_RAM_CTL_IRAM_ECC);
-    /* enable ECC */
-    if(p_Fm->ramsEccEnable)
-        tmpReg |= (FPM_RAM_CTL_RAMS_ECC_EN | FPM_RAM_CTL_IRAM_ECC_EN);
     /* Rams enable is not effected by the RCR bit, but by a COP configuration */
     if(p_Fm->p_FmDriverParam->externalEccRamsEnable)
         tmpReg |= FPM_RAM_CTL_RAMS_ECC_EN_SRC_SEL;
@@ -1268,7 +1349,19 @@ t_Error FM_Init(t_Handle h_Fm)
     if(p_FmDriverParam->enIramTestMode)
         tmpReg |= FPM_RAM_CTL_IRAM_TEST_ECC;
     WRITE_UINT32(p_Fm->p_FmFpmRegs->fmrcr, tmpReg);
-#endif  /*  VERIFICATION_SUPPORT */
+
+    if(p_Fm->exceptions & FM_EX_IRAM_ECC)
+    {
+        tmpReg |= FPM_IRAM_ECC_ERR_EX_EN;
+        FmEnableRamsEcc(p_Fm);
+    }
+    if(p_Fm->exceptions & FM_EX_NURAM_ECC)
+    {
+        tmpReg |= FPM_MURAM_ECC_ERR_EX_EN;
+        FmEnableRamsEcc(p_Fm);
+    }
+    WRITE_UINT32(p_Fm->p_FmFpmRegs->fmrie, tmpReg);
+ #endif  /*  VERIFICATION_SUPPORT */
 
     /**********************/
     /* Init BMI Registers */
@@ -1281,11 +1374,11 @@ t_Error FM_Init(t_Handle h_Fm)
                                                                   BMI_FIFO_ALIGN));
     if (!p_Fm->fifoBaseAddr)
     {
-        FmFreeInitResources(p_Fm);
+        FreeInitResources(p_Fm);
         RETURN_ERROR(MAJOR, E_NO_MEMORY, ("MURAM alloc for FIFO failed"));
     }
 
-    tmpReg = (uint32_t)(CAST_POINTER_TO_UINT64(XX_VirtToPhys(CAST_UINT32_TO_POINTER(p_Fm->fifoBaseAddr))) - p_Fm->fmMuramPhysBaseAddr);
+    tmpReg = (uint32_t)((uint64_t)(XX_VirtToPhys(CAST_UINT32_TO_POINTER(p_Fm->fifoBaseAddr))) - p_Fm->fmMuramPhysBaseAddr);
     tmpReg = tmpReg / BMI_FIFO_ALIGN;
 
     tmpReg |= ((p_Fm->totalFifoSize/BMI_FIFO_UNITS - 1) << BMI_CFG1_FIFO_SIZE_SHIFT);
@@ -1299,17 +1392,11 @@ t_Error FM_Init(t_Handle h_Fm)
     tmpReg = 0;
     WRITE_UINT32(p_Fm->p_FmBmiRegs->fmbm_ievr, (BMI_ERR_INTR_EN_LIST_RAM_ECC|BMI_ERR_INTR_EN_PIPELINE_ECC|BMI_ERR_INTR_EN_STATISTICS_RAM_ECC));
     if(p_Fm->exceptions & FM_EX_BMI_LIST_RAM_ECC)
-    {
         tmpReg |= BMI_ERR_INTR_EN_LIST_RAM_ECC;
-    }
     if(p_Fm->exceptions & FM_EX_BMI_PIPELINE_ECC)
-    {
         tmpReg |= BMI_ERR_INTR_EN_PIPELINE_ECC;
-    }
     if(p_Fm->exceptions & FM_EX_BMI_STATISTICS_RAM_ECC)
-    {
         tmpReg |= BMI_ERR_INTR_EN_STATISTICS_RAM_ECC;
-    }
     WRITE_UINT32(p_Fm->p_FmBmiRegs->fmbm_ier, tmpReg);
 
     /**********************/
@@ -1318,14 +1405,10 @@ t_Error FM_Init(t_Handle h_Fm)
      /* Clear error interrupt events */
     WRITE_UINT32(p_Fm->p_FmQmiRegs->fmqm_eie, (QMI_ERR_INTR_EN_DOUBLE_ECC | QMI_ERR_INTR_EN_DEQ_FROM_DEF));
     tmpReg = 0;
-    if(p_Fm->exceptions & FM_EX_QMI_DEQ_FROM_DEFQ)
-    {
+    if(p_Fm->exceptions & FM_EX_QMI_DEQ_FROM_UNKNOWN_PORTID)
         tmpReg |= QMI_ERR_INTR_EN_DEQ_FROM_DEF;
-    }
     if(p_Fm->exceptions & FM_EX_QMI_DOUBLE_ECC)
-    {
         tmpReg |= QMI_ERR_INTR_EN_DOUBLE_ECC;
-    }
     /* enable events */
     WRITE_UINT32(p_Fm->p_FmQmiRegs->fmqm_eien, tmpReg);
 
@@ -1333,9 +1416,7 @@ t_Error FM_Init(t_Handle h_Fm)
     /* Clear interrupt events */
     WRITE_UINT32(p_Fm->p_FmQmiRegs->fmqm_ie, QMI_INTR_EN_SINGLE_ECC);
     if(p_Fm->exceptions & FM_EX_QMI_SINGLE_ECC)
-    {
         tmpReg |= QMI_INTR_EN_SINGLE_ECC;
-    }
     /* enable events */
     WRITE_UINT32(p_Fm->p_FmQmiRegs->fmqm_ien, tmpReg);
 
@@ -1400,16 +1481,39 @@ t_Error FM_Free(t_Handle h_Fm)
     if (!p_Fm)
         return ERROR_CODE(E_INVALID_HANDLE);
 
+    /* disable BMI and QMI */
+    WRITE_UINT32(p_Fm->p_FmBmiRegs->fmbm_init, 0);
+    WRITE_UINT32(p_Fm->p_FmQmiRegs->fmqm_gc, 0);
+
+    /* release BMI resources */
+    WRITE_UINT32(p_Fm->p_FmBmiRegs->fmbm_cfg2, 0);
+    WRITE_UINT32(p_Fm->p_FmBmiRegs->fmbm_cfg1, 0);
+
+    /* disable ECC */
+    WRITE_UINT32(p_Fm->p_FmFpmRegs->fmrcr, 0);
+
 #ifdef FM_MASTER_PARTITION
     XX_UnregisterMessageHandler(p_Fm->fmModuleName);
 #endif /* FM_MASTER_PARTITION */
+
+    if (p_Fm->irq != NO_IRQ)
+    {
+        XX_FreeIntr(p_Fm->irq);
+        XX_DisableIntr(p_Fm->irq);
+    }
+
+    if (p_Fm->errIrq != NO_IRQ)
+    {
+        XX_FreeIntr(p_Fm->errIrq);
+        XX_DisableIntr(p_Fm->errIrq);
+    }
 
     if(p_Fm->p_FmDriverParam)
     {
         XX_Free(p_Fm->p_FmDriverParam);
         p_Fm->p_FmDriverParam = NULL;
     }
-    FmFreeInitResources(p_Fm);
+    FreeInitResources(p_Fm);
 
     XX_Free(p_Fm);
 
@@ -1490,19 +1594,6 @@ t_Error FM_ConfigThresholds(t_Handle h_Fm, t_FmThresholds *p_FmThresholds)
     SANITY_CHECK_RETURN_ERROR(p_Fm->p_FmDriverParam, E_INVALID_HANDLE);
 
     memcpy(&p_Fm->p_FmDriverParam->thresholds, p_FmThresholds, sizeof(t_FmThresholds));
-
-    return E_OK;
-}
-
-t_Error FM_ConfigTimeStamp(t_Handle h_Fm, uint32_t timeStampPeriod)
-{
-    t_Fm *p_Fm = (t_Fm*)h_Fm;
-
-    SANITY_CHECK_RETURN_ERROR(p_Fm, E_INVALID_HANDLE);
-    SANITY_CHECK_RETURN_ERROR(p_Fm->p_FmDriverParam, E_INVALID_HANDLE);
-
-    p_Fm->p_FmDriverParam->enTimeStamp = TRUE;
-    p_Fm->timeStampPeriod = timeStampPeriod;
 
     return E_OK;
 }
@@ -1760,6 +1851,15 @@ t_Error FM_ConfigHaltOnExternalActivation(t_Handle h_Fm, bool enable)
     SANITY_CHECK_RETURN_ERROR(p_Fm, E_INVALID_HANDLE);
     SANITY_CHECK_RETURN_ERROR(p_Fm->p_FmDriverParam, E_INVALID_HANDLE);
 
+#ifdef FM_HALT_SIG_ERRATA_GEN_CCB310
+    {
+        t_FmRevisionInfo revInfo;
+        FmGetRevision(h_Fm, &revInfo);
+        if ((revInfo.majorRev == 1) && (revInfo.minorRev == 0))
+            RETURN_ERROR(MINOR, E_NOT_SUPPORTED, ("HaltOnExternalActivation!"));
+    }
+#endif /* FM_HALT_SIG_ERRATA_GEN_CCB310 */
+
     p_Fm->p_FmDriverParam->haltOnExternalActivation = enable;
 
     return E_OK;
@@ -1772,6 +1872,15 @@ t_Error FM_ConfigHaltOnUnrecoverableEccError(t_Handle h_Fm, bool enable)
     SANITY_CHECK_RETURN_ERROR(p_Fm, E_INVALID_HANDLE);
     SANITY_CHECK_RETURN_ERROR(p_Fm->p_FmDriverParam, E_INVALID_HANDLE);
 
+#ifdef FM_HALT_SIG_ERRATA_GEN_CCB310
+    {
+        t_FmRevisionInfo revInfo;
+        FmGetRevision(h_Fm, &revInfo);
+        if ((revInfo.majorRev == 1) && (revInfo.minorRev == 0))
+            RETURN_ERROR(MINOR, E_NOT_SUPPORTED, ("HaltOnUnrecoverableEccError!"));
+    }
+#endif /* FM_HALT_SIG_ERRATA_GEN_CCB310 */
+
     p_Fm->p_FmDriverParam->haltOnUnrecoverableEccError = enable;
 
     return E_OK;
@@ -1783,6 +1892,29 @@ t_Error FM_ConfigException(t_Handle h_Fm, e_FmExceptions exception, bool enable)
     uint32_t    bitMask = 0;
 
     SANITY_CHECK_RETURN_ERROR(p_Fm, E_INVALID_HANDLE);
+
+#ifdef FM_IRAM_ECC_ERR_IRQ_ERRATA
+    {
+        t_FmRevisionInfo revInfo;
+        if((exception == e_FM_EX_IRAM_ECC) && (enable))
+        {
+            FmGetRevision(p_Fm, &revInfo);
+            if ((revInfo.majorRev == 1) && (revInfo.minorRev == 0))
+                RETURN_ERROR(MINOR, E_NOT_SUPPORTED, ("e_FM_EX_IRAM_ECC!"));
+        }
+    }
+#endif   /* FM_IRAM_ECC_ERR_IRQ_ERRATA */
+#ifdef FM_RAM_LIST_ERR_IRQ_ERRATA_FMAN11
+    {
+        t_FmRevisionInfo revInfo;
+        if((exception == e_FM_EX_IRAM_ECC) && (enable))
+        {
+            FmGetRevision(p_Fm, &revInfo);
+            if ((revInfo.majorRev == 1) && (revInfo.minorRev == 0))
+                RETURN_ERROR(MINOR, E_NOT_SUPPORTED, ("e_FM_EX_BMI_LIST_RAM_ECC!"));
+        }
+    }
+#endif   /* FM_RAM_LIST_ERR_IRQ_ERRATA_FMAN11 */
 
     GET_EXCEPTION_FLAG(bitMask, exception);
     if(bitMask)
@@ -1841,7 +1973,7 @@ void FM_EventIsr(t_Handle h_Fm)
     if(pending & INTR_EN_KG)
         p_Fm->intrMng[e_FM_EV_KG].f_Isr(p_Fm->intrMng[e_FM_EV_KG].h_SrcHandle);
     if(pending & FPM_EVENT_FM_CTL)
-        FmCtlEvent(p_Fm, pending  & FPM_EVENT_FM_CTL);
+        CtlEvent(p_Fm, pending  & FPM_EVENT_FM_CTL);
     if(pending & INTR_EN_TMR)
             p_Fm->intrMng[e_FM_EV_TMR].f_Isr(p_Fm->intrMng[e_FM_EV_TMR].h_SrcHandle);
 
@@ -2005,8 +2137,8 @@ t_Error FM_SetPortsBandwidth(t_Handle h_Fm, t_PortsParam *p_PortsBandwidth)
     SANITY_CHECK_RETURN_ERROR(!p_Fm->p_FmDriverParam, E_INVALID_STATE);
 
     memset(portPrecent, 0, FM_MAX_NUM_OF_PORTS);
-    for(i=0;i<NUM_OF_PORT_TYPES;i++)
-        for(j=0;j<MAX_NUM_OF_PORTS_PER_TYPE;j++)
+    for(i=0;i<FM_NUM_OF_PORT_TYPES;i++)
+        for(j=0;j<FM_MAX_NUM_OF_PORTS_PER_TYPE;j++)
         {
             if((*p_PortsBandwidth)[i][j])
             {
@@ -2067,17 +2199,22 @@ t_Error FM_EnableRamsEcc(t_Handle h_Fm)
     uint32_t    tmpReg;
 
     SANITY_CHECK_RETURN_ERROR(p_Fm, E_INVALID_HANDLE);
-    SANITY_CHECK_RETURN_ERROR(!p_Fm->p_FmDriverParam, E_INVALID_HANDLE);
 
-    tmpReg = GET_UINT32(p_Fm->p_FmFpmRegs->fmrcr);
-    if(tmpReg & FPM_RAM_CTL_RAMS_ECC_EN_SRC_SEL)
-        RETURN_ERROR(MINOR, E_INVALID_STATE,("Rams ECC is configured to be controlled through JTAG"));
+    if(!p_Fm->internalCall)
+        p_Fm->explicitEnable = TRUE;
 
     if(p_Fm->ramsEccEnable)
         return E_OK;
     else
     {
-        WRITE_UINT32(p_Fm->p_FmFpmRegs->fmrcr, tmpReg | (FPM_RAM_CTL_RAMS_ECC_EN | FPM_RAM_CTL_IRAM_ECC_EN));
+        tmpReg = GET_UINT32(p_Fm->p_FmFpmRegs->fmrcr);
+        if(tmpReg & FPM_RAM_CTL_RAMS_ECC_EN_SRC_SEL)
+        {
+            DBG(WARNING, ("Rams ECC is configured to be controlled through JTAG"));
+            WRITE_UINT32(p_Fm->p_FmFpmRegs->fmrcr, tmpReg | FPM_RAM_CTL_IRAM_ECC_EN);
+        }
+        else
+            WRITE_UINT32(p_Fm->p_FmFpmRegs->fmrcr, tmpReg | (FPM_RAM_CTL_RAMS_ECC_EN | FPM_RAM_CTL_IRAM_ECC_EN));
         p_Fm->ramsEccEnable = TRUE;
     }
 
@@ -2088,19 +2225,34 @@ t_Error FM_DisableRamsEcc(t_Handle h_Fm)
 {
     t_Fm        *p_Fm = (t_Fm*)h_Fm;
     uint32_t    tmpReg;
+    bool        explicitDisable = FALSE;
 
     SANITY_CHECK_RETURN_ERROR(p_Fm, E_INVALID_HANDLE);
     SANITY_CHECK_RETURN_ERROR(!p_Fm->p_FmDriverParam, E_INVALID_HANDLE);
 
-    tmpReg = GET_UINT32(p_Fm->p_FmFpmRegs->fmrcr);
-    if(tmpReg & FPM_RAM_CTL_RAMS_ECC_EN_SRC_SEL)
-        RETURN_ERROR(MINOR, E_INVALID_STATE,("Rams ECC is configured to be controlled through JTAG"));
+    if(!p_Fm->internalCall)
+        explicitDisable = TRUE;
 
-    if(!p_Fm->ramsEccEnable)
+    /* if rams are already disabled, or if rams were explicitly enabled and are
+       currently called indirectly (not explicitly), ignore this call. */
+    if(!p_Fm->ramsEccEnable || (p_Fm->explicitEnable && !explicitDisable))
         return E_OK;
     else
     {
-        WRITE_UINT32(p_Fm->p_FmFpmRegs->fmrcr, tmpReg & ~(FPM_RAM_CTL_RAMS_ECC_EN | FPM_RAM_CTL_IRAM_ECC_EN));
+        if(p_Fm->explicitEnable)
+            /* This is the case were both explicit are TRUE.
+               Turn off this flag for cases were following ramsEnable
+               routines are called */
+            p_Fm->explicitEnable = FALSE;
+
+        tmpReg = GET_UINT32(p_Fm->p_FmFpmRegs->fmrcr);
+        if(tmpReg & FPM_RAM_CTL_RAMS_ECC_EN_SRC_SEL)
+        {
+            DBG(WARNING, ("Rams ECC is configured to be controlled through JTAG"));
+            WRITE_UINT32(p_Fm->p_FmFpmRegs->fmrcr, tmpReg & ~FPM_RAM_CTL_IRAM_ECC_EN);
+        }
+        else
+            WRITE_UINT32(p_Fm->p_FmFpmRegs->fmrcr, tmpReg & ~(FPM_RAM_CTL_RAMS_ECC_EN | FPM_RAM_CTL_IRAM_ECC_EN));
         p_Fm->ramsEccEnable = FALSE;
     }
 
@@ -2185,7 +2337,7 @@ t_Error FM_SetException(t_Handle h_Fm, e_FmExceptions exception, bool enable)
                     tmpReg &= ~QMI_ERR_INTR_EN_DOUBLE_ECC;
                 WRITE_UINT32(p_Fm->p_FmQmiRegs->fmqm_eien, tmpReg);
                 break;
-             case(e_FM_EX_QMI_DEQ_FROM_DEFQ):
+             case(e_FM_EX_QMI_DEQ_FROM_UNKNOWN_PORTID):
                 tmpReg = GET_UINT32(p_Fm->p_FmQmiRegs->fmqm_eien);
                 if(enable)
                     tmpReg |= QMI_ERR_INTR_EN_DEQ_FROM_DEF;
@@ -2196,7 +2348,15 @@ t_Error FM_SetException(t_Handle h_Fm, e_FmExceptions exception, bool enable)
              case(e_FM_EX_BMI_LIST_RAM_ECC):
                 tmpReg = GET_UINT32(p_Fm->p_FmBmiRegs->fmbm_ier);
                 if(enable)
+                {
+#ifdef FM_RAM_LIST_ERR_IRQ_ERRATA_FMAN11
+                    t_FmRevisionInfo revInfo;
+                    FmGetRevision(p_Fm, &revInfo);
+                    if ((revInfo.majorRev == 1) && (revInfo.minorRev == 0))
+                        RETURN_ERROR(MINOR, E_NOT_SUPPORTED, ("e_FM_EX_BMI_LIST_RAM_ECC!"));
+#endif   /* FM_RAM_LIST_ERR_IRQ_ERRATA_FMAN11 */
                     tmpReg |= BMI_ERR_INTR_EN_LIST_RAM_ECC;
+                }
                 else
                     tmpReg &= ~BMI_ERR_INTR_EN_LIST_RAM_ECC;
                 WRITE_UINT32(p_Fm->p_FmBmiRegs->fmbm_ier, tmpReg);
@@ -2218,40 +2378,46 @@ t_Error FM_SetException(t_Handle h_Fm, e_FmExceptions exception, bool enable)
                 WRITE_UINT32(p_Fm->p_FmBmiRegs->fmbm_ier, tmpReg);
                 break;
             case(e_FM_EX_IRAM_ECC):
-                tmpReg = GET_UINT32(p_Fm->p_FmFpmRegs->fmeie);
+                tmpReg = GET_UINT32(p_Fm->p_FmFpmRegs->fmrie);
                 if(enable)
                 {
+#ifdef FM_IRAM_ECC_ERR_IRQ_ERRATA
+                    t_FmRevisionInfo revInfo;
+                    FmGetRevision(p_Fm, &revInfo);
+                    if ((revInfo.majorRev == 1) && (revInfo.minorRev == 0))
+                        RETURN_ERROR(MINOR, E_NOT_SUPPORTED, ("e_FM_EX_IRAM_ECC!"));
+#endif   /* FM_IRAM_ECC_ERR_IRQ_ERRATA */
                     /* enable ECC if not enabled */
-                    if(!p_Fm->ramsEccEnable)
-                    {
-                        WRITE_UINT32(p_Fm->p_FmFpmRegs->fmrcr, GET_UINT32(p_Fm->p_FmFpmRegs->fmrcr) |
-                                                                (FPM_RAM_CTL_IRAM_ECC_EN | FPM_RAM_CTL_RAMS_ECC_EN));
-                        p_Fm->ramsEccEnable = TRUE;
-                    }
+                    FmEnableRamsEcc(p_Fm);
                     /* enable ECC interrupts */
                     tmpReg |= FPM_IRAM_ECC_ERR_EX_EN;
                 }
                 else
-                    /* ECC mechanism will remain enabled, but interrupts disabled */
+                {
+                    /* ECC mechanism may be disabled, depending on driver status  */
+                    FmDisableRamsEcc(p_Fm);
                     tmpReg &= ~FPM_IRAM_ECC_ERR_EX_EN;
-                WRITE_UINT32(p_Fm->p_FmFpmRegs->fmeie, tmpReg);
+                }
+                WRITE_UINT32(p_Fm->p_FmFpmRegs->fmrie, tmpReg);
                 break;
 
              case(e_FM_EX_MURAM_ECC):
-                tmpReg = GET_UINT32(p_Fm->p_FmFpmRegs->fmeie);
+                tmpReg = GET_UINT32(p_Fm->p_FmFpmRegs->fmrie);
                 if(enable)
                 {
                     /* enable ECC if not enabled */
-                    if(!FmRamsEccIsExternalCtl(p_Fm))
-                        FM_EnableRamsEcc(p_Fm);
+                    FmEnableRamsEcc(p_Fm);
                     /* enable ECC interrupts */
                     tmpReg |= FPM_MURAM_ECC_ERR_EX_EN;
                 }
                 else
-                    /* ECC mechanism will remain enabled, but interrupts disabled */
+                {
+                    /* ECC mechanism may be disabled, depending on driver status  */
+                    FmDisableRamsEcc(p_Fm);
                     tmpReg &= ~FPM_MURAM_ECC_ERR_EX_EN;
+                }
 
-                WRITE_UINT32(p_Fm->p_FmFpmRegs->fmeie, tmpReg);
+                WRITE_UINT32(p_Fm->p_FmFpmRegs->fmrie, tmpReg);
                 break;
             default:
                 RETURN_ERROR(MINOR, E_INVALID_SELECTION, NO_MSG);
@@ -2269,29 +2435,11 @@ void FM_GetRevision(t_Handle h_Fm, t_FmRevisionInfo *p_FmRevisionInfo)
     uint32_t    tmpReg;
 
     SANITY_CHECK_RETURN(p_Fm, E_INVALID_HANDLE);
-    SANITY_CHECK_RETURN(!p_Fm->p_FmDriverParam, E_INVALID_STATE);
 
     /* read revision register 1 */
     tmpReg = GET_UINT32(p_Fm->p_FmFpmRegs->fm_ip_rev_1);
     p_FmRevisionInfo->majorRev = (uint8_t)((tmpReg & FPM_REV1_MAJOR_MASK) >> FPM_REV1_MAJOR_SHIFT);
     p_FmRevisionInfo->minorRev = (uint8_t)((tmpReg & FPM_REV1_MINOR_MASK) >> FPM_REV1_MINOR_SHIFT);
-}
-
-uint32_t FM_GetTimeStamp(t_Handle h_Fm)
-{
-    t_Fm *p_Fm = (t_Fm*)h_Fm;
-
-    SANITY_CHECK_RETURN_VALUE(p_Fm, E_INVALID_HANDLE, 0);
-    SANITY_CHECK_RETURN_VALUE(!p_Fm->p_FmDriverParam, E_INVALID_STATE, 0);
-
-    /* check that timeStamp is enabled */
-    if (!(GET_UINT32(p_Fm->p_FmFpmRegs->fpmtsc1) & FPM_TS_CTL_EN))
-    {
-        REPORT_ERROR(MINOR, E_INVALID_STATE, ("Time Stamp was not enabled"));
-        return 0;
-    }
-
-    return GET_UINT32(p_Fm->p_FmFpmRegs->fpmtsp);;
 }
 
 uint32_t  FM_GetCounter(t_Handle h_Fm, e_FmCounters counter)
@@ -2301,11 +2449,10 @@ uint32_t  FM_GetCounter(t_Handle h_Fm, e_FmCounters counter)
     SANITY_CHECK_RETURN_VALUE(p_Fm, E_INVALID_HANDLE, 0);
     SANITY_CHECK_RETURN_VALUE(!p_Fm->p_FmDriverParam, E_INVALID_STATE, 0);
 
-        switch(counter)
+    switch(counter)
     {
         case(e_FM_COUNTERS_ENQ_TOTAL_FRAME):
             return GET_UINT32(p_Fm->p_FmQmiRegs->fmqm_etfc);
-        break;
         case(e_FM_COUNTERS_DEQ_TOTAL_FRAME):
             return GET_UINT32(p_Fm->p_FmQmiRegs->fmqm_dtfc);
         case(e_FM_COUNTERS_DEQ_0):
@@ -2339,7 +2486,7 @@ uint32_t  FM_GetCounter(t_Handle h_Fm, e_FmCounters counter)
     return 0;
 }
 
-t_Error  FM_SetCounter(t_Handle h_Fm, e_FmCounters counter, uint32_t val)
+t_Error  FM_ModifyCounter(t_Handle h_Fm, e_FmCounters counter, uint32_t val)
 {
     t_Fm *p_Fm = (t_Fm*)h_Fm;
 
@@ -2473,8 +2620,8 @@ t_Error FM_ForceIntr (t_Handle h_Fm, e_FmExceptions exception)
 
     switch(exception)
     {
-        case e_FM_EX_QMI_DEQ_FROM_DEFQ:
-            if (!(p_Fm->exceptions & FM_EX_QMI_DEQ_FROM_DEFQ))
+        case e_FM_EX_QMI_DEQ_FROM_UNKNOWN_PORTID:
+            if (!(p_Fm->exceptions & FM_EX_QMI_DEQ_FROM_UNKNOWN_PORTID))
                 RETURN_ERROR(MINOR, E_NOT_SUPPORTED, ("The selected exception is masked"));
             WRITE_UINT32(p_Fm->p_FmQmiRegs->fmqm_eif, QMI_ERR_INTR_EN_DEQ_FROM_DEF);
             break;
@@ -2545,18 +2692,18 @@ t_Error FM_DumpRegs(t_Handle h_Fm)
     DUMP_VAR(p_Fm->p_FmFpmRegs,fpmdis1);
     DUMP_VAR(p_Fm->p_FmFpmRegs,fpmdis2);
     DUMP_VAR(p_Fm->p_FmFpmRegs,fmepi);
-    DUMP_VAR(p_Fm->p_FmFpmRegs,fmeie);
+    DUMP_VAR(p_Fm->p_FmFpmRegs,fmrie);
 
-    DUMP_TITLE(&p_Fm->p_FmFpmRegs->fpmrev, ("fpmrev"));
-    DUMP_SUBSTRUCT_ARRAY(i, 8)
+    DUMP_TITLE(&p_Fm->p_FmFpmRegs->fmfpfcev, ("fmfpfcev"));
+    DUMP_SUBSTRUCT_ARRAY(i, 4)
     {
-        DUMP_MEMORY(&p_Fm->p_FmFpmRegs->fpmrev[i], sizeof(uint32_t));
+        DUMP_MEMORY(&p_Fm->p_FmFpmRegs->fmfpfcev[i], sizeof(uint32_t));
     }
 
-    DUMP_TITLE(&p_Fm->p_FmFpmRegs->fpmmsk, ("fpmmsk"));
-    DUMP_SUBSTRUCT_ARRAY(i, 8)
+    DUMP_TITLE(&p_Fm->p_FmFpmRegs->fmfpfcee, ("fmfpfcee"));
+    DUMP_SUBSTRUCT_ARRAY(i, 4)
     {
-        DUMP_MEMORY(&p_Fm->p_FmFpmRegs->fpmmsk[i], sizeof(uint32_t));
+        DUMP_MEMORY(&p_Fm->p_FmFpmRegs->fmfpfcee[i], sizeof(uint32_t));
     }
 
     DUMP_SUBTITLE(("\n"));
@@ -2585,7 +2732,7 @@ t_Error FM_DumpRegs(t_Handle h_Fm)
     DUMP_VAR(p_Fm->p_FmFpmRegs,fpmem);
 
     DUMP_TITLE(&p_Fm->p_FmFpmRegs->fpmcev, ("fpmcev"));
-    DUMP_SUBSTRUCT_ARRAY(i, 8)
+    DUMP_SUBSTRUCT_ARRAY(i, 4)
     {
         DUMP_MEMORY(&p_Fm->p_FmFpmRegs->fpmcev[i], sizeof(uint32_t));
     }

@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -43,7 +43,8 @@
 #include "fm_ext.h"
 
 
-#define FM_MAX_NUM_OF_PORTS         64
+#define __ERR_MODULE__  MODULE_FM
+
 
 /**************************************************************************//**
  @Description       Exceptions
@@ -56,13 +57,13 @@
 #define FM_EX_FPM_SINGLE_ECC                0x04000000      /**< Single ECC on FPM */
 #define FM_EX_FPM_DOUBLE_ECC                0x02000000
 #define FM_EX_QMI_SINGLE_ECC                0x01000000      /**< Single ECC on FPM */
-#define FM_EX_QMI_DEQ_FROM_DEFQ             0x00800000      /**< Dequeu from default queue id */
+#define FM_EX_QMI_DEQ_FROM_UNKNOWN_PORTID   0x00800000      /**< Dequeu from default queue id */
 #define FM_EX_QMI_DOUBLE_ECC                0x00400000
 #define FM_EX_BMI_LIST_RAM_ECC              0x00200000
 #define FM_EX_BMI_PIPELINE_ECC              0x00100000
 #define FM_EX_BMI_STATISTICS_RAM_ECC        0x00080000
 #define FM_EX_IRAM_ECC                      0x00040000
-#define FM_EX_NURAM_ECC                      0x00020000
+#define FM_EX_NURAM_ECC                     0x00020000
 
 #define GET_EXCEPTION_FLAG(bitMask, exception)       switch(exception){ \
     case e_FM_EX_DMA_BUS_ERROR:                                         \
@@ -83,8 +84,8 @@
         bitMask = FM_EX_QMI_SINGLE_ECC; break;                          \
     case e_FM_EX_QMI_DOUBLE_ECC:                                        \
         bitMask = FM_EX_QMI_DOUBLE_ECC; break;                          \
-    case e_FM_EX_QMI_DEQ_FROM_DEFQ:                                     \
-        bitMask = FM_EX_QMI_DEQ_FROM_DEFQ; break;                       \
+    case e_FM_EX_QMI_DEQ_FROM_UNKNOWN_PORTID:                           \
+        bitMask = FM_EX_QMI_DEQ_FROM_UNKNOWN_PORTID; break;             \
     case e_FM_EX_BMI_LIST_RAM_ECC:                                      \
         bitMask = FM_EX_BMI_LIST_RAM_ECC; break;                        \
     case e_FM_EX_BMI_PIPELINE_ECC:                                      \
@@ -108,7 +109,7 @@
                                             FM_EX_FPM_SINGLE_ECC            |\
                                             FM_EX_FPM_DOUBLE_ECC            |\
                                             FM_EX_QMI_SINGLE_ECC            |\
-                                            FM_EX_QMI_DEQ_FROM_DEFQ         |\
+                                            FM_EX_QMI_DEQ_FROM_UNKNOWN_PORTID|\
                                             FM_EX_QMI_DOUBLE_ECC            |\
                                             FM_EX_BMI_LIST_RAM_ECC          |\
                                             FM_EX_BMI_PIPELINE_ECC          |\
@@ -130,7 +131,7 @@
 #define DEFAULT_fmCtl2DispTh                16
 #define DEFAULT_cacheOverride               e_FM_DMA_NO_CACHE_OR
 #define DEFAULT_aidOverride                 FALSE
-#define DEFAULT_aidMode                     e_FM_DMA_AID_OUT_PORT_ID
+#define DEFAULT_aidMode                     e_FM_DMA_AID_OUT_TNUM
 #define DEFAULT_privilegeBusProtect         FALSE
 #define DEFAULT_dmaStopOnBusError           FALSE
 #define DEFAULT_busProtectionType           e_FM_DMA_DATA_BUS_PROT
@@ -148,8 +149,8 @@
 #define DEFAULT_catastrophicErr             e_FM_CATASTROPHIC_ERR_STALL_PORT
 #define DEFAULT_dmaErr                      e_FM_DMA_ERR_CATASTROPHIC
 #define DEFAULT_resetOnInit                 FALSE
-#define DEFAULT_haltOnExternalActivation    FALSE
-#define DEFAULT_haltOnUnrecoverableEccError FALSE
+#define DEFAULT_haltOnExternalActivation    FALSE   /* do not change! if changed, must be disabled for rev1 ! */
+#define DEFAULT_haltOnUnrecoverableEccError FALSE   /* do not change! if changed, must be disabled for rev1 ! */
 #define DEFAULT_externalEccRamsEnable       FALSE
 #define DEFAULT_VerifyUcode                 FALSE
 
@@ -174,9 +175,9 @@
  @Description       Memory Mapped Registers
 *//***************************************************************************/
 
-#ifdef __MWERKS__
+#if defined(__MWERKS__) && !defined(__GNUC__)
 #pragma pack(push,1)
-#endif /*__MWERKS__ */
+#endif /* defined(__MWERKS__) && ... */
 #define MEM_MAP_START
 
 typedef _Packed struct
@@ -188,9 +189,11 @@ typedef _Packed struct
     volatile uint32_t   fpmdis1;        /**< FPM Dispatch Thresholds1 */
     volatile uint32_t   fpmdis2;        /**< FPM Dispatch Thresholds2  */
     volatile uint32_t   fmepi;          /**< FM Error Pending Interrupts */
-    volatile uint32_t   fmeie;          /**< FM Error Interrupt Enable */
-    volatile uint32_t   fpmrev[8];      /**< FPM FmCtl Event 1-8 */
-    volatile uint32_t   fpmmsk[8];      /**< FPM Mask 1-8 */
+    volatile uint32_t   fmrie;          /**< FM Error Interrupt Enable */
+    volatile uint32_t   fmfpfcev[4];    /**< FPM FMan-Controller Event 1-4 */
+    volatile uint8_t    res1[16];       /**< reserved */
+    volatile uint32_t   fmfpfcee[4];    /**< PM FMan-Controller Event 1-4 */
+    volatile uint8_t    res2[16];       /**< reserved */
     volatile uint32_t   fpmtsc1;        /**< FPM TimeStamp Control1 */
     volatile uint32_t   fpmtsc2;        /**< FPM TimeStamp Control2 */
     volatile uint32_t   fpmtsp;         /**< FPM Time Stamp */
@@ -206,9 +209,10 @@ typedef _Packed struct
     volatile uint32_t   fmrstc;         /**< FM Reset Command */
     volatile uint32_t   fmcld;          /**< FM Classifier Debug */
     volatile uint32_t   fmnpi;          /**< FM Normal Pending Interrupts  */
-    volatile uint32_t   reserved;
+    volatile uint8_t    res3[4];        /**< reserved */
     volatile uint32_t   fpmem;          /**< FPM Event & Mask */
-    volatile uint32_t   fpmcev[8];      /**< FPM CPU Event 1-8 */
+    volatile uint32_t   fpmcev[4];      /**< FPM CPU Event 1-4 */
+    volatile uint8_t    res4[16];       /**< reserved */
     volatile uint32_t   fmfp_ps[0x40];  /**< FPM Port Status */
     volatile uint8_t    reserved1[0x260];
     volatile uint32_t   fpmts[128];     /**< 0x400: FPM Task Status */
@@ -261,7 +265,7 @@ typedef _Packed struct
     volatile uint32_t   fmqm_dtc;       /**<  0x0080 Debug Trap Counter */
     volatile uint32_t   fmqm_efddd;     /**<  0x0084 Enqueue Frame Descriptor Dynamic Debug */
     volatile uint32_t   Reserved3[2];
-    struct {
+    _Packed struct {
         volatile uint32_t   fmqm_dtcfg;    /**<  0x0090 Debug Trap Configuration 1 Register */
         volatile uint32_t   fmqm_dtval1;    /**<  Debug Trap Value Register */
         volatile uint32_t   fmqm_dtm1;      /**<  Debug Trap Mask Register */
@@ -269,7 +273,7 @@ typedef _Packed struct
         volatile uint32_t   fmqm_dtc2;
         volatile uint32_t   fmqm_dtval2;    /**<  Debug Trap Value Register */
         volatile uint32_t   fmqm_dtm3;      /**<  Debug Trap Mask Register */
-    }t_FmQmiDbgTraps[NUM_OF_DBG_TRAPS];
+    } _PackedType t_FmQmiDbgTraps[NUM_OF_DBG_TRAPS];
 } _PackedType t_FmQmiRegs;
 
 typedef _Packed struct
@@ -312,9 +316,9 @@ typedef _Packed struct
 } _PackedType t_FMIramRegs;
 
 #define MEM_MAP_END
-#ifdef __MWERKS__
+#if defined(__MWERKS__) && !defined(__GNUC__)
 #pragma pack(pop)
-#endif /* __MWERKS__ */
+#endif /* defined(__MWERKS__) && ... */
 
 
 /**************************************************************************//**
@@ -353,8 +357,7 @@ typedef _Packed struct
 #define DMA_STATUS_FM_DPDAT_ECC             0x00100000
 #define DMA_STATUS_FM_SPDAT_ECC             0x00080000
 
-
-#define FM_LIODN_MASK                       0x00000FFF
+#define FM_LIODN_BASE_MASK                  0x00000FFF
 
 /* shifts */
 #define DMA_MODE_CACHE_OR_SHIFT             30
@@ -549,9 +552,8 @@ typedef struct
 {
  /*   uint8_t                     numOfPartitions; */
     bool                        resetOnInit;
-    uint8_t                     liodnPerPartition[FM_MAX_NUM_OF_PARTITIONS];
+    uint16_t                    liodnPerPartition[FM_MAX_NUM_OF_PARTITIONS];
     bool                        enCounters;
-    bool                        enTimeStamp;
     t_FmThresholds              thresholds;
     t_FmDmaBusProtect           dmaBusProtect;
     e_FmDmaCacheOverride        dmaCacheOverride;
@@ -591,14 +593,20 @@ typedef struct
     e_FmPortType                portsTypes[FM_MAX_NUM_OF_PORTS];
     char                        fmModuleName[MODULE_NAME_SIZE];
     t_FmIntrSrc                 intrMng[e_FM_EV_DUMMY_LAST];    /* FM exceptions user callback */
+    uint16_t                    fmClkFreq;
+
 #ifdef CONFIG_MULTI_PARTITION_SUPPORT
     uint8_t                     partitionId;
 #endif /* CONFIG_MULTI_PARTITION_SUPPORT */
-#ifndef CONFIG_GUEST_PARTITION
+
+#ifdef CONFIG_GUEST_PARTITION
+    char                        fmMasterModuleName[MODULE_NAME_SIZE];
+#else
     uint64_t                    baseAddr;
     t_Handle                    h_FmMuram;
     uint64_t                    fmMuramPhysBaseAddr;
-    uint16_t                    fmClkFreq;
+    bool                        enabledTimeStamp;
+    uint8_t                     count1MicroBit;
     uint32_t                    timeStampPeriod;
     bool                        independentMode;
     bool                        hcPortInitialized;
@@ -618,16 +626,19 @@ typedef struct
     t_FmBmiRegs                 *p_FmBmiRegs;
     t_FmQmiRegs                 *p_FmQmiRegs;
     t_FmDmaRegs                 *p_FmDmaRegs;
-    t_FmExceptionsCallback      *f_Exceptions;
+    t_FmExceptionsCallback      *f_Exception;
     t_FmBusErrorCallback        *f_BusError;
     t_Handle                    h_App;                          /* Application handle */
     t_FmCtlIsr                  *f_FmCtlIsr[NUM_OF_FM_CTL_EVENT_REGS];
     bool                        ramsEccEnable;
+    bool                        explicitEnable;
+    bool                        internalCall;
+    uint8_t                     ramsEccOwners;
     uint32_t                    extraFifoPoolSize;
     uint8_t                     extraTasksPoolSize;
     uint8_t                     extraOpenDmasPoolSize;
     t_FmDriverParam             *p_FmDriverParam;
-#endif /* ! CONFIG_GUEST_PARTITION */
+#endif /* CONFIG_GUEST_PARTITION */
 } t_Fm;
 
 /**************************************************************************//**

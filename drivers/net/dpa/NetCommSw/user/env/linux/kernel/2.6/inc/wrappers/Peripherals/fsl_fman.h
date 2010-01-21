@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -108,6 +108,7 @@ struct fm_port_rx_params {
                                                     /**< Parameters for each pool */
     uint16_t                    priv_data_size;     /**< Area that user may save for his own need (E.g. save the SKB) */
     bool                        parse_results;      /**< Whether to have the parser-results in the Received buffer */
+    bool                        hash_results;       /**< Whether to have the hash-results in the Received buffer */
 };
 
 /**************************************************************************//**
@@ -120,6 +121,7 @@ struct fm_port_non_rx_params {
                                                      frames. For OP - default Rx queue. */
     uint16_t                priv_data_size;     /**< Area that user may save for his own need (E.g. save the SKB) */
     bool                    parse_results;      /**< Whether to put the parser-results in the Transmitted buffer */
+    bool                    hash_results;       /**< Whether to have the hash-results in the Received buffer */
 };
 
 

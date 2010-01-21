@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -64,7 +64,7 @@ static t_Error CheckFmPcdParameters(t_FmPcd *p_FmPcd)
     if(!p_FmPcd->h_Fm)
         RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("h_Fm has to be initialized"));
 
-    if(!p_FmPcd->f_FmPcdException)
+    if(!p_FmPcd->f_Exception)
         RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("f_FmPcdExceptions has to be initialized"));
 
     if((!p_FmPcd->f_FmPcdIndexedException) && (p_FmPcd->p_FmPcdPlcr || p_FmPcd->p_FmPcdKg))
@@ -90,12 +90,23 @@ t_Error  FmPcdHandleIpcMsg(t_Handle h_FmPcd, uint32_t msgId, uint8_t msgBody[MSG
 
     switch(msgId)
     {
-    case (FM_PCD_MASTER_IS_ALIVE):
-        return E_OK;
-    case (FM_PCD_MASTER_IS_ENABLED):
-        return p_FmPcd->enabled;
-        //case (FM_PCD_CLEAR_PORT_PARAMS):
-            //return FmPcdDeletePortParams(h_FmPcd, (t_FmPcdInterModulePortDeleteParams*)msgBody);
+        case (FM_PCD_MASTER_IS_ALIVE):
+            return E_OK;
+        case (FM_PCD_MASTER_IS_ENABLED):
+            /* count partitions registrations */
+            if(p_FmPcd->enabled)
+                p_FmPcd->numOfEnabledGuestPartitionsPcds++;
+            return p_FmPcd->enabled;
+            //case (FM_PCD_CLEAR_PORT_PARAMS):
+                //return FmPcdDeletePortParams(h_FmPcd, (t_FmPcdInterModulePortDeleteParams*)msgBody);
+        case (FM_PCD_GUEST_DISABLE):
+            if(p_FmPcd->numOfEnabledGuestPartitionsPcds)
+            {
+                p_FmPcd->numOfEnabledGuestPartitionsPcds--;
+                break;
+            }
+            else
+                RETURN_ERROR(MINOR, E_INVALID_STATE,("Trying to disable an unregistered partition"));
         case (FM_PCD_ALLOC_KG_RSRC):
             {
                 err = FmPcdKgAllocSchemes(h_FmPcd,
@@ -259,9 +270,8 @@ void   FmPcdPortRegister(t_Handle h_FmPcd, t_Handle h_FmPort, uint8_t hardwarePo
 {
     t_FmPcd         *p_FmPcd = (t_FmPcd*)h_FmPcd;
     uint16_t        pcdPortId;
-    uint8_t         portsTable[] = PCD_PORTS_TABLE;
 
-    GET_FM_PCD_PORTID_FROM_GLOBAL_PORTID(pcdPortId, portsTable, hardwarePortId)
+    SET_FM_PCD_PORTID_FROM_GLOBAL_PORTID(pcdPortId, hardwarePortId);
 
     p_FmPcd->p_FmPcdPlcr->portsMapping[pcdPortId].h_FmPort = h_FmPort;
 }
@@ -302,28 +312,28 @@ void FmPcdReleaseLock(t_Handle h_FmPcd)
 
 t_Handle FM_PCD_Config(t_FmPcdParams *p_FmPcdParams)
 {
-    t_FmPcd *p_Pcd = NULL;
+    t_FmPcd *p_FmPcd = NULL;
 
     SANITY_CHECK_RETURN_VALUE(p_FmPcdParams, E_INVALID_HANDLE,NULL);
 
-    p_Pcd = (t_FmPcd *) XX_Malloc(sizeof(t_FmPcd));
-    if (!p_Pcd)
+    p_FmPcd = (t_FmPcd *) XX_Malloc(sizeof(t_FmPcd));
+    if (!p_FmPcd)
     {
         REPORT_ERROR(MAJOR, E_NO_MEMORY, ("FM Pcd"));
         return NULL;
     }
-    memset(p_Pcd, 0, sizeof(t_FmPcd));
+    memset(p_FmPcd, 0, sizeof(t_FmPcd));
 
-    p_Pcd->p_FmPcdDriverParam = (t_FmPcdDriverParam *) XX_Malloc(sizeof(t_FmPcdDriverParam));
-    if (!p_Pcd)
+    p_FmPcd->p_FmPcdDriverParam = (t_FmPcdDriverParam *) XX_Malloc(sizeof(t_FmPcdDriverParam));
+    if (!p_FmPcd)
     {
-        XX_Free(p_Pcd);
+        XX_Free(p_FmPcd);
         REPORT_ERROR(MAJOR, E_NO_MEMORY, ("FM Pcd Driver Param"));
         return NULL;
     }
-    memset(p_Pcd->p_FmPcdDriverParam, 0, sizeof(t_FmPcdDriverParam));
+    memset(p_FmPcd->p_FmPcdDriverParam, 0, sizeof(t_FmPcdDriverParam));
 
-    p_Pcd->h_Fm = p_FmPcdParams->h_Fm;
+    p_FmPcd->h_Fm = p_FmPcdParams->h_Fm;
 
 #ifndef CONFIG_MULTI_PARTITION_SUPPORT
     if (p_FmPcdParams->useHostCommand)
@@ -332,47 +342,47 @@ t_Handle FM_PCD_Config(t_FmPcdParams *p_FmPcdParams)
         t_FmHcParams    hcParams;
 
         memset(&hcParams, 0, sizeof(hcParams));
-        hcParams.h_Fm = p_Pcd->h_Fm;
-        hcParams.h_FmPcd = (t_Handle)p_Pcd;
+        hcParams.h_Fm = p_FmPcd->h_Fm;
+        hcParams.h_FmPcd = (t_Handle)p_FmPcd;
         memcpy((uint8_t*)&hcParams.params, (uint8_t*)&p_FmPcdParams->hc, sizeof(t_FmPcdHcParams));
-        p_Pcd->h_Hc = FmHcConfigAndInit(&hcParams);
-        if (!p_Pcd->h_Hc)
+        p_FmPcd->h_Hc = FmHcConfigAndInit(&hcParams);
+        if (!p_FmPcd->h_Hc)
         {
             REPORT_ERROR(MAJOR, E_NO_MEMORY, ("FM Pcd HC"));
-            FM_PCD_Free(p_Pcd);
+            FM_PCD_Free(p_FmPcd);
             return NULL;
         }
     }
 
     if(p_FmPcdParams->kgSupport)
     {
-        p_Pcd->p_FmPcdKg = (t_FmPcdKg *)KgConfig(p_Pcd, p_FmPcdParams);
-        if(!p_Pcd->p_FmPcdKg)
+        p_FmPcd->p_FmPcdKg = (t_FmPcdKg *)KgConfig(p_FmPcd, p_FmPcdParams);
+        if(!p_FmPcd->p_FmPcdKg)
         {
             REPORT_ERROR(MAJOR, E_NO_MEMORY, ("FM Pcd Keygen"));
-            FM_PCD_Free(p_Pcd);
+            FM_PCD_Free(p_FmPcd);
             return NULL;
         }
     }
 
     if(p_FmPcdParams->ccSupport)
     {
-        p_Pcd->p_FmPcdCc = (t_FmPcdCc *)CcConfig(p_Pcd, p_FmPcdParams);
-        if(!p_Pcd->p_FmPcdCc)
+        p_FmPcd->p_FmPcdCc = (t_FmPcdCc *)CcConfig(p_FmPcd, p_FmPcdParams);
+        if(!p_FmPcd->p_FmPcdCc)
         {
             REPORT_ERROR(MAJOR, E_NO_MEMORY, ("FM Pcd Cc"));
-            FM_PCD_Free(p_Pcd);
+            FM_PCD_Free(p_FmPcd);
             return NULL;
         }
     }
 
     if(p_FmPcdParams->plcrSupport)
     {
-        p_Pcd->p_FmPcdPlcr = (t_FmPcdPlcr *)PlcrConfig(p_Pcd, p_FmPcdParams);
-        if(!p_Pcd->p_FmPcdPlcr)
+        p_FmPcd->p_FmPcdPlcr = (t_FmPcdPlcr *)PlcrConfig(p_FmPcd, p_FmPcdParams);
+        if(!p_FmPcd->p_FmPcdPlcr)
         {
             REPORT_ERROR(MAJOR, E_NO_MEMORY, ("FM Pcd Policer"));
-            FM_PCD_Free(p_Pcd);
+            FM_PCD_Free(p_FmPcd);
             return NULL;
         }
 
@@ -380,26 +390,29 @@ t_Handle FM_PCD_Config(t_FmPcdParams *p_FmPcdParams)
 
     if(p_FmPcdParams->prsSupport)
     {
-        p_Pcd->p_FmPcdPrs = (t_FmPcdPrs *)PrsConfig(p_Pcd, p_FmPcdParams);
-        if(!p_Pcd->p_FmPcdPrs)
+        p_FmPcd->p_FmPcdPrs = (t_FmPcdPrs *)PrsConfig(p_FmPcd, p_FmPcdParams);
+        if(!p_FmPcd->p_FmPcdPrs)
         {
             REPORT_ERROR(MAJOR, E_NO_MEMORY, ("FM Pcd Parser"));
-            FM_PCD_Free(p_Pcd);
+            FM_PCD_Free(p_FmPcd);
             return NULL;
         }
     }
 
 #ifdef CONFIG_MULTI_PARTITION_SUPPORT
-    p_Pcd->partitionId = FmGetPartitionId(p_Pcd->h_Fm);
+    p_FmPcd->partitionId = FmGetPartitionId(p_FmPcd->h_Fm);
+#ifdef FM_MASTER_PARTITION
+    p_FmPcd->numOfEnabledGuestPartitionsPcds = 0;
+#endif /* FM_MASTER_PARTITION */
 #endif /* CONFIG_MULTI_PARTITION_SUPPORT */
 
 #ifndef CONFIG_GUEST_PARTITION
-    p_Pcd->h_App                                            = p_FmPcdParams->h_App;
-    p_Pcd->f_FmPcdException                                 = p_FmPcdParams->f_FmPcdException;
-    p_Pcd->f_FmPcdIndexedException                          = p_FmPcdParams->f_FmPcdIdException;
+    p_FmPcd->f_Exception                = p_FmPcdParams->f_Exception;
+    p_FmPcd->f_FmPcdIndexedException    = p_FmPcdParams->f_ExceptionId;
+    p_FmPcd->h_App                      = p_FmPcdParams->h_App;
 #endif  /* !CONFIG_GUEST_PARTITION */
 
-    return p_Pcd;
+    return p_FmPcd;
 }
 
 t_Error FM_PCD_Init(t_Handle h_FmPcd)
@@ -409,7 +422,6 @@ t_Error FM_PCD_Init(t_Handle h_FmPcd)
 
     SANITY_CHECK_RETURN_ERROR(p_FmPcd, E_INVALID_HANDLE);
     SANITY_CHECK_RETURN_ERROR(p_FmPcd->p_FmPcdDriverParam, E_INVALID_HANDLE);
-
 
 #ifdef CONFIG_GUEST_PARTITION
     err = XX_SendMessage(p_FmPcd->fmPcdModuleName, FM_PCD_MASTER_IS_ALIVE, NULL, NULL, NULL);
@@ -464,12 +476,11 @@ t_Error FM_PCD_Free(t_Handle h_FmPcd)
     t_FmPcd                             *p_FmPcd =(t_FmPcd *)h_FmPcd;
 #ifdef CONFIG_GUEST_PARTITION
     t_FmPcdIpcSharedPlcrAllocParams     ipcSharedPlcrParams;
-    t_FmPcdIpcKgAllocParams             kgAlloc;
 #endif /* CONFIG_GUEST_PARTITION */
-#ifdef CONFIG_MULTI_PARTITION_SUPPORT
     t_Error                             err = E_OK;
-#endif /* CONFIG_MULTI_PARTITION_SUPPORT */
 
+    if(p_FmPcd->enabled)
+        FM_PCD_Disable(p_FmPcd);
 
     if(p_FmPcd->p_FmPcdDriverParam)
     {
@@ -478,56 +489,21 @@ t_Error FM_PCD_Free(t_Handle h_FmPcd)
     }
     if(p_FmPcd->p_FmPcdKg)
     {
-
-#ifndef CONFIG_GUEST_PARTITION
-        if(p_FmPcd->p_FmPcdKg->isDriverEmptyClsPlanGrp)
-            FmPcdKgDestroyClsPlanGrp(p_FmPcd, p_FmPcd->p_FmPcdKg->emptyClsPlanGrpId);
-#endif
-#ifdef CONFIG_MULTI_PARTITION_SUPPORT
-#ifdef CONFIG_GUEST_PARTITION
-    kgAlloc.numOfSchemes = p_FmPcd->p_FmPcdKg->numOfSchemes;
-    kgAlloc.partitionId = p_FmPcd->partitionId;
-    kgAlloc.numOfClsPlanEntries = p_FmPcd->p_FmPcdKg->numOfClsPlanEntries;
-    kgAlloc.isDriverClsPlanGrp = p_FmPcd->p_FmPcdKg->isDriverEmptyClsPlanGrp;
-    kgAlloc.clsPlanBase = p_FmPcd->p_FmPcdKg->clsPlanBase;
-    memcpy(kgAlloc.schemesIds, p_FmPcd->p_FmPcdKg->schemesIds , kgAlloc.numOfSchemes);
-    err = XX_SendMessage(p_FmPcd->fmPcdModuleName, FM_PCD_FREE_KG_RSRC, (uint8_t*)&kgAlloc, NULL, NULL);
-    if(err)
-        RETURN_ERROR(MINOR, err, NO_MSG);
-#else /* master */
-    err = FmPcdKgFreeSchemes(p_FmPcd,
-                                p_FmPcd->p_FmPcdKg->numOfSchemes,
-                                p_FmPcd->partitionId,
-                                p_FmPcd->p_FmPcdKg->schemesIds);
-    if(err)
-        RETURN_ERROR(MINOR, err, NO_MSG);
-    err = FmPcdKgFreeClsPlanEntries(p_FmPcd,
-                                p_FmPcd->p_FmPcdKg->numOfClsPlanEntries,
-                                p_FmPcd->partitionId,
-                                p_FmPcd->p_FmPcdKg->clsPlanBase);
-#endif /* CONFIG_GUEST_PARTITION */
-#endif /* CONFIG_MULTI_PARTITION_SUPPORT */
+        if((err = KgFree(p_FmPcd)) != E_OK)
+            RETURN_ERROR(MINOR, err, NO_MSG);
         XX_Free(p_FmPcd->p_FmPcdKg);
         p_FmPcd->p_FmPcdKg = NULL;
     }
     if(p_FmPcd->p_FmPcdPlcr)
     {
-        if(p_FmPcd->p_FmPcdPlcr->numOfSharedProfiles)
-#ifdef CONFIG_GUEST_PARTITION
-    /* Alloc resources using IPC messaging */
-    ipcSharedPlcrParams.num = p_FmPcd->p_FmPcdPlcr->numOfSharedProfiles;
-    memcpy(ipcSharedPlcrParams.profilesIds,p_FmPcd->p_FmPcdPlcr->sharedProfilesIds, p_FmPcd->p_FmPcdPlcr->numOfSharedProfiles*sizeof(uint16_t));
-    err = XX_SendMessage(p_FmPcd->fmPcdModuleName, FM_PCD_FREE_SHARED_PROFILES, (uint8_t*)&ipcSharedPlcrParams, NULL, NULL);
-    if(err)
-        RETURN_ERROR(MAJOR, err,NO_MSG);
-#else /* master */
-        PlcrFreeSharedProfiles(p_FmPcd, p_FmPcd->p_FmPcdPlcr->numOfSharedProfiles, p_FmPcd->p_FmPcdPlcr->sharedProfilesIds);
-#endif /* CONFIG_GUEST_PARTITION */
+        if((err = PlcrFree(p_FmPcd)) != E_OK)
+            RETURN_ERROR(MINOR, err, NO_MSG);
         XX_Free(p_FmPcd->p_FmPcdPlcr);
         p_FmPcd->p_FmPcdPlcr = NULL;
     }
     if(p_FmPcd->p_FmPcdPrs)
     {
+        PrsFree(p_FmPcd);
         XX_Free(p_FmPcd->p_FmPcdPrs);
         p_FmPcd->p_FmPcdPrs = NULL;
     }
@@ -547,6 +523,7 @@ t_Error FM_PCD_Free(t_Handle h_FmPcd)
 #ifdef FM_MASTER_PARTITION
     XX_UnregisterMessageHandler(p_FmPcd->fmPcdModuleName);
 #endif /* FM_MASTER_PARTITION */
+    FmUnregisterPcd(p_FmPcd->h_Fm);
 
     XX_Free(p_FmPcd);
     return E_OK;
@@ -589,18 +566,46 @@ t_Error FM_PCD_Enable(t_Handle h_FmPcd)
 
 t_Error FM_PCD_Disable(t_Handle h_FmPcd)
 {
-/*    t_FmPcd             *p_FmPcd = (t_FmPcd*)h_FmPcd;*/
-/* TODO - implement */
-    RETURN_ERROR(MINOR, E_NOT_SUPPORTED, NO_MSG);
+    t_FmPcd             *p_FmPcd = (t_FmPcd*)h_FmPcd;
+    t_Error             err = E_OK;
+
+#ifndef CONFIG_GUEST_PARTITION
+#ifdef FM_MASTER_PARTITION
+    if(p_FmPcd->numOfEnabledGuestPartitionsPcds != 0)
+        RETURN_ERROR(MAJOR, E_INVALID_STATE, ("Trying to disable a master partition PCD while guest partitions are still enabled."));
+#endif /* FM_MASTER_PARTITION */
+    if(p_FmPcd->p_FmPcdKg)
+    {
+        err = KgDisable(p_FmPcd);
+        if(err)
+            RETURN_ERROR(MAJOR, err, NO_MSG);
+    }
+
+    if(p_FmPcd->p_FmPcdPlcr)
+    {
+        err = PlcrDisable(p_FmPcd);
+        if(err)
+            RETURN_ERROR(MAJOR, err, NO_MSG);
+    }
+
+    if(p_FmPcd->p_FmPcdPrs)
+    {
+        err = PrsDisable(p_FmPcd);
+        if(err)
+            RETURN_ERROR(MAJOR, err, NO_MSG);
+    }
+    p_FmPcd->enabled = FALSE;
 
     return E_OK;
+#else
+    return XX_SendMessage(p_FmPcd->fmPcdModuleName, FM_PCD_GUEST_DISABLE, NULL, NULL, NULL);
+#endif /* !CONFIG_GUEST_PARTITION */
 }
 
 t_Handle FM_PCD_SetNetEnvCharacteristics(t_Handle h_FmPcd, t_FmPcdNetEnvParams  *p_NetEnvParams)
 {
     t_FmPcd                 *p_FmPcd = (t_FmPcd*)h_FmPcd;
     uint8_t                 bitId = 0;
-    uint8_t                 privateBitId = 0;
     uint8_t                 i, j, k;
     uint8_t                 netEnvCurrId;
     uint8_t                 ipsecAhUnit = 0,ipsecEspUnit = 0;
@@ -665,7 +670,7 @@ t_Handle FM_PCD_SetNetEnvCharacteristics(t_Handle h_FmPcd, t_FmPcdNetEnvParams  
                 && (k < FM_PCD_MAX_NUM_OF_INTERCHANGABLE_HDRS) ;k++)
         {
             /* Some headers pairs may not be defined on different units as the parser
-            doesn't distingush  */
+            doesn't distinguish */
             if(p_FmPcd->netEnvs[netEnvCurrId].units[i].hdrs[k].hdr == HEADER_TYPE_IPSEC_AH)
             {
                 if (ipsecEspExists && (ipsecEspUnit != i))
@@ -696,7 +701,6 @@ t_Handle FM_PCD_SetNetEnvCharacteristics(t_Handle h_FmPcd, t_FmPcdNetEnvParams  
             }
        }
 
-
     /* if private header (shim), check that no other headers specified */
     for(i=0;(p_FmPcd->netEnvs[netEnvCurrId].units[i].hdrs[0].hdr != HEADER_TYPE_NONE)
             && (i < FM_PCD_MAX_NUM_OF_DISTINCTION_UNITS) ;i++)
@@ -704,7 +708,7 @@ t_Handle FM_PCD_SetNetEnvCharacteristics(t_Handle h_FmPcd, t_FmPcdNetEnvParams  
         if(IS_PRIVATE_HEADER(p_FmPcd->netEnvs[netEnvCurrId].units[i].hdrs[0].hdr))
             if(p_FmPcd->netEnvs[netEnvCurrId].units[i].hdrs[1].hdr != HEADER_TYPE_NONE)
             {
-                REPORT_ERROR(MAJOR, E_NOT_SUPPORTED, ("SHIM header may not be interchangesd with other headers"));
+                REPORT_ERROR(MAJOR, E_NOT_SUPPORTED, ("SHIM header may not be interchanged with other headers"));
                 RELEASE_LOCK(p_FmPcd->netEnvs[netEnvCurrId].lock);
                 return NULL;
             }
@@ -713,7 +717,20 @@ t_Handle FM_PCD_SetNetEnvCharacteristics(t_Handle h_FmPcd, t_FmPcdNetEnvParams  
     for(i=0; i<p_NetEnvParams->numOfDistinctionUnits;i++)
     {
         if (IS_PRIVATE_HEADER(p_FmPcd->netEnvs[netEnvCurrId].units[i].hdrs[0].hdr))
-            p_FmPcd->netEnvs[netEnvCurrId].unitsVectors[i] = (uint32_t)(0x00000001 << privateBitId++);
+            switch(p_FmPcd->netEnvs[netEnvCurrId].units[i].hdrs[0].hdr)
+            {
+            case(HEADER_TYPE_USER_DEFINED_SHIM1):
+                p_FmPcd->netEnvs[netEnvCurrId].unitsVectors[i] = 0x00000001;
+                break;
+            case(HEADER_TYPE_USER_DEFINED_SHIM2):
+                p_FmPcd->netEnvs[netEnvCurrId].unitsVectors[i] = 0x00000002;
+                break;
+            case(HEADER_TYPE_USER_DEFINED_SHIM3):
+                p_FmPcd->netEnvs[netEnvCurrId].unitsVectors[i] = 0x00000004;
+                break;
+            default:
+                REPORT_ERROR(MAJOR, E_NOT_SUPPORTED, ("Only 3 SHIMs supported"));
+            }
         else
             p_FmPcd->netEnvs[netEnvCurrId].unitsVectors[i] = (uint32_t)(0x80000000 >> bitId++);
     }
@@ -755,8 +772,10 @@ t_Error FM_PCD_DeleteNetEnvCharacteristics(t_Handle h_FmPcd, t_Handle h_NetEnv)
     TRY_LOCK_RET_ERR(p_FmPcd->netEnvs[netEnvId].lock);
     /* check that no port is bound to this netEnv */
     if(p_FmPcd->netEnvs[netEnvId].owners)
+    {
+       RELEASE_LOCK(p_FmPcd->netEnvs[netEnvId].lock);
        RETURN_ERROR(MINOR, E_INVALID_STATE, ("Trying to delete a netEnv that has ports/schemes/trees/clsPlanGrps bound to"));
-
+    }
     p_FmPcd->netEnvs[netEnvId].used= FALSE;
 
     memset(p_FmPcd->netEnvs[netEnvId].units, 0, sizeof(t_FmPcdIntDistinctionUnit)*FM_PCD_MAX_NUM_OF_DISTINCTION_UNITS);
@@ -818,13 +837,13 @@ t_Error FM_PCD_SetException(t_Handle h_FmPcd, e_FmPcdExceptions exception, bool 
 
         switch(exception)
         {
-            case(e_FM_PCD_KG_ERR_EXCEPTION_DOUBLE_ECC):
-            case(e_FM_PCD_KG_ERR_EXCEPTION_KEYSIZE_OVERFLOW):
+            case(e_FM_PCD_KG_EXCEPTION_DOUBLE_ECC):
+            case(e_FM_PCD_KG_EXCEPTION_KEYSIZE_OVERFLOW):
                 if(!p_FmPcd->p_FmPcdKg)
                     RETURN_ERROR(MINOR, E_INVALID_STATE, ("Can't ask for this interrupt - keygen is not working"));
                 break;
-            case(e_FM_PCD_PLCR_ERR_EXCEPTION_DOUBLE_ECC):
-            case(e_FM_PCD_PLCR_ERR_EXCEPTION_INIT_ENTRY_ERROR):
+            case(e_FM_PCD_PLCR_EXCEPTION_DOUBLE_ECC):
+            case(e_FM_PCD_PLCR_EXCEPTION_INIT_ENTRY_ERROR):
             case(e_FM_PCD_PLCR_EXCEPTION_PRAM_SELF_INIT_COMPLETE):
             case(e_FM_PCD_PLCR_EXCEPTION_ATOMIC_ACTION_COMPLETE):
                 if(!p_FmPcd->p_FmPcdPlcr)
@@ -844,7 +863,7 @@ t_Error FM_PCD_SetException(t_Handle h_FmPcd, e_FmPcdExceptions exception, bool 
 
         switch(exception)
         {
-            case(e_FM_PCD_KG_ERR_EXCEPTION_DOUBLE_ECC):
+            case(e_FM_PCD_KG_EXCEPTION_DOUBLE_ECC):
                 tmpReg = GET_UINT32(p_FmPcd->p_FmPcdKg->p_FmPcdKgRegs->kgeeer);
                 if(enable)
                     tmpReg |= FM_PCD_KG_DOUBLE_ECC;
@@ -852,7 +871,7 @@ t_Error FM_PCD_SetException(t_Handle h_FmPcd, e_FmPcdExceptions exception, bool 
                     tmpReg &= ~FM_PCD_KG_DOUBLE_ECC;
                 WRITE_UINT32(p_FmPcd->p_FmPcdKg->p_FmPcdKgRegs->kgeeer, tmpReg);
                 break;
-            case(e_FM_PCD_KG_ERR_EXCEPTION_KEYSIZE_OVERFLOW):
+            case(e_FM_PCD_KG_EXCEPTION_KEYSIZE_OVERFLOW):
                 tmpReg = GET_UINT32(p_FmPcd->p_FmPcdKg->p_FmPcdKgRegs->kgeeer);
                 if(enable)
                     tmpReg |= FM_PCD_KG_KEYSIZE_OVERFLOW;
@@ -892,7 +911,7 @@ t_Error FM_PCD_SetException(t_Handle h_FmPcd, e_FmPcdExceptions exception, bool 
                     tmpReg &= ~FM_PCD_PRS_SINGLE_ECC;
                 WRITE_UINT32(p_FmPcd->p_FmPcdPrs->p_FmPcdPrsRegs->pever, tmpReg);
                 break;
-            case(e_FM_PCD_PLCR_ERR_EXCEPTION_DOUBLE_ECC):
+            case(e_FM_PCD_PLCR_EXCEPTION_DOUBLE_ECC):
                 tmpReg = GET_UINT32(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs->fmpl_eier);
                 if(enable)
                     tmpReg |= FM_PCD_PLCR_DOUBLE_ECC;
@@ -900,7 +919,7 @@ t_Error FM_PCD_SetException(t_Handle h_FmPcd, e_FmPcdExceptions exception, bool 
                     tmpReg &= ~FM_PCD_PLCR_DOUBLE_ECC;
                 WRITE_UINT32(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs->fmpl_eier, tmpReg);
                 break;
-            case(e_FM_PCD_PLCR_ERR_EXCEPTION_INIT_ENTRY_ERROR):
+            case(e_FM_PCD_PLCR_EXCEPTION_INIT_ENTRY_ERROR):
                 tmpReg = GET_UINT32(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs->fmpl_eier);
                 if(enable)
                     tmpReg |= FM_PCD_PLCR_INIT_ENTRY_ERROR;
@@ -928,14 +947,17 @@ t_Error FM_PCD_SetException(t_Handle h_FmPcd, e_FmPcdExceptions exception, bool 
                 RETURN_ERROR(MINOR, E_INVALID_STATE, ("Unsupported exception"));
         }
         /* for ECC exceptions driver automatically enables ECC mechanism, if disabled.
-           Driver does NOT disables them automatically, as we do not control which
-           of the rams are enabled and which arn't */
-        if(enable && ( (exception == e_FM_PCD_KG_ERR_EXCEPTION_DOUBLE_ECC) |
-                       (exception == e_FM_PCD_PLCR_ERR_EXCEPTION_DOUBLE_ECC) |
+           Driver may disable them automatically, depending on driver's status */
+        if(enable && ( (exception == e_FM_PCD_KG_EXCEPTION_DOUBLE_ECC) |
+                       (exception == e_FM_PCD_PLCR_EXCEPTION_DOUBLE_ECC) |
                        (exception == e_FM_PCD_PRS_EXCEPTION_DOUBLE_ECC) |
                        (exception == e_FM_PCD_PRS_EXCEPTION_SINGLE_ECC)))
-            if(!FmRamsEccIsExternalCtl(p_FmPcd->h_Fm))
-                FM_EnableRamsEcc(p_FmPcd->h_Fm);
+            FmEnableRamsEcc(p_FmPcd->h_Fm);
+        if(!enable && ( (exception == e_FM_PCD_KG_EXCEPTION_DOUBLE_ECC) |
+                       (exception == e_FM_PCD_PLCR_EXCEPTION_DOUBLE_ECC) |
+                       (exception == e_FM_PCD_PRS_EXCEPTION_DOUBLE_ECC) |
+                       (exception == e_FM_PCD_PRS_EXCEPTION_SINGLE_ECC)))
+            FmDisableRamsEcc(p_FmPcd->h_Fm);
     }
     else
         RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("Undefined exception"));
@@ -1063,7 +1085,7 @@ uint32_t FM_PCD_GetCounter(t_Handle h_FmPcd, e_FmPcdCounters counter)
     }
 }
 
-t_Error FM_PCD_SetCounter(t_Handle h_FmPcd, e_FmPcdCounters counter, uint32_t value)
+t_Error FM_PCD_ModifyCounter(t_Handle h_FmPcd, e_FmPcdCounters counter, uint32_t value)
 {
     t_FmPcd            *p_FmPcd = (t_FmPcd*)h_FmPcd;
 
@@ -1204,13 +1226,13 @@ t_Error FM_PCD_ForceIntr (t_Handle h_FmPcd, e_FmPcdExceptions exception)
 
     switch(exception)
     {
-        case(e_FM_PCD_KG_ERR_EXCEPTION_DOUBLE_ECC):
-        case(e_FM_PCD_KG_ERR_EXCEPTION_KEYSIZE_OVERFLOW):
+        case(e_FM_PCD_KG_EXCEPTION_DOUBLE_ECC):
+        case(e_FM_PCD_KG_EXCEPTION_KEYSIZE_OVERFLOW):
             if(!p_FmPcd->p_FmPcdKg)
                 RETURN_ERROR(MINOR, E_INVALID_STATE, ("Can't ask for this interrupt - keygen is not working"));
             break;
-        case(e_FM_PCD_PLCR_ERR_EXCEPTION_DOUBLE_ECC):
-        case(e_FM_PCD_PLCR_ERR_EXCEPTION_INIT_ENTRY_ERROR):
+        case(e_FM_PCD_PLCR_EXCEPTION_DOUBLE_ECC):
+        case(e_FM_PCD_PLCR_EXCEPTION_INIT_ENTRY_ERROR):
         case(e_FM_PCD_PLCR_EXCEPTION_PRAM_SELF_INIT_COMPLETE):
         case(e_FM_PCD_PLCR_EXCEPTION_ATOMIC_ACTION_COMPLETE):
             if(!p_FmPcd->p_FmPcdPlcr)
@@ -1249,22 +1271,22 @@ t_Error FM_PCD_ForceIntr (t_Handle h_FmPcd, e_FmPcdExceptions exception)
                 RETURN_ERROR(MINOR, E_NOT_SUPPORTED, ("The selected exception is masked"));
             WRITE_UINT32(p_FmPcd->p_FmPcdPrs->p_FmPcdPrsRegs->pevfr, FM_PCD_PRS_SINGLE_ECC);
             break;
-        case e_FM_PCD_KG_ERR_EXCEPTION_DOUBLE_ECC:
+        case e_FM_PCD_KG_EXCEPTION_DOUBLE_ECC:
             if (!(p_FmPcd->exceptions & FM_PCD_EX_KG_DOUBLE_ECC))
                 RETURN_ERROR(MINOR, E_NOT_SUPPORTED, ("The selected exception is masked"));
             WRITE_UINT32(p_FmPcd->p_FmPcdKg->p_FmPcdKgRegs->kgfeer, FM_PCD_KG_DOUBLE_ECC);
             break;
-        case e_FM_PCD_KG_ERR_EXCEPTION_KEYSIZE_OVERFLOW:
+        case e_FM_PCD_KG_EXCEPTION_KEYSIZE_OVERFLOW:
             if (!(p_FmPcd->exceptions & FM_PCD_EX_KG_KEYSIZE_OVERFLOW))
                 RETURN_ERROR(MINOR, E_NOT_SUPPORTED, ("The selected exception is masked"));
             WRITE_UINT32(p_FmPcd->p_FmPcdKg->p_FmPcdKgRegs->kgfeer, FM_PCD_KG_KEYSIZE_OVERFLOW);
             break;
-        case e_FM_PCD_PLCR_ERR_EXCEPTION_DOUBLE_ECC:
+        case e_FM_PCD_PLCR_EXCEPTION_DOUBLE_ECC:
             if (!(p_FmPcd->exceptions & FM_PCD_EX_PLCR_DOUBLE_ECC))
                 RETURN_ERROR(MINOR, E_NOT_SUPPORTED, ("The selected exception is masked"));
             WRITE_UINT32(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs->fmpl_eifr, FM_PCD_PLCR_DOUBLE_ECC);
             break;
-        case e_FM_PCD_PLCR_ERR_EXCEPTION_INIT_ENTRY_ERROR:
+        case e_FM_PCD_PLCR_EXCEPTION_INIT_ENTRY_ERROR:
             if (!(p_FmPcd->exceptions & FM_PCD_EX_PLCR_INIT_ENTRY_ERROR))
                 RETURN_ERROR(MINOR, E_NOT_SUPPORTED, ("The selected exception is masked"));
             WRITE_UINT32(p_FmPcd->p_FmPcdPlcr->p_FmPcdPlcrRegs->fmpl_eifr, FM_PCD_PLCR_INIT_ENTRY_ERROR);

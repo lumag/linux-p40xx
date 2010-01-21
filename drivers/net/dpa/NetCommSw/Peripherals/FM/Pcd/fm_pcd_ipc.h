@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -121,21 +121,20 @@ typedef struct
     uint16_t    profilesIds[FM_PCD_PLCR_NUM_ENTRIES];   /**< OUT */
 } t_FmPcdIpcSharedPlcrAllocParams;
 
-#ifdef __MWERKS__
+#if defined(__MWERKS__) && !defined(__GNUC__)
 #pragma pack(push,1)
-#endif /*__MWERKS__ */
+#endif /* defined(__MWERKS__) && ... */
 #define MEM_MAP_START
 
-typedef _Packed struct t_FmPcdIcPhysAddr
-{
-    volatile uint16_t high;
+typedef _Packed struct t_FmPcdIcPhysAddr {
+    volatile uint8_t  high;
     volatile uint32_t low;
 } _PackedType t_FmPcdIcPhysAddr;
 
 #define MEM_MAP_END
-#ifdef __MWERKS__
+#if defined(__MWERKS__) && !defined(__GNUC__)
 #pragma pack(pop)
-#endif /* __MWERKS__ */
+#endif /* defined(__MWERKS__) && ... */
 
 /**************************************************************************//**
  @Function      FM_PCD_GET_SET_PORT_PARAMS
@@ -206,6 +205,8 @@ typedef _Packed struct t_FmPcdIcPhysAddr
 #define FM_PCD_ALLOC_CLS_PLAN_EMPTY_GRP         34
 
 #define FM_PCD_MASTER_IS_ENABLED                35
+
+#define FM_PCD_GUEST_DISABLE                    36
 
 /** @} */ /* end of FM_PCD_IPC_grp group */
 /** @} */ /* end of FM_grp group */

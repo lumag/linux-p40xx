@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -58,6 +58,7 @@
  @{
 *//***************************************************************************/
 
+
 /**************************************************************************//**
  @Description   FM MAC Exceptions
 *//***************************************************************************/
@@ -116,8 +117,8 @@ typedef enum e_FmMacExceptions {
     e_FM_MAC_INT_RECOVER,                   /**<   Enable Default Interrupts */
     e_FM_MAC_INT_MINOR                      /**<   Disable all Interrupts */
 } e_FmMacExceptions;
-
 #endif /* 0*/
+
 /**************************************************************************//**
  @Function      t_FmMacExceptionCallback
 
@@ -163,20 +164,20 @@ typedef struct t_FmMacStatistics {
     uint64_t  ifInBcastPkts;           /**< Total number of broadcast frame received */
     uint64_t  ifInDiscards;            /**< Frames received, but discarded due to problems within the MAC RX. */
     uint64_t  ifInErrors;              /**< Number of frames received with error:
-                                               • FIFO Overflow Error
-                                               • CRC Error
-                                               • Frame Too Long Error
-                                               • Alignment Error
-                                               • The dedicated Error Code (0xfe, not a code error) was received */
+                                               - FIFO Overflow Error
+                                               - CRC Error
+                                               - Frame Too Long Error
+                                               - Alignment Error
+                                               - The dedicated Error Code (0xfe, not a code error) was received */
     uint64_t  ifOutOctets;             /**< Total number of byte sent. */
     uint64_t  ifOutPkts;               /**< Total number of packets sent .*/
     uint64_t  ifOutMcastPkts;          /**< Total number of multicast frame sent */
     uint64_t  ifOutBcastPkts;          /**< Total number of multicast frame sent */
     uint64_t  ifOutDiscards;           /**< Frames received, but discarded due to problems within the MAC TX N/A!.*/
     uint64_t  ifOutErrors;             /**< Number of frames transmitted with error:
-                                               • FIFO Overflow Error
-                                               • FIFO Underflow Error
-                                               • Other*/
+                                               - FIFO Overflow Error
+                                               - FIFO Underflow Error
+                                               - Other */
 } t_FmMacStatistics;
 
 
@@ -200,11 +201,12 @@ typedef struct t_FmMacParams {
     int                         mdioIrq;            /**< MDIO exceptions interrupt source - not valid for all
                                                          MACs; for MACs that don't have mdio-irq, leave this
                                                          parameters 0; For polling, put this parameter - NO_IRQ */
-    t_FmMacExceptionCallback    *f_Events;          /**< MDIO Events Callback Routine         */
-    t_FmMacExceptionCallback    *f_Exceptions;      /**< Exception Callback Routine         */
+    t_FmMacExceptionCallback    *f_Event;           /**< MDIO Events Callback Routine         */
+    t_FmMacExceptionCallback    *f_Exception;       /**< Exception Callback Routine         */
     t_Handle                    h_App;              /**< A handle to an application layer object; This handle will
                                                          be passed by the driver upon calling the above callbacks */
 } t_FmMacParams;
+
 
 /**************************************************************************//**
  @Function      FM_MAC_Config
@@ -303,7 +305,7 @@ t_Error FM_MAC_ConfigLoopback (t_Handle h_FmMac, bool enable);
 /**************************************************************************//**
  @Function      FM_MAC_ConfigMaxFrameLength
 
- @Description   Setup maximum Farme Length
+ @Description   Setup maximum Frame Length
 
  @Param[in]     h_FmMac    A handle to a FM MAC Module.
  @Param[in]     newVal     MAX Frame length
@@ -357,9 +359,9 @@ t_Error FM_MAC_ConfigPadAndCrc (t_Handle h_FmMac, bool enable);
 t_Error FM_MAC_ConfigHalfDuplex (t_Handle h_FmMac, bool enable);
 
 /**************************************************************************//**
- @Function      FM_MAC_ConfigHugeFrames
+ @Function      FM_MAC_ConfigLengthCheck
 
- @Description   Enable Huge Frame mode
+ @Description   Configure thef frame length checking.
 
  @Param[in]     h_FmMac    A handle to a FM MAC Module.
  @Param[in]     enable     TRUE to enable or FALSE to disable.
@@ -368,7 +370,7 @@ t_Error FM_MAC_ConfigHalfDuplex (t_Handle h_FmMac, bool enable);
 
  @Cautions      Allowed only following FM_MAC_Config() and before FM_MAC_Init().
 *//***************************************************************************/
-t_Error FM_MAC_ConfigHugeFrames (t_Handle h_FmMac, bool enable);
+t_Error FM_MAC_ConfigLengthCheck (t_Handle h_FmMac, bool enable);
 
 /**************************************************************************//**
  @Function      FM_MAC_ConfigException
@@ -427,18 +429,30 @@ t_Error FM_MAC_Enable  (t_Handle h_FmMac,  e_CommMode mode);
 t_Error FM_MAC_Disable (t_Handle h_FmMac, e_CommMode mode);
 
 /**************************************************************************//**
- @Function      FM_MAC_Restart
+ @Function      FM_MAC_Enable1588TimeStamp
 
- @Description   Restart Rx and Tx on FM-MAC controller
+ @Description   Enables the TSU operation.
 
- @Param[in]     h_FmMac    A handle to a FM MAC Module.
- @Param[in]     mode       Restart the MAC to this mode
+ @Param[in]     h_Fm   - Handle to the PTP as returned from the FM_MAC_PtpConfig.
 
  @Return        E_OK on success; Error code otherwise.
 
- @Cautions      Allowed only following FM_MAC_Disable().
+ @Cautions      Allowed only following FM_MAC_Init().
 *//***************************************************************************/
-t_Error FM_MAC_Restart (t_Handle h_FmMac, e_CommMode mode);
+t_Error FM_MAC_Enable1588TimeStamp(t_Handle h_Fm);
+
+/**************************************************************************//**
+ @Function      FM_MAC_Disable1588TimeStamp
+
+ @Description   Disables the TSU operation.
+
+ @Param[in]     h_Fm   - Handle to the PTP as returned from the FM_MAC_PtpConfig.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_MAC_Init().
+*//***************************************************************************/
+t_Error FM_MAC_Disable1588TimeStamp(t_Handle h_Fm);
 
 /**************************************************************************//**
  @Function      FM_MAC_TxMacPause
@@ -446,14 +460,14 @@ t_Error FM_MAC_Restart (t_Handle h_FmMac, e_CommMode mode);
  @Description   Enable transmition of  Pause frame
 
  @Param[in]     h_FmMac     A handle to a FM MAC Module.
- @Param[in]     pauseTime   Define pause time
- @Param[in]     exPauseTime define Extended pause time (not on 10G)
+ @Param[in]     pauseTime   Pause quanta value used with transmitted pause frames.
+                            Each quanta represents a 512 bit-times.
 
  @Return        E_OK on success; Error code otherwise.
 
  @Cautions      Allowed only following FM_MAC_Init().
 *//***************************************************************************/
-t_Error FM_MAC_TxMacPause (t_Handle h_FmMac, uint16_t pauseTime, uint16_t exPauseTime);
+t_Error FM_MAC_TxMacPause (t_Handle h_FmMac, uint16_t pauseTime);
 
 /**************************************************************************//**
  @Function      FM_MAC_ResetCounters
@@ -582,6 +596,7 @@ t_Error FM_MAC_RemovelExactMatchMacAddr (t_Handle h_FmMac, t_EnetAddr *p_EnetAdd
  @Cautions      Allowed only after FM_MAC_Init().
 *//***************************************************************************/
 t_Error FM_MAC_SetPromiscuous (t_Handle h_FmMac, bool enable);
+
 /**************************************************************************//**
  @Function      FM_MAC_AdjustLink
 

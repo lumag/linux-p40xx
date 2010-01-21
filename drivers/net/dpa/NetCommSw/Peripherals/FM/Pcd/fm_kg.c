@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -103,7 +103,6 @@ static e_FmPcdKgExtractDfltSelect GetGenericSwDefault(t_FmPcdKgExtractDflt swDef
             for(i=0 ; i<numOfSwDefaults ; i++)
                 if(swDefaults[i].type == e_FM_PCD_KG_GENERIC_FROM_DATA)
                     return swDefaults[i].dfltSelect;
-            ASSERT_COND(FALSE);
         default:
             return e_FM_PCD_KG_DFLT_ILLEGAL;
     }
@@ -698,7 +697,7 @@ t_Handle FmPcdKgBuildClsPlanGrp(t_Handle h_FmPcd, t_FmPcdKgClsPlanGrpParams *p_G
     struct {
         protocolOpt_t   opt;
         uint32_t        vector;
-    }                               tmpOptStruct[MAX_NUM_OF_OPTIONS];
+    }                               tmpOptStruct[FM_PCD_MAX_NUM_OF_OPTIONS];
 
     SANITY_CHECK_RETURN_VALUE(p_FmPcd, E_INVALID_HANDLE, NULL);
     SANITY_CHECK_RETURN_VALUE(p_FmPcd->p_FmPcdKg, E_INVALID_HANDLE, NULL);
@@ -767,9 +766,9 @@ t_Handle FmPcdKgBuildClsPlanGrp(t_Handle h_FmPcd, t_FmPcdKgClsPlanGrpParams *p_G
     }
 
     /* allocate 2^numOfOptions entries */
-    if(numOfOptions > MAX_NUM_OF_OPTIONS)
+    if(numOfOptions > FM_PCD_MAX_NUM_OF_OPTIONS)
     {
-        REPORT_ERROR(MINOR, E_INVALID_VALUE, ("Too many options - no more than %d components allowed.", MAX_NUM_OF_OPTIONS));
+        REPORT_ERROR(MINOR, E_INVALID_VALUE, ("Too many options - no more than %d components allowed.", FM_PCD_MAX_NUM_OF_OPTIONS));
         RELEASE_LOCK(p_FmPcd->p_FmPcdKg->clsPlanGrps[grpId].lock);
         return NULL;
     }
@@ -837,7 +836,10 @@ void FmPcdKgDestroyClsPlanGrp(t_Handle h_FmPcd, uint8_t grpId)
 
     /* check that no port is bound to this port */
     if(p_FmPcd->p_FmPcdKg->clsPlanGrps[grpId].owners)
+    {
        REPORT_ERROR(MINOR, E_INVALID_STATE, ("Trying to delete a clsPlan grp that has ports bound to"));
+       return;
+    }
 
     FmPcdDecNetEnvOwners(p_FmPcd, p_FmPcd->p_FmPcdKg->clsPlanGrps[grpId].netEnvId);
 
@@ -856,7 +858,6 @@ t_Error FmPcdKgBuildBindPortToSchemes(t_Handle h_FmPcd , t_FmPcdKgInterModuleBin
     uint8_t                 i, relativeSchemeId;
     uint32_t                tmp, walking1Mask;
     uint16_t                pcdPortId;
-    uint8_t                 portsTable[] = PCD_PORTS_TABLE;
 
     SANITY_CHECK_RETURN_ERROR(p_FmPcd, E_INVALID_HANDLE);
     SANITY_CHECK_RETURN_ERROR(p_FmPcd->p_FmPcdKg, E_INVALID_HANDLE);
@@ -880,7 +881,7 @@ t_Error FmPcdKgBuildBindPortToSchemes(t_Handle h_FmPcd , t_FmPcdKgInterModuleBin
                 RETURN_ERROR(MAJOR, E_INVALID_STATE, ("Port may not be bound to requested scheme - differ in netEnvId"));
 
             /* if next engine is private port policer profile, we need to check that it is valid */
-            GET_FM_PCD_PORTID_FROM_GLOBAL_PORTID(pcdPortId, portsTable, p_BindPort->hardwarePortId)
+            SET_FM_PCD_PORTID_FROM_GLOBAL_PORTID(pcdPortId, p_BindPort->hardwarePortId);
             if(p_Scheme->nextRelativePlcrProfile)
             {
                 for(j = 0;j<p_Scheme->numOfProfiles;j++)
@@ -1038,9 +1039,16 @@ t_Error  FmPcdKgAllocClsPlanEntries(t_Handle h_FmPcd, uint16_t numOfClsPlanEntri
     TRY_LOCK_RET_ERR(p_FmPcd->lock);
 
     if(!numOfClsPlanEntries)
+    {
+        RELEASE_LOCK(p_FmPcd->lock);
         return E_OK;
+    }
+
     if ((numOfClsPlanEntries % CLS_PLAN_NUM_PER_GRP) || (!POWER_OF_2(numOfClsPlanEntries)))
+    {
+        RELEASE_LOCK(p_FmPcd->lock);
         RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("numOfClsPlanEntries must be a power of 2 and divisible by 8"));
+    }
 
     numOfBlocks =  (uint8_t)(numOfClsPlanEntries/CLS_PLAN_NUM_PER_GRP);
 
@@ -1116,6 +1124,15 @@ t_Error KgEnable(t_FmPcd *p_FmPcd)
     return E_OK;
 }
 
+t_Error KgDisable(t_FmPcd *p_FmPcd)
+{
+    t_FmPcdKgRegs               *p_Regs = p_FmPcd->p_FmPcdKg->p_FmPcdKgRegs;
+
+    WRITE_UINT32(p_Regs->kggcr,GET_UINT32(p_Regs->kggcr) & ~FM_PCD_KG_KGGCR_EN);
+
+    return E_OK;
+}
+
 static t_Error WriteKgarWait(t_FmPcd *p_FmPcd, uint32_t kgar)
 {
     WRITE_UINT32(p_FmPcd->p_FmPcdKg->p_FmPcdKgRegs->kgar, kgar);
@@ -1131,7 +1148,7 @@ void KgSetClsPlan(t_Handle h_FmPcd, t_FmPcdKgInterModuleClsPlanSet *p_Set)
     t_FmPcd                 *p_FmPcd = (t_FmPcd*)h_FmPcd;
     t_FmPcdKgClsPlanRegs    *p_FmPcdKgPortRegs;
     uint32_t                tmpKgarReg=0;
-    uint8_t                 i, j;
+    uint16_t                i, j;
 
     SANITY_CHECK_RETURN(p_FmPcd, E_INVALID_HANDLE);
     SANITY_CHECK_RETURN(p_FmPcd->p_FmPcdKg, E_INVALID_HANDLE);
@@ -1171,7 +1188,7 @@ static void PcdKgErrorException(t_Handle h_FmPcd)
     WRITE_UINT32(p_FmPcd->p_FmPcdKg->p_FmPcdKgRegs->kgseer, schemeIndexes);
 
     if(event & FM_PCD_KG_DOUBLE_ECC)
-        p_FmPcd->f_FmPcdException(p_FmPcd->h_App,e_FM_PCD_KG_ERR_EXCEPTION_DOUBLE_ECC);
+        p_FmPcd->f_Exception(p_FmPcd->h_App,e_FM_PCD_KG_EXCEPTION_DOUBLE_ECC);
     if(event & FM_PCD_KG_KEYSIZE_OVERFLOW)
     {
         if(schemeIndexes)
@@ -1179,13 +1196,13 @@ static void PcdKgErrorException(t_Handle h_FmPcd)
             while(schemeIndexes)
             {
                 if(schemeIndexes & 0x1)
-                    p_FmPcd->f_FmPcdIndexedException(p_FmPcd->h_App,e_FM_PCD_KG_ERR_EXCEPTION_KEYSIZE_OVERFLOW, (uint16_t)(31 - index));
+                    p_FmPcd->f_FmPcdIndexedException(p_FmPcd->h_App,e_FM_PCD_KG_EXCEPTION_KEYSIZE_OVERFLOW, (uint16_t)(31 - index));
                 schemeIndexes >>= 1;
                 index+=1;
             }
         }
         else /* this should happen only when interrupt is forced. */
-            p_FmPcd->f_FmPcdException(p_FmPcd->h_App,e_FM_PCD_KG_ERR_EXCEPTION_KEYSIZE_OVERFLOW);
+            p_FmPcd->f_Exception(p_FmPcd->h_App,e_FM_PCD_KG_EXCEPTION_KEYSIZE_OVERFLOW);
     }
 }
 
@@ -1399,7 +1416,6 @@ t_Error KgInit(t_FmPcd *p_FmPcd)
     int                         i;
     t_FmPcdKgPortConfigRegs     *p_FmPcdKgPortRegs;
     uint8_t                     hardwarePortId;
-    uint8_t                     portsTable[] = PCD_PORTS_TABLE;
     uint32_t                    tmpReg;
 #else
     t_FmPcdIpcKgAllocParams     kgAlloc;
@@ -1413,8 +1429,7 @@ t_Error KgInit(t_FmPcd *p_FmPcd)
     tmpReg = 0;
     if(p_FmPcd->exceptions & FM_PCD_EX_KG_DOUBLE_ECC)
     {
-        if(!FmRamsEccIsExternalCtl(p_FmPcd->h_Fm))
-            FM_EnableRamsEcc(p_FmPcd->h_Fm);
+        FmEnableRamsEcc(p_FmPcd->h_Fm);
         tmpReg |= FM_PCD_KG_DOUBLE_ECC;
     }
     if(p_FmPcd->exceptions & FM_PCD_EX_KG_KEYSIZE_OVERFLOW)
@@ -1449,7 +1464,7 @@ t_Error KgInit(t_FmPcd *p_FmPcd)
     for (i=0;i<PCD_MAX_NUM_OF_PORTS;i++)
     {
 
-        GET_GLOBAL_PORTID_FROM_PCD_PORTS_TABLE(hardwarePortId, portsTable,i);
+        GET_GLOBAL_PORTID_FROM_PCD_PORTS_TABLE(hardwarePortId, i);
 
         err = KgWriteSp(p_FmPcd, hardwarePortId, 0xffffffff, FALSE);
         if(err)
@@ -1545,6 +1560,48 @@ t_Error KgInit(t_FmPcd *p_FmPcd)
 #endif  /* CONFIG_MULTI_PARTITION_SUPPORT */
 #endif /* 0 */
 
+t_Error KgFree(t_FmPcd *p_FmPcd)
+{
+#ifdef CONFIG_GUEST_PARTITION
+    t_FmPcdIpcKgAllocParams             kgAlloc;
+#endif /* CONFIG_GUEST_PARTITION */
+#ifdef CONFIG_MULTI_PARTITION_SUPPORT
+    t_Error                             err = E_OK;
+#endif /* CONFIG_MULTI_PARTITION_SUPPORT */
+
+    FmUnregisterIntr(p_FmPcd->h_Fm, e_FM_MOD_KG, 0, e_FM_INTR_TYPE_ERR);
+
+#ifndef CONFIG_GUEST_PARTITION
+        if(p_FmPcd->p_FmPcdKg->isDriverEmptyClsPlanGrp)
+            FmPcdKgDestroyClsPlanGrp(p_FmPcd, p_FmPcd->p_FmPcdKg->emptyClsPlanGrpId);
+#endif
+#ifdef CONFIG_MULTI_PARTITION_SUPPORT
+#ifdef CONFIG_GUEST_PARTITION
+    kgAlloc.numOfSchemes = p_FmPcd->p_FmPcdKg->numOfSchemes;
+    kgAlloc.partitionId = p_FmPcd->partitionId;
+    kgAlloc.numOfClsPlanEntries = p_FmPcd->p_FmPcdKg->numOfClsPlanEntries;
+    kgAlloc.isDriverClsPlanGrp = p_FmPcd->p_FmPcdKg->isDriverEmptyClsPlanGrp;
+    kgAlloc.clsPlanBase = p_FmPcd->p_FmPcdKg->clsPlanBase;
+    memcpy(kgAlloc.schemesIds, p_FmPcd->p_FmPcdKg->schemesIds , kgAlloc.numOfSchemes);
+    err = XX_SendMessage(p_FmPcd->fmPcdModuleName, FM_PCD_FREE_KG_RSRC, (uint8_t*)&kgAlloc, NULL, NULL);
+    if(err)
+        RETURN_ERROR(MINOR, err, NO_MSG);
+#else /* master */
+    err = FmPcdKgFreeSchemes(p_FmPcd,
+                                p_FmPcd->p_FmPcdKg->numOfSchemes,
+                                p_FmPcd->partitionId,
+                                p_FmPcd->p_FmPcdKg->schemesIds);
+    if(err)
+        RETURN_ERROR(MINOR, err, NO_MSG);
+    err = FmPcdKgFreeClsPlanEntries(p_FmPcd,
+                                p_FmPcd->p_FmPcdKg->numOfClsPlanEntries,
+                                p_FmPcd->partitionId,
+                                p_FmPcd->p_FmPcdKg->clsPlanBase);
+#endif /* CONFIG_GUEST_PARTITION */
+#endif /* CONFIG_MULTI_PARTITION_SUPPORT */
+    return E_OK;
+}
+
 t_Error FmPcdKgSwBindPortToClsPlanGrp(t_Handle h_FmPcd, uint8_t netEnvId, uint8_t clsPlanGrpId, protocolOpt_t *p_OptArray)
 {
     t_FmPcd                 *p_FmPcd = (t_FmPcd *)h_FmPcd;
@@ -1565,7 +1622,7 @@ t_Error FmPcdKgSwBindPortToClsPlanGrp(t_Handle h_FmPcd, uint8_t netEnvId, uint8_
     p_ClsPlanGrp->owners++;
 
     /* copy options array for port */
-    memcpy(p_OptArray, &p_FmPcd->p_FmPcdKg->clsPlanGrps[clsPlanGrpId].optArray, MAX_NUM_OF_OPTIONS*sizeof(protocolOpt_t));
+    memcpy(p_OptArray, &p_FmPcd->p_FmPcdKg->clsPlanGrps[clsPlanGrpId].optArray, FM_PCD_MAX_NUM_OF_OPTIONS*sizeof(protocolOpt_t));
 
     return E_OK;
 }
@@ -1581,7 +1638,7 @@ void FmPcdKgSwUnbindPortToClsPlanGrp(t_Handle h_FmPcd, uint8_t clsPlanGrpId)
     p_ClsPlanGrp->owners--;
 }
 
-t_Error FmPcdKgBuildScheme(t_Handle h_FmPcd,  t_FmPcdKgSchemeParams *p_Scheme, t_FmPcdKgInterModuleSchemeRegs *p_SchemeRegs, t_FmPcdKgKeyOrder *p_OrderedArray)
+t_Error FmPcdKgBuildScheme(t_Handle h_FmPcd,  t_FmPcdKgSchemeParams *p_Scheme, t_FmPcdKgInterModuleSchemeRegs *p_SchemeRegs)
 {
     t_FmPcd                             *p_FmPcd = (t_FmPcd *)h_FmPcd;
     uint32_t                            grpBits;
@@ -1599,21 +1656,20 @@ t_Error FmPcdKgBuildScheme(t_Handle h_FmPcd,  t_FmPcdKgSchemeParams *p_Scheme, t
     t_FmPcdKgExtractedOrForFqid         *p_ExtractOr;
     bool                                generic = FALSE;
     t_KnownFieldsMasks                  bitMask;
-    e_FmPcdKgExtractDfltSelect          swDefault;
-    t_FmPcdKgKeyOrder                   orderedArray;
+    e_FmPcdKgExtractDfltSelect          swDefault = (e_FmPcdKgExtractDfltSelect)0;
     t_FmPcdKgSchemesExtracts            *p_LocalExtractsArray;
     uint8_t                             numOfSwDefaults = 0;
     t_FmPcdKgExtractDflt                swDefaults[NUM_OF_SW_DEFAULTS];
     uint8_t                             currGenId = 0, relativeSchemeId;
 
-    memset(p_OrderedArray, 0, sizeof(t_FmPcdKgKeyOrder));
-    memset(orderedArray, 0, sizeof(t_FmPcdKgKeyOrder));
-    memset(swDefaults, 0, NUM_OF_SW_DEFAULTS*sizeof(t_FmPcdKgExtractDflt));
-
     if(!p_Scheme->modify)
         relativeSchemeId = p_Scheme->id.relativeSchemeId;
     else
         relativeSchemeId = FmPcdKgGetRelativeSchemeId(p_FmPcd, (uint8_t)(CAST_POINTER_TO_UINT32(p_Scheme->id.h_Scheme)-1));
+
+    memset(&p_FmPcd->p_FmPcdKg->schemes[relativeSchemeId].orderedArray, 0, sizeof(t_FmPcdKgKeyOrder));
+    memset(swDefaults, 0, NUM_OF_SW_DEFAULTS*sizeof(t_FmPcdKgExtractDflt));
+    memset(p_SchemeRegs, 0, sizeof(t_FmPcdKgInterModuleSchemeRegs));
 
     /* by netEnv parameters, get match vector */
     if(!p_Scheme->alwaysDirect)
@@ -1637,7 +1693,7 @@ t_Error FmPcdKgBuildScheme(t_Handle h_FmPcd,  t_FmPcdKgSchemeParams *p_Scheme, t
     if(p_Scheme->nextEngine == e_FM_PCD_PLCR)
     {
         direct = p_Scheme->kgNextEngineParams.plcrProfile.direct;
-        absolute = p_Scheme->kgNextEngineParams.plcrProfile.sharedProfile ? TRUE: FALSE;
+        absolute = (bool)(p_Scheme->kgNextEngineParams.plcrProfile.sharedProfile ? TRUE : FALSE);
         if(!direct && absolute)
             RETURN_ERROR(MAJOR, E_INVALID_STATE, ("Indirect policing is not available when profile is shared."));
 
@@ -1956,7 +2012,7 @@ t_Error FmPcdKgBuildScheme(t_Handle h_FmPcd,  t_FmPcdKgSchemeParams *p_Scheme, t
                 genTmp |= (uint32_t)((size - 1) << KG_SCH_GEN_SIZE_SHIFT);
                 swDefault = GetGenericSwDefault(swDefaults, numOfSwDefaults, code);
                 if(swDefault == e_FM_PCD_KG_DFLT_ILLEGAL)
-                    RETURN_ERROR(MAJOR, E_NOT_SUPPORTED, ("Illegal code for sw default"));
+                    DBG(WARNING, ("No sw default configured"));
 
                 genTmp |= swDefault << KG_SCH_GEN_DEF_SHIFT;
                 genTmp |= KG_SCH_GEN_MASK;
@@ -1968,7 +2024,6 @@ t_Error FmPcdKgBuildScheme(t_Handle h_FmPcd,  t_FmPcdKgSchemeParams *p_Scheme, t
             }
         }
         p_SchemeRegs->kgse_ekfc = knownTmp;
-
 
         selectTmp = 0;
         maskTmp = 0xFFFFFFFF;
@@ -2018,7 +2073,6 @@ t_Error FmPcdKgBuildScheme(t_Handle h_FmPcd,  t_FmPcdKgSchemeParams *p_Scheme, t
         tmpReg |= p_KeyAndHash->hashShift << KG_SCH_HASH_CONFIG_SHIFT_SHIFT;
         p_SchemeRegs->kgse_hc = tmpReg;
 
-
         /* build the return array describing the order of the extractions */
 
         /* the last currGenId places of the array
@@ -2041,22 +2095,23 @@ t_Error FmPcdKgBuildScheme(t_Handle h_FmPcd,  t_FmPcdKgSchemeParams *p_Scheme, t
                 index in the user's extractions array */
                 /* we compare the id of the current extract with the id of the extract in the orderedArray[j-1]
                 location */
-                while(p_LocalExtractsArray->extractsArray[i].id < p_LocalExtractsArray->extractsArray[orderedArray[j-1]].id && j>0)
+                while(p_LocalExtractsArray->extractsArray[i].id <
+                      p_LocalExtractsArray->extractsArray[p_FmPcd->p_FmPcdKg->schemes[relativeSchemeId].orderedArray[j-1]].id && j>0)
                 {
-                    orderedArray[j] = orderedArray[j-1];
+                    p_FmPcd->p_FmPcdKg->schemes[relativeSchemeId].orderedArray[j] =
+                        p_FmPcd->p_FmPcdKg->schemes[relativeSchemeId].orderedArray[j-1];
                     j--;
                 }
-                orderedArray[j] = (uint8_t)i;
+                p_FmPcd->p_FmPcdKg->schemes[relativeSchemeId].orderedArray[j] = (uint8_t)i;
                 curr++;
             }
             else
                 /* index is first_generic_index + generic index (id) */
-                orderedArray[p_KeyAndHash->numOfUsedExtracts - currGenId + p_LocalExtractsArray->extractsArray[i].id]= (uint8_t)i;
+                p_FmPcd->p_FmPcdKg->schemes[relativeSchemeId].orderedArray[p_KeyAndHash->numOfUsedExtracts - currGenId + p_LocalExtractsArray->extractsArray[i].id]= (uint8_t)i;
 
         }
         XX_Free(p_LocalExtractsArray);
         p_LocalExtractsArray = NULL;
-        memcpy(p_OrderedArray, &orderedArray, sizeof(orderedArray));
 
     }
     else
@@ -2433,7 +2488,6 @@ t_Error FM_PCD_KgDumpRegs(t_Handle h_FmPcd)
     int                 i = 0, j = 0;
     uint8_t             hardwarePortId;
     uint32_t            tmpKgarReg;
-    uint8_t             portsTable[] = PCD_PORTS_TABLE;
     t_Error             err = E_OK;
 
     DECLARE_DUMP;
@@ -2494,7 +2548,7 @@ t_Error FM_PCD_KgDumpRegs(t_Handle h_FmPcd)
     for (i=0;i<PCD_MAX_NUM_OF_PORTS;i++)
     {
 
-        GET_GLOBAL_PORTID_FROM_PCD_PORTS_TABLE(hardwarePortId, portsTable,i);
+        GET_GLOBAL_PORTID_FROM_PCD_PORTS_TABLE(hardwarePortId, i);
 
         tmpKgarReg = FmPcdKgBuildReadPortSchemeBindActionReg(hardwarePortId);
 
@@ -2553,8 +2607,7 @@ t_Handle FM_PCD_KgSetScheme(t_Handle h_FmPcd,  t_FmPcdKgSchemeParams *p_Scheme)
         REPORT_ERROR(MAJOR, E_INVALID_HANDLE, ("No HC obj. must have HC in guest partition!"));
         return NULL;
     }
-
-#else
+#else /* CONFIG_MULTI_PARTITION_SUPPORT */
 
     TRY_LOCK_RET_NULL(p_FmPcd->lock);
 
@@ -2603,7 +2656,7 @@ t_Handle FM_PCD_KgSetScheme(t_Handle h_FmPcd,  t_FmPcdKgSchemeParams *p_Scheme)
         }
     }
 
-    err = FmPcdKgBuildScheme(h_FmPcd, p_Scheme, &schemeRegs, &p_Scheme->orderedArray);
+    err = FmPcdKgBuildScheme(h_FmPcd, p_Scheme, &schemeRegs);
     if(err)
     {
         REPORT_ERROR(MAJOR, err, NO_MSG);
@@ -2668,10 +2721,10 @@ t_Error  FM_PCD_KgDeleteScheme(t_Handle h_FmPcd, t_Handle h_Scheme)
     physicalSchemeId = (uint8_t)(CAST_POINTER_TO_UINT32(h_Scheme)-1);
     relativeSchemeId = FmPcdKgGetRelativeSchemeId(p_FmPcd, physicalSchemeId);
 
-    TRY_LOCK_RET_ERR(p_FmPcd->p_FmPcdKg->schemes[relativeSchemeId].lock);
-
     if(relativeSchemeId == FM_PCD_KG_NUM_OF_SCHEMES)
         REPORT_ERROR(MAJOR, E_NOT_IN_RANGE, NO_MSG);
+
+    TRY_LOCK_RET_ERR(p_FmPcd->p_FmPcdKg->schemes[relativeSchemeId].lock);
 
     /* check that no port is bound to this scheme */
     err = FmPcdKgCheckInvalidateSchemeSw(h_FmPcd, relativeSchemeId);
