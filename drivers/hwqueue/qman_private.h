@@ -1,4 +1,4 @@
-/* Copyright (c) 2008, 2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -94,6 +94,19 @@ struct qm_mc {
 /* Portal structure */
 /********************/
 
+#ifdef CONFIG_FSL_QMAN_BUG_AND_FEATURE_REV1
+/* For workarounds that require storage, this struct is overlayed on a
+ * get_zeroed_page(), guaranteeing alignment and such. */
+struct qm_portal_bugs {
+	/* shadow MR ring, for QMAN9 workaround, 8-CL aligned */
+	struct qm_mr_entry mr[QM_MR_SIZE];
+	/* shadow MC result, for QMAN6 and QMAN7 workarounds, CL aligned */
+	struct qm_mc_result result;
+	/* boolean switch for QMAN7 workaround */
+	int initfq_and_sched;
+};
+#endif
+
 struct qm_portal {
 	/* In the non-CONFIG_FSL_QMAN_CHECKING case, everything up to and
 	 * including 'mc' fits in a cacheline (yay!). The 'config' part is
@@ -107,6 +120,9 @@ struct qm_portal {
 	struct qm_portal_config config;
 	/* Logical index (not cell-index) */
 	int index;
+#ifdef CONFIG_FSL_QMAN_BUG_AND_FEATURE_REV1
+	struct qm_portal_bugs *bugs;
+#endif
 } ____cacheline_aligned;
 
 /* EQCR/DQRR/[...] code uses this as a locked mechanism to bind/unbind to
@@ -119,7 +135,12 @@ void __qm_portal_unbind(struct qm_portal *portal, u8 iface);
 __init int __fqalloc_init(void);
 #endif
 
-/* Hooks between qman_driver.c and qman_high.c */
+/* Revision info (for errata and feature handling) */
+#define QMAN_REV1 0x0100
+#define QMAN_REV2 0x0101
+extern u16 qman_ip_rev; /* 0 if uninitialised, otherwise QMAN_REVx */
+
+/* Hooks from qman_high.c in to qman_driver.c */
 extern DEFINE_PER_CPU(struct qman_portal *, qman_affine_portal);
 static inline struct qman_portal *get_affine_portal(void)
 {
@@ -129,6 +150,8 @@ static inline void put_affine_portal(void)
 {
 	put_cpu_var(qman_affine_portal);
 }
+
+/* Hooks from qman_driver.c in to qman_high.c */
 #define QMAN_PORTAL_FLAG_RSTASH      0x00000001 /* enable DQRR entry stashing */
 #define QMAN_PORTAL_FLAG_DSTASH      0x00000002 /* enable data stashing */
 struct qman_portal *qman_create_portal(struct qm_portal *portal, u32 flags,
@@ -142,3 +165,4 @@ void qman_static_dequeue_add_ex(struct qman_portal *p, u32 pools);
  * CGR" commands on boot-up. So we're declaring some internal-only APIs to
  * facilitate this for now. */
 int qman_init_cgr(u32 cgid);
+

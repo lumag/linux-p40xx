@@ -1,4 +1,4 @@
-/* Copyright (c) 2008, 2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -471,7 +471,6 @@ void qm_dqrr_current_prefetch(struct qm_portal *portal)
 	DQRR_API_START();
 	/* If ring entries get stashed, don't invalidate/prefetch */
 	QM_ASSERT(!(dqrr->flags & QM_DQRR_FLAG_RE));
-	dcbi(dqrr->cursor);
 	dcbt_ro(dqrr->cursor);
 }
 EXPORT_SYMBOL(qm_dqrr_current_prefetch);
@@ -782,14 +781,26 @@ int qm_mr_init(struct qm_portal *portal, enum qm_mr_pmode pmode,
 	MR_API_START();
 	u32 cfg;
 
+#ifdef CONFIG_FSL_QMAN_BUG_AND_FEATURE_REV1
+	if ((qman_ip_rev == QMAN_REV1) && (pmode != qm_mr_pvb)) {
+		pr_err("Qman is rev1, so QMAN9 workaround requires 'pvb'\n");
+		return -EINVAL;
+	}
+#endif
 	if (__qm_portal_bind(portal, QM_BIND_MR))
 		return -EBUSY;
 	mr->ring = ptr_OR(portal->addr.addr_ce, CL_MR);
 	mr->pi = qm_in(MR_PI_CINH) & (QM_MR_SIZE - 1);
 	mr->ci = qm_in(MR_CI_CINH) & (QM_MR_SIZE - 1);
+#ifdef CONFIG_FSL_QMAN_BUG_AND_FEATURE_REV1
+	if (qman_ip_rev == QMAN_REV1)
+		/* Situate the cursor in the shadow ring */
+		mr->cursor = portal->bugs->mr + mr->ci;
+	else
+#endif
 	mr->cursor = mr->ring + mr->ci;
 	mr->fill = cyc_diff(QM_MR_SIZE, mr->ci, mr->pi);
-	mr->vbit = (qm_in(MR_PI_CINH) & QM_MR_SIZE) ?QM_MR_VERB_VBIT : 0;
+	mr->vbit = (qm_in(MR_PI_CINH) & QM_MR_SIZE) ? QM_MR_VERB_VBIT : 0;
 	mr->ithresh = qm_in(MR_ITR);
 #ifdef CONFIG_FSL_QMAN_CHECKING
 	mr->pmode = pmode;
@@ -814,7 +825,6 @@ EXPORT_SYMBOL(qm_mr_finish);
 void qm_mr_current_prefetch(struct qm_portal *portal)
 {
 	MR_API_START();
-	dcbi(mr->cursor);
 	dcbt_ro(mr->cursor);
 }
 EXPORT_SYMBOL(qm_mr_current_prefetch);
@@ -892,6 +902,19 @@ u8 qm_mr_pvb_update(struct qm_portal *portal)
 	struct qm_mr_entry *res = ptr_OR(mr->ring, qm_cl(mr->pi));
 	QM_ASSERT(mr->pmode == qm_mr_pvb);
 	if ((res->verb & QM_MR_VERB_VBIT) == mr->vbit) {
+#ifdef CONFIG_FSL_QMAN_BUG_AND_FEATURE_REV1
+		/* New MR entry, on affected chips, copy this to the shadow ring
+		 * and fixup if required. */
+		if (qman_ip_rev == QMAN_REV1) {
+			struct qm_mr_entry *shadow = ptr_OR(portal->bugs->mr,
+							qm_cl(mr->pi));
+			memcpy(shadow, res, sizeof(*res));
+			/* Bypass the QM_MR_RC_*** definitions, and check the
+			 * byte value directly to handle the erratum. */
+			if (shadow->ern.rc == 0x06)
+				shadow->ern.rc = 0x60;
+		}
+#endif
 		mr->pi = (mr->pi + 1) & (QM_MR_SIZE - 1);
 		if (!mr->pi)
 			mr->vbit ^= QM_MR_VERB_VBIT;
@@ -1030,12 +1053,50 @@ EXPORT_SYMBOL(qm_mc_abort);
 void qm_mc_commit(struct qm_portal *portal, u8 myverb)
 {
 	MC_API_START();
+	struct qm_mc_result *rr = mc->rr + mc->rridx;
 	QM_ASSERT(mc->state == mc_user);
-	dcbi(mc->rr + mc->rridx);
+	dcbi(rr);
 	lwsync();
+#ifdef CONFIG_FSL_QMAN_BUG_AND_FEATURE_REV1
+	if ((qman_ip_rev == QMAN_REV1) && ((myverb & QM_MCC_VERB_MASK) ==
+					QM_MCC_VERB_INITFQ_SCHED)) {
+		u32 fqid = mc->cr->initfq.fqid;
+		/* Do two commands to avoid the hw bug. Note, we poll locally
+		 * rather than using qm_mc_result() because from a QMAN_CHECKING
+		 * perspective, we don't want to appear to have "finished" until
+		 * both commands are done. */
+		mc->cr->__dont_write_directly__verb = mc->vbit |
+					QM_MCC_VERB_INITFQ_PARKED;
+		dcbf(mc->cr);
+		portal->bugs->initfq_and_sched = 1;
+		do {
+			dcbi(rr);
+			dcbt_ro(rr);
+			barrier();
+		} while (!rr->verb);
+		mc->rridx ^= 1;
+		mc->vbit ^= QM_MCC_VERB_VBIT;
+#ifdef CONFIG_FSL_QMAN_CHECKING
+		mc->state = mc_idle;
+#endif
+		if (rr->result != QM_MCR_RESULT_OK) {
+#ifdef CONFIG_FSL_QMAN_CHECKING
+			mc->state = mc_hw;
+#endif
+			return;
+		}
+		rr = mc->rr + mc->rridx;
+		dcbzl(mc->cr);
+		mc->cr->alterfq.fqid = fqid;
+		dcbi(rr);
+		lwsync();
+		myverb = QM_MCC_VERB_ALTER_SCHED;
+	} else
+		portal->bugs->initfq_and_sched = 0;
+#endif
 	mc->cr->__dont_write_directly__verb = myverb | mc->vbit;
 	dcbf(mc->cr);
-	dcbt_ro(mc->rr + mc->rridx);
+	dcbt_ro(rr);
 #ifdef CONFIG_FSL_QMAN_CHECKING
 	mc->state = mc_hw;
 #endif
@@ -1055,6 +1116,24 @@ struct qm_mc_result *qm_mc_result(struct qm_portal *portal)
 		dcbt_ro(rr);
 		return NULL;
 	}
+#ifdef CONFIG_FSL_QMAN_BUG_AND_FEATURE_REV1
+	if (qman_ip_rev == QMAN_REV1) {
+		if ((rr->verb & QM_MCR_VERB_MASK) == QM_MCR_VERB_QUERYFQ) {
+			void *misplaced = (void *)rr + 50;
+			memcpy(&portal->bugs->result, rr, sizeof(*rr));
+			rr = &portal->bugs->result;
+			memcpy(&rr->queryfq.fqd.td, misplaced,
+				sizeof(rr->queryfq.fqd.td));
+		} else if (portal->bugs->initfq_and_sched) {
+			/* We split the user-requested command, make the final
+			 * result match the requested type. */
+			memcpy(&portal->bugs->result, rr, sizeof(*rr));
+			rr = &portal->bugs->result;
+			rr->verb = (rr->verb & QM_MCR_VERB_RRID) |
+					QM_MCR_VERB_INITFQ_SCHED;
+		}
+	}
+#endif
 	mc->rridx ^= 1;
 	mc->vbit ^= QM_MCC_VERB_VBIT;
 #ifdef CONFIG_FSL_QMAN_CHECKING

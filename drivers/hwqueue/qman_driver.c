@@ -1,4 +1,4 @@
-/* Copyright (c) 2008, 2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,6 +31,10 @@
  */
 
 #include "qman_private.h"
+
+/* Global variable containing revision id (even on non-control plane systems
+ * where CCSR isn't available) */
+u16 qman_ip_rev;
 
 /*****************/
 /* Portal driver */
@@ -95,10 +99,17 @@ static struct qm_portal *__qm_portal_add(const struct qm_addr *addr,
 	struct qm_portal *ret;
 	BUG_ON((num_portals + 1) > PORTAL_MAX);
 	ret = &portals[num_portals];
-	ret->index = num_portals++;
 	ret->addr = *addr;
 	ret->config = *config;
 	ret->config.bound = 0;
+#ifdef CONFIG_FSL_QMAN_BUG_AND_FEATURE_REV1
+	ret->bugs = (void *)get_zeroed_page(GFP_KERNEL);
+	if (!ret->bugs) {
+		pr_err("Can't get zeroed page for 'bugs'\n");
+		return NULL;
+	}
+#endif
+	ret->index = num_portals++;
 	return ret;
 }
 
@@ -229,7 +240,22 @@ static int __init fsl_qman_portal_init(struct device_node *node)
 	struct qman_portal *affine_portal;
 #endif
 	int irq, ret, numpools;
+	u16 ip_rev = 0;
 
+	if (of_device_is_compatible(node, "fsl,qman-portal-1.1"))
+		ip_rev = QMAN_REV2;
+	else if (of_device_is_compatible(node, "fsl,qman-portal-1.0"))
+		ip_rev = QMAN_REV1;
+	if (!qman_ip_rev) {
+		if (ip_rev)
+			qman_ip_rev = ip_rev;
+		else {
+			pr_warning("unknown Qman version, presuming rev1\n");
+			qman_ip_rev = QMAN_REV1;
+		}
+	} else if (ip_rev && (qman_ip_rev != ip_rev))
+		pr_warning("Revision=0x%04x, but portal '%s' has 0x%04x\n",
+			qman_ip_rev, node->full_name, ip_rev);
 	ret = of_address_to_resource(node, 0, &res[0]);
 	if (ret) {
 		pr_err("Can't get %s property '%s'\n", node->full_name,
@@ -321,9 +347,15 @@ bad_cpu_ph:
 				_PAGE_GUARDED | _PAGE_NO_CACHE);
 	cfg.pools = 0;
 	cfg.bound = 0;
-	pr_info("Qman portal at %p:%p (%d:%d)\n", addr.addr_ce, addr.addr_ci,
-		cfg.cpu, cfg.channel);
 	portal = __qm_portal_add(&addr, &cfg);
+	if (!portal) {
+		iounmap(addr.addr_ce);
+		iounmap(addr.addr_ci);
+		irq_dispose_mapping(cfg.irq);
+		return -ENOMEM;
+	}
+	pr_info("Qman portal at %p:%p (%d:%d,v%04x)\n", addr.addr_ce,
+		addr.addr_ci, cfg.cpu, cfg.channel, qman_ip_rev);
 	while (numpools--) {
 		int tmp = __qm_link(portal, *(ph++));
 		if (tmp)
@@ -377,14 +409,11 @@ static __init int qman_init(void)
 	}
 #ifndef CONFIG_FSL_QMAN_PORTAL_DISABLEAUTO
 	if (num_affine_portals == num_online_cpus()) {
-#ifdef CONFIG_FSL_QMAN_BUG_CGR_INIT
 		u32 cgid;
 		for (cgid = 0; cgid < 256; cgid++)
 			if (qman_init_cgr(cgid))
-				pr_err("CGR BUG workaround failed on CGID %d\n",
+				pr_err("CGR init failed on CGID %d\n",
 					cgid);
-		pr_info("Qman CGR bug workaround, CGRs initialised\n");
-#endif
 	} else {
 		pr_err("Not all cpus have an affine Qman portal\n");
 		pr_err("Expect Qman-dependent drivers to crash!\n");

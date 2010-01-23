@@ -32,10 +32,6 @@
 
 #include "qman_test.h"
 
-/* Bug or missing-feature workarounds */
-#define BUG_NO_EQCR_ITR
-#define BUG_NO_REASSERT_DQAVAIL
-
 /* DQRR maxfill, and ring/data stashing booleans */
 #define DQRR_MAXFILL	15
 
@@ -94,9 +90,7 @@ static u32 fqid = 1;
 #endif /* !defined(CONFIG_FSL_QMAN_FQALLOCATOR) */
 
 /* Boolean switch for handling EQCR_ITR */
-#ifndef BUG_NO_EQCR_ITR
 static int eqcr_thresh_on;
-#endif
 
 /* Test frame-descriptor, and another one to track dequeues */
 static struct qm_fd fd, fd_dq;
@@ -140,7 +134,6 @@ do { \
 /* Track EQCR consumption */
 static void eqcr_update(void)
 {
-#ifndef BUG_NO_EQCR_ITR
 	u32 status = qm_isr_status_read(portal);
 	if (status & QM_PIRQ_EQRI) {
 		int progress = qm_eqcr_cci_update(portal);
@@ -151,9 +144,6 @@ static void eqcr_update(void)
 		pr_info("Auto-update of EQCR consumption\n");
 		qm_isr_status_clear(portal, progress & QM_PIRQ_EQRI);
 	}
-#else
-	qm_eqcr_cci_update(portal);
-#endif
 }
 
 /* Helper for qm_eqcr_start() that tracks ring consumption and checks the
@@ -181,12 +171,10 @@ static void eqcr_empty(void)
 static void eqcr_commit(void)
 {
 	qm_eqcr_pvb_commit(portal, TEQVERB);
-#ifndef BUG_NO_EQCR_ITR
 	if (!eqcr_thresh_on && (qm_eqcr_get_avail(portal) < 2)) {
 		eqcr_thresh_on = 1;
 		qm_eqcr_set_ithresh(portal, 1);
 	}
-#endif
 }
 
 /* Track DQRR consumption */
@@ -222,7 +210,6 @@ static void mr_consume_and_next(void)
 	qm_mr_cci_consume_to_current(portal);
 }
 
-#ifndef CONFIG_FSL_QMAN_TEST_LOW_BUG_INTERRUPTS
 static irqreturn_t portal_isr(int irq, void *ptr)
 {
 	pr_info("QMAN portal interrupt, isr_count=%d->%d\n", isr_count,
@@ -232,16 +219,13 @@ static irqreturn_t portal_isr(int irq, void *ptr)
 	wake_up(&queue);
 	return IRQ_HANDLED;
 }
-#endif
 
 void qman_test_low(struct qm_portal *__p)
 {
 	cpumask_t oldmask = current->cpus_allowed, newmask = CPU_MASK_NONE;
 	const struct qm_portal_config *config = qm_portal_config(__p);
 	int i;
-#ifndef CONFIG_FSL_QMAN_TEST_LOW_BUG_INTERRUPTS
 	u32 status;
-#endif
 
 	portal = __p;
 	fd_init(&fd);
@@ -262,17 +246,11 @@ void qman_test_low(struct qm_portal *__p)
 	/* Initialise portal */
 	/*********************/
 	if (qm_eqcr_init(portal, qm_eqcr_pvb, qm_eqcr_cci) ||
-#ifdef CONFIG_FSL_QMAN_TEST_LOW_BUG_STASHING
-		qm_dqrr_init(portal,
-			qm_dqrr_dpush, qm_dqrr_pvb, qm_dqrr_cci,
-			DQRR_MAXFILL, 0, 0) ||
-#else
 		qm_dqrr_init(portal,
 			qm_dqrr_dpush, qm_dqrr_pvb, qm_dqrr_cci,
 			DQRR_MAXFILL,
 			(config->cpu == -1) ? 0 : 1,
 			(config->cpu == -1) ? 0 : 1) ||
-#endif
 		qm_mr_init(portal, qm_mr_pvb, qm_mr_cci) ||
 		qm_mc_init(portal) || qm_isr_init(portal))
 		panic("Portal setup failed");
@@ -284,10 +262,8 @@ void qman_test_low(struct qm_portal *__p)
 
 	pr_info("low-level test, start ccmode\n");
 
-#ifndef CONFIG_FSL_QMAN_TEST_LOW_BUG_INTERRUPTS
 	if (request_irq(config->irq, portal_isr, 0, "Qman portal 0", NULL))
 		panic("Can't register Qman portal 0 IRQ");
-#endif
 	pr_info("Portal %d channel i/faces initialised\n", config->channel);
 
 	/*****************/
@@ -305,11 +281,9 @@ void qman_test_low(struct qm_portal *__p)
 	pr_info("FQ %d initialised for channel %d, wq %d\n", fqid,
 		config->channel, TWQ);
 
-#ifndef CONFIG_FSL_QMAN_TEST_LOW_BUG_INTERRUPTS
 	/* The portal's (interrupt) status register should be zero */
 	status = qm_isr_status_read(portal);
 	BUG_ON(status);
-#endif
 
 	/**************************/
 	/* Enqueue TFRAMES frames */
@@ -326,25 +300,20 @@ void qman_test_low(struct qm_portal *__p)
 	}
 	eqcr_empty();
 
-#ifndef CONFIG_FSL_QMAN_TEST_LOW_BUG_INTERRUPTS
 	/* The portal's (interrupt) status register should be zero */
 	status = qm_isr_status_read(portal);
 	BUG_ON(status);
-#endif
 
 	/***************/
 	/* Schedule FQ */
 	/***************/
-#ifndef CONFIG_FSL_QMAN_TEST_LOW_BUG_INTERRUPTS
 	/* enable the interrupt source before it asserts */
 	qm_isr_enable_write(portal, QM_DQAVAIL_PORTAL);
 	qm_isr_uninhibit(portal);
-#endif
 	mc_start();
 	mcc->alterfq.fqid = fqid;
 	mc_commit(QM_MCC_VERB_ALTER_SCHED);
 	pr_info("FQ %d scheduled\n", fqid);
-#ifndef CONFIG_FSL_QMAN_TEST_LOW_BUG_INTERRUPTS
 	/* The interrupt should have fired immediately. */
 	wait_event(queue, isr_count == 1);
 	/* The status register should show DQAVAIL. */
@@ -352,18 +321,15 @@ void qman_test_low(struct qm_portal *__p)
 		status = qm_isr_status_read(portal);
 	} while (status != QM_DQAVAIL_PORTAL);
 	/* Writing to clear should fail due to an immediate reassertion */
-#ifndef BUG_NO_REASSERT_DQAVAIL
 	qm_isr_status_clear(portal, status);
 	do {
 		status = qm_isr_status_read(portal);
 	} while (status != QM_DQAVAIL_PORTAL);
-#endif
 	/* Zeroing the enable register before unihibiting should prevent any
 	 * interrupt */
 	qm_isr_enable_write(portal, 0);
 	qm_isr_uninhibit(portal);
 	BUG_ON(isr_count != 1);
-#endif
 
 	/******************************/
 	/* SDQCR the remaining frames */
@@ -374,7 +340,6 @@ void qman_test_low(struct qm_portal *__p)
 		QM_SDQCR_TYPE_PRIO_QOS | QM_SDQCR_TOKEN_SET(TTOKEN) |
 		QM_SDQCR_CHANNELS_DEDICATED);
 
-#ifndef CONFIG_FSL_QMAN_TEST_LOW_BUG_INTERRUPTS
 	/* The status register should have the sticky 'DQAVAIL' from before, and
 	 * maybe DQRI (it's on its way). */
 	status = qm_isr_status_read(portal);
@@ -396,7 +361,6 @@ void qman_test_low(struct qm_portal *__p)
 	qm_isr_enable_write(portal, 0);
 	qm_isr_uninhibit(portal);
 	BUG_ON(isr_count != 2);
-#endif
 	for (i = 0; i < TFRAMES; i++)
 	{
 		dqrr_update();
@@ -421,14 +385,12 @@ void qman_test_low(struct qm_portal *__p)
 		fd_inc(&fd_dq);
 		dqrr_consume_and_next();
 	}
-#ifndef CONFIG_FSL_QMAN_TEST_LOW_BUG_INTERRUPTS
 	/* Clear stick bits from the status register, and it should
 	 * now remain zero. */
 	status = qm_isr_status_read(portal);
 	qm_isr_status_clear(portal, status);
 	status = qm_isr_status_read(portal);
 	BUG_ON(status);
-#endif
 
 	pr_info("low-level test, end ccmode\n");
 
@@ -464,9 +426,7 @@ void qman_test_low(struct qm_portal *__p)
 	/* Teardown */
 	/************/
 	eqcr_empty();
-#ifndef CONFIG_FSL_QMAN_TEST_LOW_BUG_INTERRUPTS
 	free_irq(config->irq, NULL);
-#endif
 	qm_eqcr_finish(portal);
 	qm_dqrr_finish(portal);
 	qm_mr_finish(portal);
