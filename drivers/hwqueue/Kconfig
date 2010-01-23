@@ -23,6 +23,20 @@ config FSL_QMAN_PORTAL
 	  Compiles support to detect and support Qman software corenet portals
 	  (as provided by the device-tree).
 
+config FSL_QMAN_BUG_AND_FEATURE_REV1
+	bool "workarounds for errata and missing features in p4080 rev1"
+	depends on FSL_QMAN_PORTAL
+	default y
+	---help---
+	  If this option is selected, the driver will be compiled with
+	  workarounds for errata as well as feature limitations (relative to
+	  more recent parts) of p4080 rev1. On unaffected revisions, this
+	  support incurs only a negligable overhead, typically only a couple of
+	  instructions per non-fast-path operation (the fast-path operations are
+	  unaffected).
+
+	  If in doubt, say Y.
+
 # The current driver is interrupt-driven only (poll-driven isn't yet supported).
 config FSL_QMAN_HAVE_POLL
 	bool
@@ -76,16 +90,6 @@ config FSL_QMAN_CONFIG
 	  linux image is running as a guest OS under the hypervisor, only one
 	  guest OS ("the control plane") needs this option.
 
-config FSL_QMAN_BUG_CGR_INIT
-	bool "workaround early-silicon h/w bug"
-	depends on FSL_QMAN_CONFIG && !FSL_QMAN_PORTAL_DISABLEAUTO
-	default y
-	---help---
-	  Only an early revision of Qman h/w, s/w must explicitly initialise all
-	  CGR memories to avoid a possible ECC error. This workaround will
-	  perform the required initialisation on boot, and has no side-effects
-	  thereafter. If in doubt, select Yes.
-
 config FSL_QMAN_TEST
 	tristate "Qman self-tests"
 	depends on FSL_QMAN_PORTAL
@@ -110,22 +114,6 @@ config FSL_QMAN_TEST_LOW
 	  This takes an unused portal and portal and performs low-level
 	  API testing with it.
 
-config FSL_QMAN_TEST_LOW_BUG_INTERRUPTS
-	bool "ignore interrupts and interrupt registers"
-	depends on FSL_QMAN_TEST_LOW
-	default n
-	---help---
-	  Certain versions of the cycle-accurate model don't support portal
-	  interrupt lines or the associated registers.
-
-config FSL_QMAN_TEST_LOW_BUG_STASHING
-	bool "disable dequeue stashing (of DQRR and data/context)"
-	depends on FSL_QMAN_TEST_LOW
-	default n
-	---help---
-	  Support for DQRR stashing with the cycle-accurate model is still
-	  experimental.
-
 config FSL_QMAN_TEST_HIGH
 	bool "Qman high-level self-test"
 	depends on FSL_QMAN_TEST && !FSL_QMAN_PORTAL_DISABLEAUTO
@@ -134,14 +122,6 @@ config FSL_QMAN_TEST_HIGH
 	  This requires the presence of cpu-affine portals, and performs
 	  high-level API testing with them (whichever portal(s) are affine to
 	  the cpu(s) the test executes on).
-
-config FSL_QMAN_TEST_HIGH_BUG_VDQCR
-	bool "don't test VDQCR"
-	depends on FSL_QMAN_TEST_HIGH
-	default n
-	---help---
-	  Certain (current) versions of the cycle-accurate model don't support
-	  VDQCR.
 
 # H/w settings that can be hard-coded for now.
 
@@ -163,18 +143,6 @@ config FSL_QMAN_CI_SCHED_CFG_BMAN_W
 	int
 	depends on FSL_QMAN_CONFIG
 	default 2
-
-# Workaround for rev1 h/w bug with respect to "fast-track", disable it.
-config FSL_QMAN_BUG_FASTTRACK
-	bool
-	depends on FSL_QMAN_CONFIG
-	default y
-
-# Workaround for rev1 h/w bug with respect to class-scheduling weights.
-config FSL_QMAN_BUG_CSW
-	bool
-	depends on FSL_QMAN_CONFIG
-	default y
 
 endif # FSL_QMAN
 

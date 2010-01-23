@@ -1,4 +1,4 @@
-/* Copyright (c) 2008, 2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -945,14 +945,16 @@ int qman_init_fq(struct qman_fq *fq, u32 flags, struct qm_mcc_initfq *opts)
 		put_affine_portal();
 		return -EIO;
 	}
-	if (mcc->initfq.we_mask & QM_INITFQ_WE_FQCTRL) {
-		if (mcc->initfq.fqd.fq_ctrl & QM_FQCTRL_CGE)
-			fq_set(fq, QMAN_FQ_STATE_CGR_EN);
-		else
-			fq_clear(fq, QMAN_FQ_STATE_CGR_EN);
+	if (opts) {
+		if (opts->we_mask & QM_INITFQ_WE_FQCTRL) {
+			if (opts->fqd.fq_ctrl & QM_FQCTRL_CGE)
+				fq_set(fq, QMAN_FQ_STATE_CGR_EN);
+			else
+				fq_clear(fq, QMAN_FQ_STATE_CGR_EN);
+		}
+		if (opts->we_mask & QM_INITFQ_WE_CGID)
+			fq->cgr_groupid = opts->fqd.cgid;
 	}
-	if (mcc->initfq.we_mask & QM_INITFQ_WE_CGID)
-		fq->cgr_groupid = mcc->initfq.fqd.cgid;
 	fq->state = (flags & QMAN_INITFQ_FLAG_SCHED) ?
 			qman_fq_state_sched : qman_fq_state_parked;
 	FQUNLOCK(fq);

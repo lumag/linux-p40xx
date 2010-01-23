@@ -149,7 +149,6 @@ void qman_test_high(void)
 	if (qman_init_fq(fq, QMAN_INITFQ_FLAG_LOCAL, NULL))
 		panic("qman_init_fq() failed\n");
 
-#ifndef CONFIG_FSL_QMAN_TEST_HIGH_BUG_VDQCR
 	/* Do enqueues + VDQCR, twice. (Parked FQ) */
 	do_enqueues(fq);
 	pr_info("VDQCR (till-empty);\n");
@@ -166,7 +165,6 @@ void qman_test_high(void)
 	if (qman_volatile_dequeue(fq, VDQCR_FLAGS,
 			QM_VDQCR_NUMFRAMES_SET(NUM_ENQUEUES - NUM_PARTIAL)))
 		panic("qman_volatile_dequeue() failed\n");
-#endif
 
 	do_enqueues(fq);
 	pr_info("scheduled dequeue (till-empty)\n");

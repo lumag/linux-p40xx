@@ -1,4 +1,4 @@
-/* Copyright (c) 2008, 2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -294,18 +294,20 @@ static void qm_set_wq_scheduling(struct qman *qm, enum qm_wq_class wq_class,
 			u8 cs_elev, u8 csw2, u8 csw3, u8 csw4, u8 csw5,
 			u8 csw6, u8 csw7)
 {
-#ifdef CONFIG_FSL_QMAN_BUG_CSW
+#ifdef CONFIG_FSL_QMAN_BUG_AND_FEATURE_REV1
 #define csw(x) \
 do { \
 	if (++x == 8) \
 		x = 7; \
 } while (0)
-	csw(csw2);
-	csw(csw3);
-	csw(csw4);
-	csw(csw5);
-	csw(csw6);
-	csw(csw7);
+	if (qman_ip_rev == QMAN_REV1) {
+		csw(csw2);
+		csw(csw3);
+		csw(csw4);
+		csw(csw5);
+		csw(csw6);
+		csw(csw7);
+	}
 #endif
 	qm_out(WQ_CS_CFG(wq_class), ((cs_elev & 0xff) << 24) |
 		((csw2 & 0x7) << 20) | ((csw3 & 0x7) << 16) |
@@ -315,11 +317,12 @@ do { \
 
 static void qm_set_hid(struct qman *qm)
 {
-#ifdef CONFIG_FSL_QMAN_BUG_FASTTRACK
-	qm_out(HID_CFG, 3);
-#else
-	qm_out(HID_CFG, 0);
+#ifdef CONFIG_FSL_QMAN_BUG_AND_FEATURE_REV1
+	if (qman_ip_rev == QMAN_REV1)
+		qm_out(HID_CFG, 3);
+	else
 #endif
+	qm_out(HID_CFG, 0);
 }
 
 static void qm_set_corenet_initiator(struct qman *qm)
@@ -489,6 +492,8 @@ static int __init fsl_qman_init(struct device_node *node)
 	qm = qm_create(regs);
 	qm_get_version(qm, &id, &major, &minor);
 	pr_info("Qman ver:%04x,%02x,%02x\n", id, major, minor);
+	if (!qman_ip_rev)
+		qman_ip_rev = ((u16)major << 8) | minor;
 	/* FQD memory */
 	qm_set_memory(qm, qm_memory_fqd, 0, (u32)fqd_a, 1, 0, 0, fqd_sz);
 	/* PFDR memory */
