@@ -618,14 +618,14 @@ dpa_fd_release(const struct net_device *net_dev, const struct qm_fd *fd)
 	const struct dpa_priv_s		*priv;
 	const struct qm_sg_entry	*sgt;
 	struct dpa_bp		*_dpa_bp, *dpa_bp;
-	const struct bm_buffer		*_bmb;
-	struct bm_buffer		 bmb[8];
+	struct bm_buffer		 _bmb, bmb[8];
 
 	priv = (typeof(priv))netdev_priv(net_dev);
 
-	_bmb = (typeof(_bmb))fd;
+	_bmb.hi	= fd->addr_hi;
+	_bmb.lo	= fd->addr_lo;
 
-	_dpa_bp = dpa_bpid2pool(_bmb->bpid);
+	_dpa_bp = dpa_bpid2pool(fd->bpid);
 	BUG_ON(IS_ERR(_dpa_bp));
 
 	_errno = 0;
@@ -633,14 +633,13 @@ dpa_fd_release(const struct net_device *net_dev, const struct qm_fd *fd)
 		struct page *page = NULL;
 
 		if (_dpa_bp->kernel_pool) {
-			page = dpa_get_rxpage(_dpa_bp, _bmb->lo);
+			page = dpa_get_rxpage(_dpa_bp, _bmb.lo);
 
 			sgt = (typeof(sgt))(kmap(page) +
-				(_bmb->lo & ~PAGE_MASK) + dpa_fd_offset(fd));
-		} else {
-			sgt = (typeof(sgt))(dpa_phys2virt(_dpa_bp, _bmb)
+				(_bmb.lo & ~PAGE_MASK) + dpa_fd_offset(fd));
+		} else
+			sgt = (typeof(sgt))(dpa_phys2virt(_dpa_bp, &_bmb)
 				+ dpa_fd_offset(fd));
-		}
 
 		i = 0;
 		do {
@@ -651,7 +650,6 @@ dpa_fd_release(const struct net_device *net_dev, const struct qm_fd *fd)
 			do {
 				BUG_ON(sgt[i].extension);
 
-				bmb[j].bpid	= sgt[i].bpid;
 				bmb[j].hi	= sgt[i].addr_hi;
 				bmb[j].lo	= sgt[i].addr_lo;
 				j++; i++;
@@ -679,7 +677,7 @@ dpa_fd_release(const struct net_device *net_dev, const struct qm_fd *fd)
 	}
 
 	if (!_dpa_bp->kernel_pool) {
-		__errno = bman_release(_dpa_bp->pool, _bmb, 1,
+		__errno = bman_release(_dpa_bp->pool, &_bmb, 1,
 				BMAN_RELEASE_FLAG_WAIT_INT);
 		if (unlikely(__errno < 0)) {
 			cpu_netdev_err(net_dev,
