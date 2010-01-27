@@ -70,10 +70,14 @@ int xgmac_mdio_write(struct mii_bus *bus, int port_addr,
 			int dev_addr, int regnum, u16 value)
 {
 	struct tgec_mdio_controller __iomem *regs = bus->priv;
-	u32 mdio_ctl;
+	u32 mdio_ctl, mdio_stat;
 
 	/* Setup the MII Mgmt clock speed */
-	out_be32(&regs->mdio_stat, MDIO_STAT_CLKDIV(100) | 0xc);
+	mdio_stat = MDIO_STAT_CLKDIV(100);
+	/* workaround for erratum XAUI3, only needs for Rev1 silicon */
+	if ((mfspr(SPRN_SVR) & 0xff) == 0x10)
+		mdio_stat |= 0xc;
+	out_be32(&regs->mdio_stat, mdio_stat);
 
 	/* Wait till the bus is free */
 	while ((in_be32(&regs->mdio_stat)) & MDIO_STAT_BSY)
@@ -108,10 +112,14 @@ int xgmac_mdio_read(struct mii_bus *bus, int port_addr, int dev_addr,
 			int regnum)
 {
 	struct tgec_mdio_controller __iomem *regs = bus->priv;
-	u32 mdio_ctl;
+	u32 mdio_ctl, mdio_stat;
 
 	/* Setup the MII Mgmt clock speed */
-	out_be32(&regs->mdio_stat, MDIO_STAT_CLKDIV(100) | 0xc);
+	mdio_stat = MDIO_STAT_CLKDIV(100);
+	/* workaround for erratum XAUI3, only needs for Rev1 silicon */
+	if ((mfspr(SPRN_SVR) & 0xff) == 0x10)
+		mdio_stat |= 0xc;
+	out_be32(&regs->mdio_stat, mdio_stat);
 
 	/* Wait till the bus is free */
 	while ((in_be32(&regs->mdio_stat)) & MDIO_STAT_BSY)
@@ -145,11 +153,16 @@ static int xgmac_mdio_reset(struct mii_bus *bus)
 {
 	struct tgec_mdio_controller __iomem *regs = bus->priv;
 	int timeout = PHY_INIT_TIMEOUT;
+	u32 mdio_stat;
 
 	mutex_lock(&bus->mdio_lock);
 
 	/* Setup the MII Mgmt clock speed */
-	out_be32(&regs->mdio_stat, MDIO_STAT_CLKDIV(100) | 0xc);
+	mdio_stat = MDIO_STAT_CLKDIV(100);
+	/* workaround for erratum XAUI3, only needs for Rev1 silicon */
+	if ((mfspr(SPRN_SVR) & 0xff) == 0x10)
+		mdio_stat |= 0xc;
+	out_be32(&regs->mdio_stat, mdio_stat);
 
 	/* Wait till the bus is free */
 	while (((in_be32(&regs->mdio_stat)) & MDIO_STAT_BSY) && timeout--)
