@@ -582,7 +582,7 @@ static inline unsigned int fh_vmpic_get_msir(unsigned int interrupt,
 /**
  * fh_byte_channel_send - send characters to a byte stream
  * @handle: byte stream handle
- * @count: number of characters to send
+ * @count: (input) num of chars to send, (output) num chars sent
  * @buffer: pointer to a 16-byte buffer
  *
  * @buffer must be at least 16 bytes long, because all 16 bytes will be
@@ -591,13 +591,13 @@ static inline unsigned int fh_vmpic_get_msir(unsigned int interrupt,
  * Returns 0 for success, or an error code.
  */
 static inline unsigned int fh_byte_channel_send(unsigned int handle,
-	unsigned int count, const char buffer[16])
+	unsigned int *count, const char buffer[16])
 {
 	register uintptr_t r11 __asm__("r11") = FH_BYTE_CHANNEL_SEND;
 
 	const uint32_t *p = (const uint32_t *) buffer;
 	register uintptr_t r3 __asm__("r3") = handle;
-	register uintptr_t r4 __asm__("r4") = count;
+	register uintptr_t r4 __asm__("r4") = *count;
 	register uintptr_t r5 __asm__("r5") = be32_to_cpu(p[0]);
 	register uintptr_t r6 __asm__("r6") = be32_to_cpu(p[1]);
 	register uintptr_t r7 __asm__("r7") = be32_to_cpu(p[2]);
@@ -608,6 +608,8 @@ static inline unsigned int fh_byte_channel_send(unsigned int handle,
 		  "+r" (r4), "+r" (r5), "+r" (r6), "+r" (r7), "+r" (r8)
 		: : HCALL_CLOBBERS6
 	);
+
+	*count = r4;
 
 	return r3;
 }
