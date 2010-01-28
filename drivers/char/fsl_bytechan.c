@@ -1,6 +1,6 @@
 /* Freescale hypervisor byte channel character driver
  *
- * Copyright (C) 2009 Freescale Semiconductor, Inc.
+ * Copyright (C) 2009,2010 Freescale Semiconductor, Inc.
  * Author: Timur Tabi <timur@freescale.com>
  *
  * This file is licensed under the terms of the GNU General Public License
@@ -175,7 +175,7 @@ static ssize_t fsl_bc_write(struct file *filp, const char __user *buf,
 
 		bc->tx_ready = 0;
 
-		ret = fh_byte_channel_send(bc->handle, count, buffer);
+		ret = fh_byte_channel_send(bc->handle, &count, buffer);
 		if (ret) {
 			if (total)
 				/* We did write some chars, so we're done. */

@@ -1,7 +1,7 @@
 /*
  * Freescale hypervisor console driver
  *
- * Copyright (C) 2008-2009 Freescale Semiconductor, Inc. All rights reserved.
+ * Copyright (C) 2008-2010 Freescale Semiconductor, Inc. All rights reserved.
  * Author: Timur Tabi <timur@freescale.com>
  *
  * This code is based on drivers/char/hvc_beat.c:
@@ -63,7 +63,7 @@ static int hvc_fsl_put_chars(uint32_t handle, const char *buffer, int count)
 
 	for (rest = count; rest > 0; rest -= nlen) {
 		nlen = min(16, rest);
-		ret = fh_byte_channel_send(handle, nlen, buffer);
+		ret = fh_byte_channel_send(handle, &nlen, buffer);
 		if (ret == EAGAIN)
 			break;
 		if (ret)
@@ -268,24 +268,20 @@ static void __exit hvc_fsl_exit(void)
 static unsigned int udbg_handle;
 
 /**
- * byte_channel_spin_send - send bytes to a byte channel, wait if necessary
+ * byte_channel_spin_send - send a byte to a byte channel, wait if necessary
  *
- * This function sends an array of bytes to a byte channel, and it waits and
- * retries if the byte channel is full.  It returns if all data has been
- * sent, or if some error has occurred.
+ * This function sends a byte to a byte channel, and it waits and
+ * retries if the byte channel is full.  It returns if the character
+ * has been sent, or if some error has occurred.
  *
- * 'length' must be less than or equal to 16.  No parameter validation is
- * performed.
  */
-static void byte_channel_spin_send(unsigned int handle, const void *data,
-				   unsigned int length)
+static void byte_channel_spin_send(unsigned int handle, const char data)
 {
-	int ret;
+	int ret, count;
 
 	do {
-		ret = fh_byte_channel_send(handle, length, data);
-		if (!ret)
-			break;
+		count = 1;
+		ret = fh_byte_channel_send(handle, &count, &data);
 	} while (ret == EAGAIN);
 }
 
@@ -297,10 +293,9 @@ static void byte_channel_spin_send(unsigned int handle, const void *data,
  */
 static void fsl_udbg_putc(char c)
 {
+	byte_channel_spin_send(udbg_handle, c);
 	if (c == '\n')
-		byte_channel_spin_send(udbg_handle, "\n\r", 2);
-	else
-		byte_channel_spin_send(udbg_handle, &c, 1);
+		byte_channel_spin_send(udbg_handle, '\r');
 }
 
 /**
