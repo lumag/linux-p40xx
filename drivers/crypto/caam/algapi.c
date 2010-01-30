@@ -155,8 +155,8 @@ static int build_protocol_desc_ipsec_decap(struct caam_ctx *ctx,
 
 	/* build shared descriptor for this session */
 	sh_desc = kzalloc(sizeof(struct ipsec_decap_pdb) +
-			 (sizeof(u32) + CAAM_MAX_KEY_SIZE) * 2 +
-			 sizeof(struct iphdr), GFP_DMA | flags);
+			  (sizeof(u32) + CAAM_MAX_KEY_SIZE) * 2 +
+			  sizeof(struct iphdr), GFP_DMA | flags);
 	if (!sh_desc) {
 		dev_err(dev, "could not allocate shared descriptor\n");
 		return -ENOMEM;
@@ -175,9 +175,9 @@ static int build_protocol_desc_ipsec_decap(struct caam_ctx *ctx,
 	 */
 	debug("xfrm is in %s mode\n", x->props.mode == XFRM_MODE_TUNNEL ?
 	      "tunnel" : "transport");
-	sh_desc->options = ((x->props.mode == XFRM_MODE_TUNNEL) ?
-			    (PDBOPTS_ESPCBC_TUNNEL | PDBOPTS_ESPCBC_OUTFMT) :
-			    0);
+	sh_desc->options = (x->props.mode == XFRM_MODE_TUNNEL) ?
+			   (PDBOPTS_ESPCBC_TUNNEL | PDBOPTS_ESPCBC_OUTFMT) : 0;
+
 	/* copy Sequence Number
 	 * equivalent to:
 	 * *spi = *(__be32*)(skb_transport_header(skb) + offset);
