@@ -92,7 +92,7 @@ struct caam_ctx {
 	struct device *dev;
 	int class1_alg_type;
 	int class2_alg_type;
-	u8 key[CAAM_MAX_KEY_SIZE];
+	u8 *key;
 	dma_addr_t key_phys;
 	unsigned int keylen;
 	unsigned int enckeylen;
@@ -155,8 +155,8 @@ static int build_protocol_desc_ipsec_decap(struct caam_ctx *ctx,
 
 	/* build shared descriptor for this session */
 	sh_desc = kzalloc(sizeof(struct ipsec_decap_pdb) +
-			  (sizeof(u32) + CAAM_MAX_KEY_SIZE) * 2 +
-			  sizeof(struct iphdr), GFP_DMA | flags);
+			 ctx->split_key_len + ctx->enckeylen +
+			 sizeof(struct iphdr), GFP_DMA | flags);
 	if (!sh_desc) {
 		dev_err(dev, "could not allocate shared descriptor\n");
 		return -ENOMEM;
@@ -197,10 +197,10 @@ static int build_protocol_desc_ipsec_decap(struct caam_ctx *ctx,
 				     PTR_DIRECT, KEYDST_MD_SPLIT, KEY_COVERED,
 				     ITEM_REFERENCE, ITEM_CLASS2);
 
-	sh_desc_ptr = cmd_insert_key(sh_desc_ptr, (char *)(ctx->key_phys +
+	sh_desc_ptr = cmd_insert_key(sh_desc_ptr, (char *)(ctx->key +
 				     ctx->split_key_len), ctx->enckeylen * 8,
 				     PTR_DIRECT, KEYDST_KEYREG, KEY_CLEAR,
-				     ITEM_REFERENCE, ITEM_CLASS1);
+				     ITEM_INLINE, ITEM_CLASS1);
 
 	/* insert jump instruction now that we are at the jump target */
 	cmd_insert_jump((u32 *)&sh_desc->end_index[0], JUMP_TYPE_LOCAL, CLASS_2,
@@ -263,7 +263,7 @@ static int build_protocol_desc_ipsec_encap(struct caam_ctx *ctx,
 
 	/* build shared descriptor for this session */
 	sh_desc = kzalloc(sizeof(struct ipsec_encap_pdb) +
-			 (sizeof(u32) + CAAM_MAX_KEY_SIZE) * 2 +
+			 ctx->split_key_len + ctx->enckeylen +
 			 52 /*sizeof(struct iphdr)*/, GFP_DMA | flags);
 	if (!sh_desc) {
 		dev_err(dev, "could not allocate shared descriptor\n");
@@ -318,10 +318,10 @@ static int build_protocol_desc_ipsec_encap(struct caam_ctx *ctx,
 				     KEYDST_MD_SPLIT, KEY_COVERED,
 				     ITEM_REFERENCE, ITEM_CLASS2);
 
-	sh_desc_ptr = cmd_insert_key(sh_desc_ptr, (char *)ctx->key_phys +
+	sh_desc_ptr = cmd_insert_key(sh_desc_ptr, (char *)ctx->key +
 				     ctx->split_key_len, ctx->enckeylen * 8,
 				     PTR_DIRECT, KEYDST_KEYREG, KEY_CLEAR,
-				     ITEM_REFERENCE, ITEM_CLASS1);
+				     ITEM_INLINE, ITEM_CLASS1);
 
 	/* insert jump instruction now that we are at the jump target */
 	cmd_insert_jump((u32 *)&sh_desc->ip_hdr[0], JUMP_TYPE_LOCAL, CLASS_BOTH,
@@ -414,9 +414,6 @@ static u32 gen_split_key(struct device *dev, struct caam_ctx *ctx,
 	dma_addr_t dma_addr_in, dma_addr_out;
 	int ret = 0;
 
-	/* FIXME: may need to look at keyspec instead of basing on inkeysize */
-	ctx->split_key_len = ALIGN(authkeylen * 2, 16);
-
 	desc = kzalloc(MAX_CAAM_DESCSIZE, GFP_KERNEL | GFP_DMA);
 	desc_pos = desc;
 
@@ -455,10 +452,11 @@ static u32 gen_split_key(struct device *dev, struct caam_ctx *ctx,
 	 * FIFO_STORE with the explicit split-key content store
 	 * (0x26 output type)
 	 */
-	dma_addr_out = dma_map_single(dev, &ctx->key, ctx->split_key_len,
+	dma_addr_out = dma_map_single(dev, ctx->key, ctx->split_key_len,
 				      DMA_FROM_DEVICE);
 	if (dma_mapping_error(dev, dma_addr_out)) {
 		dev_err(dev, "unable to map key output memory\n");
+		kfree(ctx->key);
 		kfree(desc);
 		return -ENOMEM;
 	}
@@ -472,7 +470,7 @@ static u32 gen_split_key(struct device *dev, struct caam_ctx *ctx,
 
 #ifdef DEBUG
 	print_hex_dump(KERN_ERR, "ctx.key@"xstr(__LINE__)": ",
-		       DUMP_PREFIX_ADDRESS, 16, 4, &ctx->key,
+		       DUMP_PREFIX_ADDRESS, 16, 4, ctx->key,
 		       CAAM_MAX_KEY_SIZE, 1);
 	print_hex_dump(KERN_ERR, "jobdesc@"xstr(__LINE__)": ",
 		       DUMP_PREFIX_ADDRESS, 16, 4, desc,
@@ -490,7 +488,7 @@ static u32 gen_split_key(struct device *dev, struct caam_ctx *ctx,
 		ret = result.err;
 #ifdef DEBUG
 		print_hex_dump(KERN_ERR, "ctx.key@"xstr(__LINE__)": ",
-			       DUMP_PREFIX_ADDRESS, 16, 4, &ctx->key,
+			       DUMP_PREFIX_ADDRESS, 16, 4, ctx->key,
 			       CAAM_MAX_KEY_SIZE, 1);
 #endif
 	}
@@ -538,6 +536,9 @@ static int aead_authenc_setkey(struct crypto_aead *aead,
 	if (keylen > CAAM_MAX_KEY_SIZE)
 		goto badkey;
 
+	/* FIXME: may need to look at keyspec instead of basing on inkeysize */
+	ctx->split_key_len = ALIGN(authkeylen * 2, 16);
+
 #ifdef DEBUG
 	printk(KERN_ERR "keylen %d enckeylen %d authkeylen %d\n",
 	       keylen, enckeylen, authkeylen);
@@ -545,13 +546,19 @@ static int aead_authenc_setkey(struct crypto_aead *aead,
 		       DUMP_PREFIX_ADDRESS, 16, 4, key,
 		       CAAM_MAX_KEY_SIZE, 1);
 #endif
+	ctx->key = kzalloc(ctx->split_key_len + enckeylen,
+			   GFP_KERNEL | GFP_DMA);
+	if (!ctx->key) {
+		dev_err(ctx->dev, "could not allocate key output memory\n");
+		return -ENOMEM;
+	}
+
 	ret = gen_split_key(dev, ctx, key, authkeylen);
 	if (ret)
 		goto badkey;
 
 	/* postpend encryption key to auth split key */
-	memcpy((char *)&ctx->key + ctx->split_key_len,
-	       key + authkeylen, enckeylen);
+	memcpy(ctx->key + ctx->split_key_len, key + authkeylen, enckeylen);
 
 	ctx->key_phys = dma_map_single(dev, ctx->key,
 				       ctx->split_key_len + enckeylen,
@@ -562,7 +569,7 @@ static int aead_authenc_setkey(struct crypto_aead *aead,
 	}
 #ifdef DEBUG
 	print_hex_dump(KERN_ERR, "ctx.key@"xstr(__LINE__)": ",
-		       DUMP_PREFIX_ADDRESS, 16, 4, &ctx->key,
+		       DUMP_PREFIX_ADDRESS, 16, 4, ctx->key,
 		       CAAM_MAX_KEY_SIZE, 1);
 #endif
 
