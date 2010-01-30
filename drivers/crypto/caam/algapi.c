@@ -93,7 +93,7 @@ struct caam_ctx {
 	int class1_alg_type;
 	int class2_alg_type;
 	u8 key[CAAM_MAX_KEY_SIZE];
-	u32 key_phys; /* FIXME: dma_addr_t */
+	dma_addr_t key_phys;
 	unsigned int keylen;
 	unsigned int enckeylen;
 	unsigned int authkeylen;
@@ -103,7 +103,7 @@ struct caam_ctx {
 		struct ipsec_encap_pdb *shared_encap;
 		struct ipsec_decap_pdb *shared_decap;
 	};
-	u32 shared_desc_phys; /* FIXME: dma_addr_t */
+	dma_addr_t shared_desc_phys;
 	int shared_desc_len;
 	spinlock_t first_lock;
 };
