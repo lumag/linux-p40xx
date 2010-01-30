@@ -289,7 +289,7 @@ static int build_protocol_desc_ipsec_encap(struct caam_ctx *ctx,
 	 */
 
 #ifdef DEBUG
-	memcpy(&sh_desc.cbc.iv, "myivmyivmyivmyiv", sizeof(sh_desc.cbc.iv));
+	memcpy(&sh_desc->cbc.iv, "myivmyivmyivmyiv", sizeof(sh_desc->cbc.iv));
 #endif
 
 	/* indicate no IP header,
@@ -343,8 +343,8 @@ static int build_protocol_desc_ipsec_encap(struct caam_ctx *ctx,
 #ifdef DEBUG
 	print_hex_dump(KERN_ERR, "shrdesc@"xstr(__LINE__)": ",
 		       DUMP_PREFIX_ADDRESS, 16, 4, sh_desc,
-		       (sh_desc_ptr - sh_desc + 1 + 4) * 4, 1);
-	caam_desc_disasm(sh_desc, DISASM_SHOW_OFFSETS | DISASM_SHOW_RAW);
+		       (sh_desc_ptr - (void *)sh_desc + 1 + 4) * 4, 1);
+	caam_desc_disasm((u32 *)sh_desc, DISASM_SHOW_OFFSETS | DISASM_SHOW_RAW);
 #endif
 
 	ctx->shared_desc_len = endidx * sizeof(u32);
