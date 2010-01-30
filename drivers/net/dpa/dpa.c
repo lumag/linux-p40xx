@@ -1,4 +1,4 @@
-/* Copyright (c) 2008 - 2009, Freescale Semiconductor, Inc.
+/* Copyright (c) 2008 - 2010, Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -1592,6 +1592,8 @@ static void __hot dpa_work(struct work_struct *fd_work)
 	const struct dpa_priv_s		*priv;
 	struct dpa_percpu_priv_s	*percpu_priv;
 	struct dpa_fd			*dpa_fd, *tmp;
+	unsigned int quota = 0;
+	unsigned int retry = 0;
 
 	percpu_priv = (typeof(percpu_priv))container_of(
 		fd_work, struct dpa_percpu_priv_s, fd_work);
@@ -1609,9 +1611,9 @@ static void __hot dpa_work(struct work_struct *fd_work)
 #endif
 
 	/* RX, TX */
-	for (i = 0; i < ARRAY_SIZE(percpu_priv->fd_list); i++)
+	for (i = 0; i < ARRAY_SIZE(percpu_priv->fd_list); i++) {
 		/* Error, default*/
-		for (j = 0; j < ARRAY_SIZE(percpu_priv->fd_list[i]); j++)
+		for (j = 0; j < ARRAY_SIZE(percpu_priv->fd_list[i]); j++) {
 			list_for_each_entry_safe(dpa_fd, tmp,
 						 &percpu_priv->fd_list[i][j],
 						 list) {
@@ -1625,7 +1627,19 @@ static void __hot dpa_work(struct work_struct *fd_work)
 #endif
 			list_add_tail(&dpa_fd->list, &percpu_priv->free_list);
 			local_irq_enable();
+
+			if (++quota > 32) {
+				quota = 0;
+				retry = 1;
+				break;
+			}
+			}
 		}
+	}
+
+	/* Try again later if we're not done */
+	if (retry)
+		schedule_work(fd_work);
 
 	if (netif_msg_intr(priv))
 		cpu_netdev_dbg(net_dev, "%s:%s() ->\n", __file__, __func__);
