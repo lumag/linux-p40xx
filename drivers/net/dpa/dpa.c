@@ -1490,7 +1490,7 @@ static void __hot _dpa_rx(struct net_device		*net_dev,
 		size = dpa_fd_length(&dpa_fd->fd);
 
 	if (skb == NULL) {
-		skb = __netdev_alloc_skb(net_dev, NET_IP_ALIGN + size, GFP_DPA);
+		skb = __netdev_alloc_skb(net_dev, DPA_BP_HEAD + NET_IP_ALIGN + size, GFP_DPA);
 		if (unlikely(skb == NULL)) {
 			if (netif_msg_rx_err(priv))
 				cpu_netdev_err(net_dev, "%s:%hu:%s(): "
@@ -1503,7 +1503,7 @@ static void __hot _dpa_rx(struct net_device		*net_dev,
 		}
 	}
 
-	skb_reserve(skb, NET_IP_ALIGN);
+	skb_reserve(skb, NET_IP_ALIGN+DPA_BP_HEAD);
 
 	/* Fill the SKB */
 	if (dpa_fd->fd.format == qm_fd_sg)
