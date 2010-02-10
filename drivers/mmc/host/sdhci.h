@@ -240,6 +240,10 @@ struct sdhci_host {
 #define SDHCI_QUIRK_DATA_TIMEOUT_USES_SDCLK		(1<<24)
 /* Controller uses Auto CMD12 command to stop the transfer */
 #define SDHCI_QUIRK_MULTIBLOCK_READ_ACMD12		(1<<25)
+/* Controller has weird bit setting for some registers due to errata */
+#define SDHCI_QUIRK_QORIQ_REG_WEIRD			(1<<26)
+/* Controller has time out errata */
+#define SDHCI_QUIRK_QORIQ_TIMEOUT_WEIRD			(1<<27)
 
 	int			irq;		/* Device IRQ */
 	void __iomem *		ioaddr;		/* Mapped address */
