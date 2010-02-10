@@ -1,7 +1,7 @@
 /*
  * P4080DS Device Tree Source
  *
- * Copyright 2009 Freescale Semiconductor Inc.
+ * Copyright 2009-2010 Freescale Semiconductor Inc.
  *
  * This program is free software; you can redistribute	it and/or modify it
  * under  the terms of	the GNU General	 Public License as published by the
@@ -1018,9 +1018,12 @@
 		};
 
 		sdhc: sdhc@114000 {
+			compatible = "fsl,p4080-esdhc", "fsl,esdhc";
 			reg = <0x114000 0x1000>;
 			interrupts = <48 2>;
 			interrupt-parent = <&mpic>;
+			fsl,sdhci-auto-cmd12;
+			clock-frequency = <0>;
 		};
 
 		gpio: gpio@130008 {
