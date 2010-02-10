@@ -257,6 +257,12 @@ static int __devinit sdhci_of_probe(struct of_device *ofdev,
 	if (of_get_property(np, "fsl,sdhci-auto-cmd12", NULL))
 		host->quirks |= SDHCI_QUIRK_MULTIBLOCK_READ_ACMD12;
 
+	if (of_device_is_compatible(np, "fsl,p4080-esdhc")) {
+		host->quirks |= SDHCI_QUIRK_QORIQ_REG_WEIRD |
+			SDHCI_QUIRK_QORIQ_TIMEOUT_WEIRD;
+		host->quirks &= ~SDHCI_QUIRK_INVERTED_WRITE_PROTECT;
+	}
+
 	clk = of_get_property(np, "clock-frequency", &size);
 	if (clk && size == sizeof(*clk) && *clk)
 		of_host->clock = *clk;
