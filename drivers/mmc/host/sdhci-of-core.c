@@ -1,7 +1,7 @@
 /*
  * OpenFirmware bindings for Secure Digital Host Controller Interface.
  *
- * Copyright (c) 2007 Freescale Semiconductor, Inc.
+ * Copyright (c) 2007, 2010 Freescale Semiconductor, Inc.
  * Copyright (c) 2009 MontaVista Software, Inc.
  *
  * Authors: Xiaobo Xie <X.Xie@freescale.com>
@@ -153,6 +153,9 @@ static int __devinit sdhci_of_probe(struct of_device *ofdev,
 		host->quirks = sdhci_of_data->quirks;
 		host->ops = &sdhci_of_data->ops;
 	}
+
+	if (of_get_property(np, "fsl,sdhci-auto-cmd12", NULL))
+		host->quirks |= SDHCI_QUIRK_MULTIBLOCK_READ_ACMD12;
 
 	if (of_get_property(np, "sdhci,1-bit-only", NULL))
 		host->quirks |= SDHCI_QUIRK_FORCE_1_BIT_DATA;
