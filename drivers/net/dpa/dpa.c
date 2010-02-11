@@ -2256,8 +2256,12 @@ dpa_init_probe(struct of_device *_of_dev)
 	rx_port_param.defq	= ingress_fqids[RX][1];
 	tx_port_param.defq	= ingress_fqids[TX][1];
 
-	rx_port_param.priv_data_size	= tx_port_param.priv_data_size	= 32;
-	rx_port_param.parse_results	= tx_port_param.parse_results	= true;
+	rx_port_param.priv_data_size	=
+		tx_port_param.priv_data_size	= 32;
+	rx_port_param.parse_results	=
+		tx_port_param.parse_results	= true;
+	rx_port_param.hash_results	=
+		tx_port_param.hash_results	= false;
 
 	fm_set_rx_port_params(mac_dev->port_dev[RX], &rx_port_param);
 
@@ -2774,6 +2778,8 @@ dpa_probe(struct of_device *_of_dev)
 			 tx_port_param.priv_data_size = 32;
 		rx_port_param.parse_results =
 			tx_port_param.parse_results = true;
+		rx_port_param.hash_results	=
+			tx_port_param.hash_results	= false;
 
 		fm_set_rx_port_params(priv->mac_dev->port_dev[RX],
 			&rx_port_param);
