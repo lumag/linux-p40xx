@@ -710,6 +710,7 @@ ingress_dqrr(struct qman_portal		*portal,
 	     uint8_t			 _rtx,
 	     uint8_t			 ed)
 {
+	int				 _errno;
 	const struct net_device		*net_dev;
 	const struct dpa_priv_s		*priv;
 	struct dpa_percpu_priv_s	*percpu_priv;
@@ -752,7 +753,12 @@ ingress_dqrr(struct qman_portal		*portal,
 					 percpu_priv->count[_rtx][ed]);
 #endif
 
-	schedule_work(&percpu_priv->fd_work);
+	_errno = schedule_work(&percpu_priv->fd_work);
+	if (unlikely(_errno < 0))
+		if (netif_msg_rx_err(priv))
+			cpu_netdev_crit(net_dev,
+					"%s:%hu:%s(): schedule_work() = %d\n",
+					__file__, __LINE__, __func__, _errno);
 
 _return:
 	if (netif_msg_intr(priv))
@@ -1587,7 +1593,7 @@ static void (*const _dpa_work[][2])(struct net_device		*net_dev,
 
 static void __hot dpa_work(struct work_struct *fd_work)
 {
-	int				 i, j;
+	int				 _errno, i, j;
 	struct net_device		*net_dev;
 	const struct dpa_priv_s		*priv;
 	struct dpa_percpu_priv_s	*percpu_priv;
@@ -1638,8 +1644,15 @@ static void __hot dpa_work(struct work_struct *fd_work)
 	}
 
 	/* Try again later if we're not done */
-	if (retry)
-		schedule_work(fd_work);
+	if (retry) {
+		_errno = schedule_work(fd_work);
+		if (unlikely(_errno < 0))
+			if (netif_msg_rx_err(priv))
+				cpu_netdev_crit(net_dev, "%s:%hu:%s(): "
+						"schedule_work() = %d\n",
+						__file__, __LINE__, __func__,
+						_errno);
+	}
 
 	if (netif_msg_intr(priv))
 		cpu_netdev_dbg(net_dev, "%s:%s() ->\n", __file__, __func__);
