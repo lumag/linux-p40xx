@@ -5,6 +5,10 @@
  *
  * Author: Anton Vorontsov <avorontsov@ru.mvista.com>
  *
+ * Copyright (c) 2010 Freescale Semiconductor
+ *
+ * Authors: Jack Lan <Jack.Lan@freescale.com>
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -23,35 +27,8 @@
 #include <asm/fsl_lbc.h>
 
 static spinlock_t fsl_lbc_lock = __SPIN_LOCK_UNLOCKED(fsl_lbc_lock);
-static struct fsl_lbc_regs __iomem *fsl_lbc_regs;
-
-static char __initdata *compat_lbc[] = {
-	"fsl,pq2-localbus",
-	"fsl,pq2pro-localbus",
-	"fsl,pq3-localbus",
-	"fsl,elbc",
-};
-
-static int __init fsl_lbc_init(void)
-{
-	struct device_node *lbus;
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(compat_lbc); i++) {
-		lbus = of_find_compatible_node(NULL, NULL, compat_lbc[i]);
-		if (lbus)
-			goto found;
-	}
-	return -ENODEV;
-
-found:
-	fsl_lbc_regs = of_iomap(lbus, 0);
-	of_node_put(lbus);
-	if (!fsl_lbc_regs)
-		return -ENOMEM;
-	return 0;
-}
-arch_initcall(fsl_lbc_init);
+struct fsl_lbc_ctrl *fsl_lbc_ctrl_dev;
+EXPORT_SYMBOL(fsl_lbc_ctrl_dev);
 
 /**
  * fsl_lbc_find - find Localbus bank
@@ -66,12 +43,12 @@ int fsl_lbc_find(phys_addr_t addr_base)
 {
 	int i;
 
-	if (!fsl_lbc_regs)
+	if (!fsl_lbc_ctrl_dev || !fsl_lbc_ctrl_dev->regs)
 		return -ENODEV;
 
-	for (i = 0; i < ARRAY_SIZE(fsl_lbc_regs->bank); i++) {
-		__be32 br = in_be32(&fsl_lbc_regs->bank[i].br);
-		__be32 or = in_be32(&fsl_lbc_regs->bank[i].or);
+	for (i = 0; i < ARRAY_SIZE(fsl_lbc_ctrl_dev->regs->bank); i++) {
+		__be32 br = in_be32(&fsl_lbc_ctrl_dev->regs->bank[i].br);
+		__be32 or = in_be32(&fsl_lbc_ctrl_dev->regs->bank[i].or);
 
 		if (br & BR_V && (br & or & BR_BA) == addr_base)
 			return i;
@@ -99,17 +76,20 @@ int fsl_upm_find(phys_addr_t addr_base, struct fsl_upm *upm)
 	if (bank < 0)
 		return bank;
 
-	br = in_be32(&fsl_lbc_regs->bank[bank].br);
+	if (!fsl_lbc_ctrl_dev || !fsl_lbc_ctrl_dev->regs)
+		return -ENODEV;
+
+	br = in_be32(&fsl_lbc_ctrl_dev->regs->bank[bank].br);
 
 	switch (br & BR_MSEL) {
 	case BR_MS_UPMA:
-		upm->mxmr = &fsl_lbc_regs->mamr;
+		upm->mxmr = &fsl_lbc_ctrl_dev->regs->mamr;
 		break;
 	case BR_MS_UPMB:
-		upm->mxmr = &fsl_lbc_regs->mbmr;
+		upm->mxmr = &fsl_lbc_ctrl_dev->regs->mbmr;
 		break;
 	case BR_MS_UPMC:
-		upm->mxmr = &fsl_lbc_regs->mcmr;
+		upm->mxmr = &fsl_lbc_ctrl_dev->regs->mcmr;
 		break;
 	default:
 		return -EINVAL;
@@ -143,14 +123,18 @@ EXPORT_SYMBOL(fsl_upm_find);
  * thus UPM pattern actually executed. Note that mar usage depends on the
  * pre-programmed AMX bits in the UPM RAM.
  */
+
 int fsl_upm_run_pattern(struct fsl_upm *upm, void __iomem *io_base, u32 mar)
 {
 	int ret = 0;
 	unsigned long flags;
 
+	if (!fsl_lbc_ctrl_dev || !fsl_lbc_ctrl_dev->regs)
+		return -ENODEV;
+
 	spin_lock_irqsave(&fsl_lbc_lock, flags);
 
-	out_be32(&fsl_lbc_regs->mar, mar);
+	out_be32(&fsl_lbc_ctrl_dev->regs->mar, mar);
 
 	switch (upm->width) {
 	case 8:
@@ -172,3 +156,194 @@ int fsl_upm_run_pattern(struct fsl_upm *upm, void __iomem *io_base, u32 mar)
 	return ret;
 }
 EXPORT_SYMBOL(fsl_upm_run_pattern);
+
+static int __devinit fsl_lbc_ctrl_init(struct fsl_lbc_ctrl *ctrl)
+{
+	struct fsl_lbc_regs __iomem *lbc = ctrl->regs;
+
+	/* clear event registers */
+	setbits32(&lbc->ltesr, LTESR_CLEAR);
+	out_be32(&lbc->lteatr, 0);
+	out_be32(&lbc->ltedr, LTEDR_ENABLE);
+
+	/* Enable interrupts for any detected events */
+	out_be32(&lbc->lteir, LTEIR_ENABLE);
+
+	return 0;
+}
+
+static int __devexit fsl_lbc_ctrl_remove(struct of_device *ofdev)
+{
+	struct fsl_lbc_ctrl *ctrl = dev_get_drvdata(&ofdev->dev);
+
+	if (ctrl->irq)
+		free_irq(ctrl->irq, ctrl);
+
+	if (ctrl->regs)
+		iounmap(ctrl->regs);
+
+	dev_set_drvdata(&ofdev->dev, NULL);
+	kfree(ctrl);
+
+	return 0;
+}
+
+/* NOTE: This interrupt is used to report localbus events of various kinds,
+ * such as transaction errors on the chipselects.
+ */
+
+static irqreturn_t fsl_lbc_ctrl_irq(int irqno, void *data)
+{
+	struct fsl_lbc_ctrl *ctrl = data;
+	struct fsl_lbc_regs __iomem *lbc = ctrl->regs;
+	u32 status;
+
+	status = in_be32(&lbc->ltesr);
+
+	if (status) {
+		out_be32(&lbc->ltesr, LTESR_CLEAR);
+		out_be32(&lbc->lteatr, 0);
+		ctrl->irq_status = status;
+
+		if (status & LTESR_BM)
+			dev_err(ctrl->dev, "Local bus monitor time-out: "
+				"LTESR 0x%08X\n", status);
+		if (status & LTESR_WP)
+			dev_err(ctrl->dev, "Write protect error: "
+				"LTESR 0x%08X\n", status);
+		if (status & LTESR_ATMW)
+			dev_err(ctrl->dev, "Atomic write error: "
+				"LTESR 0x%08X\n", status);
+		if (status & LTESR_ATMR)
+			dev_err(ctrl->dev, "Atomic read error: "
+				"LTESR 0x%08X\n", status);
+		if (status & LTESR_CS)
+			dev_err(ctrl->dev, "Chip select error: "
+				"LTESR 0x%08X\n", status);
+		if (status & LTESR_UPM)
+			;
+		if (status & LTESR_FCT) {
+			dev_err(ctrl->dev, "FCM command time-out: "
+				"LTESR 0x%08X\n", status);
+			smp_wmb();
+			wake_up(&ctrl->irq_wait);
+		}
+		if (status & LTESR_PAR) {
+			dev_err(ctrl->dev, "Parity or Uncorrectable ECC error: "
+				"LTESR 0x%08X\n", status);
+			smp_wmb();
+			wake_up(&ctrl->irq_wait);
+		}
+		if (status & LTESR_CC) {
+			smp_wmb();
+			wake_up(&ctrl->irq_wait);
+		}
+		if (status & ~LTESR_MASK)
+			dev_err(ctrl->dev, "Unknown error: "
+				"LTESR 0x%08X\n", status);
+
+		return IRQ_HANDLED;
+	}
+
+	return IRQ_NONE;
+}
+
+/* fsl_lbc_ctrl_probe
+ *
+ * called by device layer when it finds a device matching
+ * one our driver can handled. This code allocates all of
+ * the resources needed for the controller only.  The
+ * resources for the NAND banks themselves are allocated
+ * in the chip probe function.
+*/
+
+static int __devinit fsl_lbc_ctrl_probe(struct of_device *ofdev,
+					 const struct of_device_id *match)
+{
+	int ret;
+
+	fsl_lbc_ctrl_dev = kzalloc(sizeof(*fsl_lbc_ctrl_dev), GFP_KERNEL);
+	if (!fsl_lbc_ctrl_dev)
+		return -ENOMEM;
+
+	dev_set_drvdata(&ofdev->dev, fsl_lbc_ctrl_dev);
+
+	spin_lock_init(&fsl_lbc_ctrl_dev->lock);
+	init_waitqueue_head(&fsl_lbc_ctrl_dev->irq_wait);
+
+	fsl_lbc_ctrl_dev->regs = of_iomap(ofdev->node, 0);
+	if (!fsl_lbc_ctrl_dev->regs) {
+		dev_err(&ofdev->dev, "failed to get memory region\n");
+		ret = -ENODEV;
+		goto err;
+	}
+
+	fsl_lbc_ctrl_dev->irq = of_irq_to_resource(ofdev->node, 0, NULL);
+	if (fsl_lbc_ctrl_dev->irq == NO_IRQ) {
+		dev_err(&ofdev->dev, "failed to get irq resource\n");
+		ret = -ENODEV;
+		goto err;
+	}
+
+	fsl_lbc_ctrl_dev->dev = &ofdev->dev;
+
+	ret = fsl_lbc_ctrl_init(fsl_lbc_ctrl_dev);
+	if (ret < 0)
+		goto err;
+
+	ret = request_irq(fsl_lbc_ctrl_dev->irq, fsl_lbc_ctrl_irq, 0,
+				"fsl-lbc", fsl_lbc_ctrl_dev);
+	if (ret != 0) {
+		dev_err(&ofdev->dev, "failed to install irq (%d)\n",
+			fsl_lbc_ctrl_dev->irq);
+		ret = fsl_lbc_ctrl_dev->irq;
+		goto err;
+	}
+
+	return 0;
+
+err:
+	return ret;
+}
+
+static const struct of_device_id fsl_lbc_match[] = {
+	{
+		.compatible = "fsl,elbc",
+	},
+	{
+		.compatible = "fsl,pq3-localbus",
+	},
+	{
+		.compatible = "fsl,pq2-localbus",
+	},
+	{
+		.compatible = "fsl,pq2pro-localbus",
+	},
+	{},
+};
+
+static struct of_platform_driver fsl_lbc_ctrl_driver = {
+	.driver = {
+		.name	= "fsl-lbc",
+	},
+	.match_table = fsl_lbc_match,
+	.probe       = fsl_lbc_ctrl_probe,
+	.remove      = __devexit_p(fsl_lbc_ctrl_remove),
+};
+
+static int __init fsl_lbc_init(void)
+{
+	return of_register_platform_driver(&fsl_lbc_ctrl_driver);
+}
+
+static void __exit fsl_lbc_exit(void)
+{
+	of_unregister_platform_driver(&fsl_lbc_ctrl_driver);
+}
+
+module_init(fsl_lbc_init);
+module_exit(fsl_lbc_exit);
+
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Freescale Semiconductor");
+MODULE_DESCRIPTION("Freescale Enhanced Local Bus Controller driver");
