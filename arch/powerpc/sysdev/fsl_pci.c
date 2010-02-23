@@ -1,7 +1,7 @@
 /*
  * MPC83xx/85xx/86xx PCI/PCIE support routing.
  *
- * Copyright 2007-2009 Freescale Semiconductor, Inc.
+ * Copyright 2007-2010 Freescale Semiconductor, Inc.
  * Copyright 2008-2009 MontaVista Software, Inc.
  *
  * Initial author: Xianghua Xiao <x.xiao@freescale.com>
@@ -184,6 +184,17 @@ static void __init setup_pci_atmu(struct pci_controller *hose,
 		pcicsrbar = (paddr_lo - pcicsrbar_sz) & -pcicsrbar_sz;
 	early_write_config_dword(hose, 0, 0, PCI_BASE_ADDRESS_0, pcicsrbar);
 
+	/*
+	 * Under the hypervisor the MSIs depend on Inbound ATMUs instead of
+	 * PEXCSRBAR, but we still need PEXCSRBAR to be programmed to prevent
+	 * address translations for any PCIe DMA's to/from arbitary addresses
+	 * which PEXCSRBAR/BAR0 is programmed to. Set PEXCSRBAR to end of
+	 * address space, which should be safe enough
+	 */
+	if (machine_is(p4080_hv))
+		early_write_config_dword(hose, 0, 0, PCI_BASE_ADDRESS_0,
+						0xFF000000);
+
 	paddr_lo = min(paddr_lo, (u64)pcicsrbar);
 
 	pr_info("%s: PCICSRBAR @ 0x%x\n", name, pcicsrbar);
@@ -362,24 +373,8 @@ int __init fsl_add_bridge(struct device_node *dev, int is_primary)
 	/* This also maps the I/O region and sets isa_io/mem_base */
 	pci_process_bridge_OF_ranges(hose, dev, is_primary);
 
-	/* When under the hypervisor, Linux does not know the mapping of
-	 * true physical to PCI which is needed to set up the ATMUs.  Just
-	 * take the U-Boot setup values.
-	 */
-	if (!machine_is(p4080_hv))
-		/* Setup PEX window registers */
-		setup_pci_atmu(hose, &rsrc);
-	/*
-	 * Under the hypervisor the MSIs depend on Inbound ATMUs instead of
-	 * PEXCSRBAR, but we still need PEXCSRBAR to be programmed to prevent
-	 * address translations for any PCIe DMA's to/from arbitary addresses
-	 * which PEXCSRBAR/BAR0 is programmed to. Set PEXCSRBAR to end of
-	 * address space, which should be safe enough
-	 */
-	else
-		early_write_config_dword(hose, 0, 0, PCI_BASE_ADDRESS_0,
-						0xFF000000);
-
+	/* Setup PEX window registers */
+	setup_pci_atmu(hose, &rsrc);
 
 	return 0;
 }
