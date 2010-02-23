@@ -1,7 +1,7 @@
 /*
  * MPC83xx/85xx/86xx PCI/PCIE support routing.
  *
- * Copyright 2007-2009 Freescale Semiconductor, Inc.
+ * Copyright 2007-2010 Freescale Semiconductor, Inc.
  * Copyright 2008-2009 MontaVista Software, Inc.
  *
  * Initial author: Xianghua Xiao <x.xiao@freescale.com>
@@ -277,13 +277,8 @@ int __init fsl_add_bridge(struct device_node *dev, int is_primary)
 	/* This also maps the I/O region and sets isa_io/mem_base */
 	pci_process_bridge_OF_ranges(hose, dev, is_primary);
 
-	/* When under the hypervisor, Linux does not know the mapping of
-	 * true physical to PCI which is needed to set up the ATMUs.  Just
-	 * take the U-Boot setup values.
-	 */
-	if (!machine_is(p4080_hv))
-		/* Setup PEX window registers */
-		setup_pci_atmu(hose, &rsrc);
+	/* Setup PEX window registers */
+	setup_pci_atmu(hose, &rsrc);
 
 	/* Setup PEXCSRBAR */
 	setup_pci_pcsrbar(hose);
