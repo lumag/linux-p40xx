@@ -59,10 +59,8 @@ struct dpa_percpu_priv_s {
 	struct list_head	 fd_list[2][2];
 	struct list_head	 free_list;
 	struct sk_buff_head	 rx_recycle;
-#ifdef CONFIG_DEBUG_FS
 	size_t			 count[2][2], total[2][2], max[2][2], hwi[2][2];
 	size_t			 swi;
-#endif
 };
 
 struct dpa_priv_s {

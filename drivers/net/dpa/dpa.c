@@ -64,6 +64,7 @@
 
 #define DPA_NETIF_FEATURES	0
 #define DEFAULT_COUNT	64
+#define DPA_MAX_TX_BACKLOG	512
 
 #define DPA_DESCRIPTION "FSL DPA Ethernet driver"
 
@@ -711,22 +712,20 @@ ingress_dqrr(struct qman_portal		*portal,
 	     uint8_t			 ed)
 {
 	int				 _errno;
-	const struct net_device		*net_dev;
-	const struct dpa_priv_s		*priv;
+	struct net_device		*net_dev;
+	struct dpa_priv_s		*priv;
 	struct dpa_percpu_priv_s	*percpu_priv;
 	struct dpa_fd			*dpa_fd;
 
 	net_dev = ((struct dpa_fq *)fq)->net_dev;
-	priv = (typeof(priv))netdev_priv(net_dev);
+	priv = netdev_priv(net_dev);
 
 	if (netif_msg_intr(priv))
 		cpu_netdev_dbg(net_dev, "-> %s:%s[%s][%hu]()\n",
 			       __file__, __func__, rtx[_rtx], ed);
 
 	percpu_priv = per_cpu_ptr(priv->percpu_priv, smp_processor_id());
-#ifdef CONFIG_DEBUG_FS
 	percpu_priv->hwi[_rtx][ed]++;
-#endif
 
 	if (list_empty(&percpu_priv->free_list)) {
 		dpa_fd = devm_kzalloc(net_dev->dev.parent,
@@ -747,11 +746,12 @@ ingress_dqrr(struct qman_portal		*portal,
 	dpa_fd->fd = dq->fd;
 
 	list_add_tail(&dpa_fd->list, &percpu_priv->fd_list[_rtx][ed]);
-#ifdef CONFIG_DEBUG_FS
 	percpu_priv->count[_rtx][ed]++;
 	percpu_priv->max[_rtx][ed] = max(percpu_priv->max[_rtx][ed],
 					 percpu_priv->count[_rtx][ed]);
-#endif
+
+	if (_rtx == TX && percpu_priv->count[_rtx][ed] > DPA_MAX_TX_BACKLOG)
+		netif_tx_stop_all_queues(net_dev);
 
 	_errno = schedule_work(&percpu_priv->fd_work);
 	if (unlikely(_errno < 0))
@@ -1622,12 +1622,10 @@ static void __hot dpa_work(struct work_struct *fd_work)
 	BUG_ON(percpu_priv != per_cpu_ptr(priv->percpu_priv,
 					  smp_processor_id()));
 
-#ifdef CONFIG_DEBUG_FS
 	percpu_priv->swi++;
-#endif
 
 	/* RX, TX */
-	for (i = 0; i < ARRAY_SIZE(percpu_priv->fd_list); i++) {
+	for (i = ARRAY_SIZE(percpu_priv->fd_list) - 1; i >= 0; i--) {
 		/* Error, default*/
 		for (j = 0; j < ARRAY_SIZE(percpu_priv->fd_list[i]); j++) {
 			list_for_each_entry_safe(dpa_fd, tmp,
@@ -1637,10 +1635,8 @@ static void __hot dpa_work(struct work_struct *fd_work)
 
 			local_irq_disable();
 			list_del(&dpa_fd->list);
-#ifdef CONFIG_DEBUG_FS
 			percpu_priv->count[i][j]--;
 			percpu_priv->total[i][j]++;
-#endif
 			list_add_tail(&dpa_fd->list, &percpu_priv->free_list);
 			local_irq_enable();
 
@@ -1652,6 +1648,10 @@ static void __hot dpa_work(struct work_struct *fd_work)
 			}
 		}
 	}
+
+	if (netif_queue_stopped(net_dev) &&
+			percpu_priv->count[TX][0] < DPA_MAX_TX_BACKLOG)
+		netif_tx_wake_all_queues(net_dev);
 
 	/* Try again later if we're not done */
 	if (retry) {
@@ -1678,7 +1678,7 @@ static int __hot dpa_tx(struct sk_buff *skb, struct net_device *net_dev)
 	struct bm_buffer	*bmb = NULL;
 	unsigned int	headroom;
 
-	priv = (typeof(priv))netdev_priv(net_dev);
+	priv = netdev_priv(net_dev);
 	dev = net_dev->dev.parent;
 
 	if (netif_msg_tx_queued(priv))
@@ -1758,6 +1758,8 @@ static int __hot dpa_tx(struct sk_buff *skb, struct net_device *net_dev)
 		net_dev->stats.tx_fifo_errors++;
 		goto _return_buffer;
 	}
+
+	net_dev->trans_start = jiffies;
 
 	net_dev->stats.tx_packets++;
 	net_dev->stats.tx_bytes += dpa_fd_length(&fd);
@@ -1883,7 +1885,7 @@ static void __cold dpa_timeout(struct net_device *net_dev)
 {
 	const struct dpa_priv_s	*priv;
 
-	priv = (typeof(priv))netdev_priv(net_dev);
+	priv = netdev_priv(net_dev);
 
 	if (netif_msg_timer(priv))
 		cpu_netdev_dbg(net_dev, "-> %s:%s()\n", __file__, __func__);
@@ -1893,7 +1895,6 @@ static void __cold dpa_timeout(struct net_device *net_dev)
 				(jiffies - net_dev->trans_start) * 1000 / HZ);
 
 	net_dev->stats.tx_errors++;
-	netif_tx_wake_all_queues(net_dev);
 
 	if (netif_msg_timer(priv))
 		cpu_netdev_dbg(net_dev, "%s:%s() ->\n", __file__, __func__);
@@ -2927,7 +2928,6 @@ static int __devexit __cold dpa_remove(struct of_device *of_dev)
 
 #ifdef CONFIG_DEBUG_FS
 	debugfs_remove(priv->debugfs_file);
-	free_percpu(priv->percpu_priv);
 #endif
 
 	free_netdev(net_dev);
