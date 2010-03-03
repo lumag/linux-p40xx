@@ -1913,6 +1913,7 @@
 		compatible = "fsl,p4080-elbc", "fsl,elbc", "simple-bus";
 		reg = <0 0xfe124000 0 0x1000>;
 		interrupts = <25 2>;
+		interrupt-parent = <&mpic>;
 		#address-cells = <2>;
 		#size-cells = <1>;
 
