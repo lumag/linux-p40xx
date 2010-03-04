@@ -61,6 +61,7 @@ struct dpa_percpu_priv_s {
 	struct sk_buff_head	 rx_recycle;
 	size_t			 count[2][2], total[2][2], max[2][2], hwi[2][2];
 	size_t			 swi;
+	struct net_device_stats	 stats;
 };
 
 struct dpa_priv_s {
