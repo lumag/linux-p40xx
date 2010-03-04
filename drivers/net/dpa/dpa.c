@@ -1168,9 +1168,11 @@ static void egress_ern(struct qman_portal	*portal,
 	struct net_device	*net_dev;
 	const struct dpa_priv_s	*priv;
 	struct sk_buff		*skb;
+	struct dpa_percpu_priv_s	*percpu_priv;
 
 	net_dev = ((struct dpa_fq *)fq)->net_dev;
 	priv = (typeof(priv))netdev_priv(net_dev);
+	percpu_priv = per_cpu_ptr(priv->percpu_priv, smp_processor_id());
 
 	if (netif_msg_tx_err(priv))
 		cpu_netdev_dbg(net_dev, "-> %s:%s()\n", __file__, __func__);
@@ -1192,8 +1194,8 @@ static void egress_ern(struct qman_portal	*portal,
 		}
 	}
 
-	net_dev->stats.tx_dropped++;
-	net_dev->stats.tx_fifo_errors++;
+	percpu_priv->stats.tx_dropped++;
+	percpu_priv->stats.tx_fifo_errors++;
 
 	if (netif_msg_tx_err(priv))
 		cpu_netdev_dbg(net_dev, "%s:%s() ->\n", __file__, __func__);
@@ -1259,6 +1261,36 @@ static const struct qman_fq ingress_fqs[][2] __devinitconst = {
 static const struct qman_fq _egress_fqs __devinitconst = {
 	.cb = {egress_dqrr, egress_ern, egress_dc_ern, egress_fqs}
 };
+
+static struct net_device_stats * __cold
+dpa_get_stats(struct net_device *net_dev)
+{
+	struct dpa_priv_s *priv = netdev_priv(net_dev);
+	unsigned long *netstats;
+	unsigned long *cpustats;
+	int i, j;
+	struct dpa_percpu_priv_s	*percpu_priv;
+	int numstats = sizeof(net_dev->stats) / sizeof(unsigned long);
+
+	cpu_netdev_dbg(net_dev, "-> %s:%s()\n", __file__, __func__);
+
+	netstats = (unsigned long *)&net_dev->stats;
+
+	memset(netstats, 0, sizeof(net_dev->stats));
+
+	for_each_online_cpu(i) {
+		percpu_priv = per_cpu_ptr(priv->percpu_priv, i);
+
+		cpustats = (unsigned long *)&percpu_priv->stats;
+
+		for (j = 0; j < numstats; j++)
+			netstats[j] += cpustats[j];
+	}
+
+	cpu_netdev_dbg(net_dev, "%s:%s() ->\n", __file__, __func__);
+
+	return &net_dev->stats;
+}
 
 static void __cold dpa_change_rx_flags(struct net_device *net_dev, int flags)
 {
@@ -1342,8 +1374,6 @@ static int dpa_process_sg(struct net_device *net_dev, struct sk_buff *skb,
 			       "__pskb_pull_tail() failed\n",
 			       __file__, __LINE__, __func__);
 
-		net_dev->stats.rx_dropped++;
-
 		err = -1;
 		goto err_pspb_pull_failed;
 	}
@@ -1384,7 +1414,6 @@ static int dpa_process_one(struct net_device *net_dev, struct sk_buff *skb,
 			cpu_netdev_err(net_dev, "%s:%hu:%s(): "
 				       "__pskb_pull_tail() failed\n",
 				       __file__, __LINE__, __func__);
-			net_dev->stats.rx_dropped++;
 			return -1;
 		}
 	} else {
@@ -1417,9 +1446,9 @@ static void _dpa_rx_error(struct net_device		*net_dev,
 
 	BUG_ON((dpa_fd->fd.status & FM_FD_STAT_ERRORS) == 0);
 
-	net_dev->stats.rx_errors++;
-	net_dev->stats.rx_packets++;
-	net_dev->stats.rx_bytes += dpa_fd_length(&dpa_fd->fd);
+	percpu_priv->stats.rx_errors++;
+	percpu_priv->stats.rx_packets++;
+	percpu_priv->stats.rx_bytes += dpa_fd_length(&dpa_fd->fd);
 
 	_errno = dpa_fd_release(net_dev, &dpa_fd->fd);
 	if (unlikely(_errno < 0)) {
@@ -1441,7 +1470,7 @@ static void _dpa_tx_error(struct net_device		*net_dev,
 
 	BUG_ON((dpa_fd->fd.status & FM_FD_STAT_ERRORS) == 0);
 
-	net_dev->stats.tx_errors++;
+	percpu_priv->stats.tx_errors++;
 
 	BUG();
 }
@@ -1463,19 +1492,19 @@ static void __hot _dpa_rx(struct net_device		*net_dev,
 					__file__, __LINE__, __func__,
 					dpa_fd->fd.status & FM_FD_STAT_ERRORS);
 
-		net_dev->stats.rx_errors++;
+		percpu_priv->stats.rx_errors++;
 
 		goto _return_dpa_fd_release;
 	}
 
-	net_dev->stats.rx_packets++;
-	net_dev->stats.rx_bytes += dpa_fd_length(&dpa_fd->fd);
+	percpu_priv->stats.rx_packets++;
+	percpu_priv->stats.rx_bytes += dpa_fd_length(&dpa_fd->fd);
 
 	dpa_bp = dpa_bpid2pool(dpa_fd->fd.bpid);
 	BUG_ON(IS_ERR(dpa_bp));
 
 	if (dpa_fd->fd.format == qm_fd_sg && !dpa_bp->kernel_pool) {
-		net_dev->stats.rx_dropped++;
+		percpu_priv->stats.rx_dropped++;
 		cpu_netdev_err(net_dev, "%s:%hu:%s(): Dropping a SG frame\n",
 			       __file__, __LINE__, __func__);
 		goto _return_dpa_fd_release;
@@ -1497,7 +1526,7 @@ static void __hot _dpa_rx(struct net_device		*net_dev,
 					       "__netdev_alloc_skb() failed\n",
 					       __file__, __LINE__, __func__);
 
-			net_dev->stats.rx_dropped++;
+			percpu_priv->stats.rx_dropped++;
 
 			goto _return_dpa_fd_release;
 		}
@@ -1511,8 +1540,10 @@ static void __hot _dpa_rx(struct net_device		*net_dev,
 	else
 		_errno = dpa_process_one(net_dev, skb, dpa_bp, &dpa_fd->fd);
 
-	if (unlikely(_errno < 0))
+	if (unlikely(_errno < 0)) {
+		percpu_priv->stats.rx_dropped++;
 		goto _return_dev_kfree_skb;
+	}
 
 	skb->protocol = eth_type_trans(skb, net_dev);
 
@@ -1527,7 +1558,7 @@ static void __hot _dpa_rx(struct net_device		*net_dev,
 					"netif_rx_ni() = %d\n",
 					__file__, __LINE__, __func__, _errno);
 
-		net_dev->stats.rx_dropped++;
+		percpu_priv->stats.rx_dropped++;
 
 		goto _return_dev_kfree_skb;
 	}
@@ -1563,7 +1594,7 @@ static void __hot _dpa_tx(struct net_device		*net_dev,
 					__file__, __LINE__, __func__,
 					dpa_fd->fd.status & FM_FD_STAT_ERRORS);
 
-		net_dev->stats.tx_errors++;
+		percpu_priv->stats.tx_errors++;
 	}
 
 	skb = *(typeof(&skb))bus_to_virt(dpa_fd->fd.addr_lo);
@@ -1667,8 +1698,10 @@ static int __hot dpa_tx(struct sk_buff *skb, struct net_device *net_dev)
 	struct dpa_bp		*dpa_bp = NULL;
 	struct bm_buffer	*bmb = NULL;
 	unsigned int	headroom;
+	struct dpa_percpu_priv_s *percpu_priv;
 
 	priv = netdev_priv(net_dev);
+	percpu_priv = per_cpu_ptr(priv->percpu_priv, smp_processor_id());
 	dev = net_dev->dev.parent;
 
 	if (netif_msg_tx_queued(priv))
@@ -1687,7 +1720,7 @@ static int __hot dpa_tx(struct sk_buff *skb, struct net_device *net_dev)
 
 		skb_new = skb_realloc_headroom(skb, DPA_BP_HEAD);
 		if (!skb_new) {
-			net_dev->stats.tx_errors++;
+			percpu_priv->stats.tx_errors++;
 			kfree_skb(skb);
 			return NETDEV_TX_OK;
 		}
@@ -1724,7 +1757,7 @@ static int __hot dpa_tx(struct sk_buff *skb, struct net_device *net_dev)
 				cpu_netdev_err(net_dev,
 					"%s:%hu:%s(): bman_acquire() = %d\n",
 					__file__, __LINE__, __func__, _errno);
-			net_dev->stats.tx_errors++;
+			percpu_priv->stats.tx_errors++;
 			goto _return_dev_kfree_skb;
 		}
 
@@ -1744,15 +1777,15 @@ static int __hot dpa_tx(struct sk_buff *skb, struct net_device *net_dev)
 			cpu_netdev_err(net_dev,
 				"%s:%hu:%s(): qman_enqueue() = %d\n",
 				__file__, __LINE__, __func__, _errno);
-		net_dev->stats.tx_errors++;
-		net_dev->stats.tx_fifo_errors++;
+		percpu_priv->stats.tx_errors++;
+		percpu_priv->stats.tx_fifo_errors++;
 		goto _return_buffer;
 	}
 
 	net_dev->trans_start = jiffies;
 
-	net_dev->stats.tx_packets++;
-	net_dev->stats.tx_bytes += dpa_fd_length(&fd);
+	percpu_priv->stats.tx_packets++;
+	percpu_priv->stats.tx_bytes += dpa_fd_length(&fd);
 
 	_errno = NETDEV_TX_OK;
 
@@ -1874,8 +1907,10 @@ static int __cold dpa_stop(struct net_device *net_dev)
 static void __cold dpa_timeout(struct net_device *net_dev)
 {
 	const struct dpa_priv_s	*priv;
+	struct dpa_percpu_priv_s *percpu_priv;
 
 	priv = netdev_priv(net_dev);
+	percpu_priv = per_cpu_ptr(priv->percpu_priv, smp_processor_id());
 
 	if (netif_msg_timer(priv))
 		cpu_netdev_dbg(net_dev, "-> %s:%s()\n", __file__, __func__);
@@ -1884,7 +1919,7 @@ static void __cold dpa_timeout(struct net_device *net_dev)
 		cpu_netdev_crit(net_dev, "Transmit timeout latency: %lu ms\n",
 				(jiffies - net_dev->trans_start) * 1000 / HZ);
 
-	net_dev->stats.tx_errors++;
+	percpu_priv->stats.tx_errors++;
 
 	if (netif_msg_timer(priv))
 		cpu_netdev_dbg(net_dev, "%s:%s() ->\n", __file__, __func__);
@@ -2375,6 +2410,7 @@ static const struct net_device_ops dpa_netdev_ops = {
 	.ndo_stop	= dpa_stop,
 	.ndo_change_rx_flags	 = dpa_change_rx_flags,
 	.ndo_tx_timeout	= dpa_timeout,
+	.ndo_get_stats = dpa_get_stats,
 	.ndo_set_mac_address = eth_mac_addr,
 	.ndo_validate_addr = eth_validate_addr,
 };
