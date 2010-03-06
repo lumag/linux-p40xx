@@ -2664,7 +2664,6 @@ dpa_probe(struct of_device *_of_dev)
 
 		BUG_ON(num_fqs[TX] != net_dev->num_tx_queues);
 
-		/* FIXME: Horribly leaky */
 		dpa_fq = devm_kzalloc(dev, sizeof(*dpa_fq) * num_fqs[TX],
 					GFP_KERNEL);
 		if (unlikely(dpa_fq == NULL)) {
@@ -2731,7 +2730,6 @@ dpa_probe(struct of_device *_of_dev)
 					num_fqs[i] += fqids[i][j * 2 + 1];
 			}
 
-		/* FIXME: Horribly leaky */
 		dpa_fq = devm_kzalloc(dev,
 				sizeof(*dpa_fq) * (num_fqs[TX] + num_fqs[RX]),
 				GFP_KERNEL);
