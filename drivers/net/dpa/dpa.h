@@ -1,4 +1,4 @@
-/* Copyright (c) 2008 - 2009, Freescale Semiconductor, Inc.
+/* Copyright (c) 2008 - 2010, Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -55,7 +55,7 @@ struct pcd_range {
 
 struct dpa_percpu_priv_s {
 	struct net_device	*net_dev;
-	struct work_struct	 fd_work;
+	struct tasklet_struct	 dpa_task;
 	struct list_head	 fd_list[2][2];
 	struct list_head	 free_list;
 	struct sk_buff_head	 rx_recycle;
