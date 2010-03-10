@@ -42,6 +42,7 @@
 #include <linux/ip.h>		/* struct iphdr */
 #include <linux/udp.h>		/* struct udphdr */
 #include <linux/tcp.h>		/* struct tcphdr */
+#include <linux/net.h>		/* net_ratelimit() */
 #include <linux/spinlock.h>
 #include <linux/highmem.h>
 #include <linux/percpu.h>
@@ -646,7 +647,7 @@ dpa_fd_release(const struct net_device *net_dev, const struct qm_fd *fd)
 			__errno = bman_release(dpa_bp->pool, bmb, j,
 					BMAN_RELEASE_FLAG_WAIT_INT);
 			if (unlikely(__errno < 0)) {
-				if (netif_msg_drv(priv))
+				if (netif_msg_drv(priv) && net_ratelimit())
 					cpu_netdev_err(net_dev,	"%s:%hu:%s(): "
 						"bman_release(%hu) = %d\n",
 						__file__, __LINE__, __func__,
@@ -667,7 +668,7 @@ dpa_fd_release(const struct net_device *net_dev, const struct qm_fd *fd)
 		__errno = bman_release(_dpa_bp->pool, &_bmb, 1,
 				BMAN_RELEASE_FLAG_WAIT_INT);
 		if (unlikely(__errno < 0)) {
-			if (netif_msg_drv(priv))
+			if (netif_msg_drv(priv) && net_ratelimit())
 				cpu_netdev_err(net_dev, "%s:%hu:%s(): "
 					"bman_release(%hu) = %d\n",
 					__file__, __LINE__, __func__,
@@ -718,7 +719,7 @@ ingress_dqrr(struct qman_portal		*portal,
 		dpa_fd = devm_kzalloc(net_dev->dev.parent,
 				sizeof(*dpa_fd), GFP_ATOMIC);
 		if (unlikely(dpa_fd == NULL)) {
-			if (netif_msg_rx_err(priv))
+			if (netif_msg_rx_err(priv) && net_ratelimit())
 				cpu_netdev_err(net_dev,	"%s:%hu:%s(): "
 					       "devm_kzalloc() failed\n",
 					       __file__, __LINE__, __func__);
@@ -1340,7 +1341,7 @@ static int dpa_process_sg(struct net_device *net_dev, struct sk_buff *skb,
 			bpid = sgt[i].bpid;
 			dpa_bp = dpa_bpid2pool(bpid);
 			if (IS_ERR(dpa_bp)) {
-				if (netif_msg_rx_err(priv))
+				if (netif_msg_rx_err(priv) && net_ratelimit())
 					cpu_netdev_err(net_dev, "%s:%hu:%s(): "
 						"Could not find pool for "
 						"BPID %hu\n",
@@ -1364,7 +1365,7 @@ static int dpa_process_sg(struct net_device *net_dev, struct sk_buff *skb,
 	if (!__pskb_pull_tail(skb,
 			      ETH_HLEN + NN_RESERVED_SPACE(net_dev) +
 			      TT_RESERVED_SPACE(net_dev))) {
-		if (netif_msg_rx_err(priv))
+		if (netif_msg_rx_err(priv) && net_ratelimit())
 			cpu_netdev_err(net_dev, "%s:%hu:%s(): "
 				       "__pskb_pull_tail() failed\n",
 				       __file__, __LINE__, __func__);
@@ -1407,7 +1408,7 @@ static int dpa_process_one(struct net_device *net_dev, struct sk_buff *skb,
 		if (!__pskb_pull_tail(skb, ETH_HLEN +
 					NN_RESERVED_SPACE(net_dev) +
 					TT_RESERVED_SPACE(net_dev))) {
-			if (netif_msg_rx_err(priv))
+			if (netif_msg_rx_err(priv) && net_ratelimit())
 				cpu_netdev_err(net_dev, "%s:%hu:%s(): "
 						"__pskb_pull_tail() failed\n",
 						__file__, __LINE__, __func__);
@@ -1436,7 +1437,7 @@ static void _dpa_rx_error(struct net_device		*net_dev,
 {
 	int	_errno;
 
-	if (netif_msg_hw(priv))
+	if (netif_msg_hw(priv) && net_ratelimit())
 		cpu_netdev_warn(net_dev, "%s:%hu:%s(): FD status = 0x%08x\n",
 				__file__, __LINE__, __func__,
 				dpa_fd->fd.status & FM_FD_STAT_ERRORS);
@@ -1460,7 +1461,7 @@ static void _dpa_tx_error(struct net_device		*net_dev,
 			  struct dpa_percpu_priv_s	*percpu_priv,
 			  const struct dpa_fd		*dpa_fd)
 {
-	if (netif_msg_hw(priv))
+	if (netif_msg_hw(priv) && net_ratelimit())
 		cpu_netdev_warn(net_dev, "%s:%hu:%s(): FD status = 0x%08x\n",
 				__file__, __LINE__, __func__,
 				dpa_fd->fd.status & FM_FD_STAT_ERRORS);
@@ -1483,7 +1484,7 @@ static void __hot _dpa_rx(struct net_device		*net_dev,
 	struct sk_buff *skb;
 
 	if (unlikely(dpa_fd->fd.status & FM_FD_STAT_ERRORS) != 0) {
-		if (netif_msg_hw(priv))
+		if (netif_msg_hw(priv) && net_ratelimit())
 			cpu_netdev_warn(net_dev, "%s:%hu:%s(): "
 					"FD status = 0x%08x\n",
 					__file__, __LINE__, __func__,
@@ -1502,8 +1503,8 @@ static void __hot _dpa_rx(struct net_device		*net_dev,
 
 	if (dpa_fd->fd.format == qm_fd_sg && !dpa_bp->kernel_pool) {
 		percpu_priv->stats.rx_dropped++;
-		if (netif_msg_rx_status(priv))
-			cpu_netdev_err(net_dev,
+		if (netif_msg_rx_status(priv) && net_ratelimit())
+			cpu_netdev_warn(net_dev,
 				"%s:%hu:%s(): Dropping a SG frame\n",
 				__file__, __LINE__, __func__);
 		goto _return_dpa_fd_release;
@@ -1520,7 +1521,7 @@ static void __hot _dpa_rx(struct net_device		*net_dev,
 	if (skb == NULL) {
 		skb = __netdev_alloc_skb(net_dev, DPA_BP_HEAD + NET_IP_ALIGN + size, GFP_DPA);
 		if (unlikely(skb == NULL)) {
-			if (netif_msg_rx_err(priv))
+			if (netif_msg_rx_err(priv) && net_ratelimit())
 				cpu_netdev_err(net_dev, "%s:%hu:%s(): "
 					       "__netdev_alloc_skb() failed\n",
 					       __file__, __LINE__, __func__);
@@ -1552,7 +1553,7 @@ static void __hot _dpa_rx(struct net_device		*net_dev,
 
 	_errno = netif_rx_ni(skb);
 	if (unlikely(_errno != NET_RX_SUCCESS)) {
-		if (netif_msg_rx_status(priv))
+		if (netif_msg_rx_status(priv) && net_ratelimit())
 			cpu_netdev_warn(net_dev, "%s:%hu:%s(): "
 					"netif_rx_ni() = %d\n",
 					__file__, __LINE__, __func__, _errno);
@@ -1587,7 +1588,7 @@ static void __hot _dpa_tx(struct net_device		*net_dev,
 	struct sk_buff	*skb;
 
 	if (unlikely(dpa_fd->fd.status & FM_FD_STAT_ERRORS) != 0) {
-		if (netif_msg_hw(priv))
+		if (netif_msg_hw(priv) && net_ratelimit())
 			cpu_netdev_warn(net_dev, "%s:%hu:%s(): "
 					"FD status = 0x%08x\n",
 					__file__, __LINE__, __func__,
@@ -1735,7 +1736,7 @@ static int __hot dpa_tx(struct sk_buff *skb, struct net_device *net_dev)
 		fd.addr_lo = dma_map_single(dev, skb->data, skb_headlen(skb),
 				DMA_TO_DEVICE);
 		if (unlikely(fd.addr_lo == 0)) {
-			if (netif_msg_tx_err(priv))
+			if (netif_msg_tx_err(priv)  && net_ratelimit())
 				cpu_netdev_err(net_dev, "%s:%hu:%s(): "
 					       "dma_map_single() failed\n",
 					       __file__, __LINE__, __func__);
@@ -1752,7 +1753,7 @@ static int __hot dpa_tx(struct sk_buff *skb, struct net_device *net_dev)
 
 		_errno = bman_acquire(dpa_bp->pool, bmb, 1, 0);
 		if (unlikely(_errno <= 0)) {
-			if (netif_msg_tx_err(priv))
+			if (netif_msg_tx_err(priv) && net_ratelimit())
 				cpu_netdev_err(net_dev,
 					"%s:%hu:%s(): bman_acquire() = %d\n",
 					__file__, __LINE__, __func__, _errno);
@@ -1772,7 +1773,7 @@ static int __hot dpa_tx(struct sk_buff *skb, struct net_device *net_dev)
 	_errno = qman_enqueue(priv->egress_fqs[skb_get_queue_mapping(skb)],
 			&fd, 0);
 	if (unlikely(_errno < 0)) {
-		if (netif_msg_tx_err(priv))
+		if (netif_msg_tx_err(priv) && net_ratelimit())
 			cpu_netdev_err(net_dev,
 				"%s:%hu:%s(): qman_enqueue() = %d\n",
 				__file__, __LINE__, __func__, _errno);
