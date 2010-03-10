@@ -1659,7 +1659,7 @@ static void __hot dpa_tasklet(unsigned long data)
 	}
 
 	if (netif_queue_stopped(net_dev) &&
-			percpu_priv->count[TX][0] < DPA_MAX_TX_BACKLOG)
+			percpu_priv->count[TX][1] < DPA_MAX_TX_BACKLOG)
 		netif_tx_wake_all_queues(net_dev);
 
 	/* Try again later if we're not done */
