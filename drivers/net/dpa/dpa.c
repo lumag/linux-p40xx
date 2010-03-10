@@ -2089,6 +2089,11 @@ static const uint32_t default_fqids[][6] __devinitconst = {
 	[TX] = {0, 1, 0, 1, 0, ARRAY_SIZE(((struct dpa_priv_s *)0)->egress_fqs)}
 };
 
+static u16 dpa_select_queue(struct net_device *net_dev, struct sk_buff *skb)
+{
+	return smp_processor_id();
+}
+
 static const struct net_device_ops dpa_netdev_ops = {
 	.ndo_open = dpa_start,
 	.ndo_start_xmit = dpa_tx,
@@ -2098,6 +2103,7 @@ static const struct net_device_ops dpa_netdev_ops = {
 	.ndo_get_stats = dpa_get_stats,
 	.ndo_set_mac_address = eth_mac_addr,
 	.ndo_validate_addr = eth_validate_addr,
+	.ndo_select_queue = dpa_select_queue,
 };
 
 static int __devinit __cold __attribute__((nonnull))
@@ -2511,7 +2517,9 @@ dpa_probe(struct of_device *_of_dev)
 			priv->egress_fqs[i] = _dpa_fq_alloc(
 				priv->dpa_fq_list + TX, dpa_fq, fqid,
 				QMAN_FQ_FLAG_TO_DCPORTAL,
-				fm_get_tx_port_channel(priv->mac_dev->port_dev[TX]), i);
+				fm_get_tx_port_channel(
+					priv->mac_dev->port_dev[TX]),
+				7);
 			if (IS_ERR(priv->egress_fqs[i])) {
 				_errno = PTR_ERR(priv->egress_fqs[i]);
 				goto _return_dpa_fq_free;
