@@ -1904,12 +1904,12 @@
 		};
 		ethernet@4 {
 			compatible = "fsl,p4080-dpa-ethernet", "fsl,dpa-ethernet";
-			fsl,qman-channel = <&qportal0>;
+			fsl,qman-channel = <&qpool1>;
 			fsl,fman-mac = <&enet4>;
 		};
 		ethernet@5 {
 			compatible = "fsl,p4080-dpa-ethernet", "fsl,dpa-ethernet";
-			fsl,qman-channel = <&qportal7>;
+			fsl,qman-channel = <&qpool1>;
 			fsl,fman-mac = <&enet5>;
 		};
 		ethernet@6 {
@@ -1929,7 +1929,7 @@
 		};
 		ethernet@9 {
 			compatible = "fsl,p4080-dpa-ethernet", "fsl,dpa-ethernet";
-			fsl,qman-channel = <&qportal0>;
+			fsl,qman-channel = <&qpool1>;
 			fsl,fman-mac = <&enet9>;
 		};
 	};
