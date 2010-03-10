@@ -2089,6 +2089,17 @@ static const uint32_t default_fqids[][6] __devinitconst = {
 	[TX] = {0, 1, 0, 1, 0, ARRAY_SIZE(((struct dpa_priv_s *)0)->egress_fqs)}
 };
 
+static const struct net_device_ops dpa_netdev_ops = {
+	.ndo_open = dpa_start,
+	.ndo_start_xmit = dpa_tx,
+	.ndo_stop = dpa_stop,
+	.ndo_change_rx_flags = dpa_change_rx_flags,
+	.ndo_tx_timeout = dpa_timeout,
+	.ndo_get_stats = dpa_get_stats,
+	.ndo_set_mac_address = eth_mac_addr,
+	.ndo_validate_addr = eth_validate_addr,
+};
+
 static int __devinit __cold __attribute__((nonnull))
 dpa_probe(struct of_device *_of_dev)
 {
@@ -2547,16 +2558,11 @@ dpa_probe(struct of_device *_of_dev)
 			&tx_port_param);
 	}
 
+	net_dev->netdev_ops = &dpa_netdev_ops;
 	net_dev->features		|= DPA_NETIF_FEATURES;
-	net_dev->get_stats		 = dpa_get_stats;
 	SET_ETHTOOL_OPS(net_dev, &dpa_ethtool_ops);
 	net_dev->needed_headroom	 = DPA_BP_HEAD;
-	net_dev->hard_start_xmit	 = dpa_tx;
 	net_dev->watchdog_timeo		 = tx_timeout * HZ / 1000;
-	net_dev->open			 = dpa_start;
-	net_dev->stop			 = dpa_stop;
-	net_dev->tx_timeout		 = dpa_timeout;
-	net_dev->change_rx_flags	 = dpa_change_rx_flags;
 
 	_errno = register_netdev(net_dev);
 	if (unlikely(_errno < 0)) {
