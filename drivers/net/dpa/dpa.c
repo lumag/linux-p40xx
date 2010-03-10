@@ -95,11 +95,9 @@ static const char rtx[][3] = {
 /* BM */
 
 #ifdef DEBUG
-#define GFP_DPA_BP	(GFP_DMA | __GFP_ZERO)
-#define GFP_DPA		(GFP_KERNEL | __GFP_ZERO)
+#define GFP_DPA_BP	(GFP_DMA | __GFP_ZERO | GFP_ATOMIC)
 #else
-#define GFP_DPA_BP	(GFP_DMA)
-#define GFP_DPA		(GFP_KERNEL)
+#define GFP_DPA_BP	(GFP_DMA | GFP_ATOMIC)
 #endif
 
 #define DPA_BP_HEAD	64
@@ -279,8 +277,7 @@ static void dpa_bp_refill(const struct net_device *net_dev, struct dpa_bp *bp,
 
 		/* When we get to the end of the buffer, send it all to bman */
 		if ((i % 8) == 7) {
-			err = bman_release(bp->pool, bmb, 8,
-						BMAN_RELEASE_FLAG_WAIT_INT);
+			err = bman_release(bp->pool, bmb, 8, 0);
 
 			if (err < 0) {
 				bmb_free(net_dev, bp, bmb);
@@ -291,8 +288,7 @@ static void dpa_bp_refill(const struct net_device *net_dev, struct dpa_bp *bp,
 
 	/* Take care of the leftovers ('i' will be one past the last block) */
 	if ((i % 8) != 0) {
-		err = bman_release(bp->pool, bmb, i % 8,
-				BMAN_RELEASE_FLAG_WAIT_INT);
+		err = bman_release(bp->pool, bmb, i % 8, 0);
 
 		if (err < 0) {
 			int j;
@@ -391,7 +387,7 @@ _dpa_bp_alloc(struct net_device *net_dev, struct list_head *list,
 		dpa_bp->kernel_pool = 1;
 
 		spin_lock_init(&dpa_bp->lock);
-		dpa_bp_refill(net_dev, dpa_bp, GFP_KERNEL);
+		dpa_bp_refill(net_dev, dpa_bp, GFP_DPA_BP);
 	} else {
 		/* This is a shared pool, which the kernel doesn't manage */
 		dpa_bp->kernel_pool = 0;
@@ -644,8 +640,7 @@ dpa_fd_release(const struct net_device *net_dev, const struct qm_fd *fd)
 					!sgt[i-1].final &&
 					sgt[i-1].bpid == sgt[i].bpid);
 
-			__errno = bman_release(dpa_bp->pool, bmb, j,
-					BMAN_RELEASE_FLAG_WAIT_INT);
+			__errno = bman_release(dpa_bp->pool, bmb, j, 0);
 			if (unlikely(__errno < 0)) {
 				if (netif_msg_drv(priv) && net_ratelimit())
 					cpu_netdev_err(net_dev,	"%s:%hu:%s(): "
@@ -665,15 +660,14 @@ dpa_fd_release(const struct net_device *net_dev, const struct qm_fd *fd)
 	}
 
 	if (!_dpa_bp->kernel_pool) {
-		__errno = bman_release(_dpa_bp->pool, &_bmb, 1,
-				BMAN_RELEASE_FLAG_WAIT_INT);
+		__errno = bman_release(_dpa_bp->pool, &_bmb, 1, 0);
 		if (unlikely(__errno < 0)) {
 			if (netif_msg_drv(priv) && net_ratelimit())
 				cpu_netdev_err(net_dev, "%s:%hu:%s(): "
 					"bman_release(%hu) = %d\n",
 					__file__, __LINE__, __func__,
 					bman_get_params(_dpa_bp->pool)->bpid,
-					_errno);
+					__errno);
 			if (_errno >= 0)
 				_errno = __errno;
 		}
@@ -699,7 +693,6 @@ ingress_dqrr(struct qman_portal		*portal,
 	     uint8_t			 _rtx,
 	     uint8_t			 ed)
 {
-	int				 _errno;
 	struct net_device		*net_dev;
 	struct dpa_priv_s		*priv;
 	struct dpa_percpu_priv_s	*percpu_priv;
@@ -741,12 +734,7 @@ ingress_dqrr(struct qman_portal		*portal,
 	if (_rtx == TX && percpu_priv->count[_rtx][ed] > DPA_MAX_TX_BACKLOG)
 		netif_tx_stop_all_queues(net_dev);
 
-	_errno = schedule_work(&percpu_priv->fd_work);
-	if (unlikely(_errno < 0))
-		if (netif_msg_rx_err(priv))
-			cpu_netdev_crit(net_dev,
-					"%s:%hu:%s(): schedule_work() = %d\n",
-					__file__, __LINE__, __func__, _errno);
+	tasklet_schedule(&percpu_priv->dpa_task);
 
 _return:
 	if (netif_msg_intr(priv))
@@ -1519,7 +1507,8 @@ static void __hot _dpa_rx(struct net_device		*net_dev,
 		size = dpa_fd_length(&dpa_fd->fd);
 
 	if (skb == NULL) {
-		skb = __netdev_alloc_skb(net_dev, DPA_BP_HEAD + NET_IP_ALIGN + size, GFP_DPA);
+		skb = __netdev_alloc_skb(net_dev,
+				DPA_BP_HEAD + NET_IP_ALIGN + size, GFP_ATOMIC);
 		if (unlikely(skb == NULL)) {
 			if (netif_msg_rx_err(priv) && net_ratelimit())
 				cpu_netdev_err(net_dev, "%s:%hu:%s(): "
@@ -1551,11 +1540,11 @@ static void __hot _dpa_rx(struct net_device		*net_dev,
 	fman_test_ip_manip((void *)priv->mac_dev, skb->data);
 #endif /* CONFIG_FSL_FMAN_TEST */
 
-	_errno = netif_rx_ni(skb);
+	_errno = netif_receive_skb(skb);
 	if (unlikely(_errno != NET_RX_SUCCESS)) {
 		if (netif_msg_rx_status(priv) && net_ratelimit())
 			cpu_netdev_warn(net_dev, "%s:%hu:%s(): "
-					"netif_rx_ni() = %d\n",
+					"netif_receive_skb() = %d\n",
 					__file__, __LINE__, __func__, _errno);
 
 		percpu_priv->stats.rx_dropped++;
@@ -1566,7 +1555,7 @@ static void __hot _dpa_rx(struct net_device		*net_dev,
 	net_dev->last_rx = jiffies;
 
 	if (dpa_bp->bp_refill_pending > dpa_bp->bp_kick_thresh)
-		dpa_bp_refill(net_dev, dpa_bp, GFP_KERNEL);
+		dpa_bp_refill(net_dev, dpa_bp, GFP_DPA_BP);
 
 	return;
 
@@ -1622,17 +1611,17 @@ static void (*const _dpa_work[][2])(struct net_device		*net_dev,
 	[TX] = {_dpa_tx_error, _dpa_tx}
 };
 
-static void __hot dpa_work(struct work_struct *fd_work)
+static void __hot dpa_tasklet(unsigned long data)
 {
-	int				 _errno, i, j;
-	struct net_device		*net_dev;
-	const struct dpa_priv_s		*priv;
-	struct dpa_percpu_priv_s	*percpu_priv;
-	struct dpa_fd			*dpa_fd, *tmp;
+	int i, j;
+	struct net_device *net_dev;
+	const struct dpa_priv_s *priv;
+	struct dpa_percpu_priv_s *percpu_priv =
+			(struct dpa_percpu_priv_s *)data;
+	struct dpa_fd *dpa_fd, *tmp;
 	unsigned int quota = 0;
 	unsigned int retry = 0;
 
-	percpu_priv = container_of(fd_work, struct dpa_percpu_priv_s, fd_work);
 	net_dev = percpu_priv->net_dev;
 	priv = netdev_priv(net_dev);
 
@@ -1674,15 +1663,8 @@ static void __hot dpa_work(struct work_struct *fd_work)
 		netif_tx_wake_all_queues(net_dev);
 
 	/* Try again later if we're not done */
-	if (retry) {
-		_errno = schedule_work(fd_work);
-		if (unlikely(_errno < 0))
-			if (netif_msg_rx_err(priv))
-				cpu_netdev_crit(net_dev, "%s:%hu:%s(): "
-						"schedule_work() = %d\n",
-						__file__, __LINE__, __func__,
-						_errno);
-	}
+	if (retry)
+		tasklet_schedule(&percpu_priv->dpa_task);
 
 	if (netif_msg_drv(priv))
 		cpu_netdev_dbg(net_dev, "%s:%s() ->\n", __file__, __func__);
@@ -2566,7 +2548,8 @@ dpa_probe(struct of_device *_of_dev)
 		percpu_priv = per_cpu_ptr(priv->percpu_priv, i);
 
 		percpu_priv->net_dev = net_dev;
-		INIT_WORK(&percpu_priv->fd_work, dpa_work);
+		tasklet_init(&percpu_priv->dpa_task, dpa_tasklet,
+				(unsigned long)percpu_priv);
 		for (j = 0; j < ARRAY_SIZE(percpu_priv->fd_list); j++)
 			for (k = 0; k < ARRAY_SIZE(percpu_priv->fd_list[j]);
 			     k++)
