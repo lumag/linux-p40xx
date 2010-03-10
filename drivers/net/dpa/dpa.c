@@ -583,17 +583,10 @@ dpa_fd_length(const struct qm_fd *fd)
 static inline ssize_t __const __must_check __attribute__((nonnull))
 dpa_fd_offset(const struct qm_fd *fd)
 {
-	switch (fd->format) {
-	case qm_fd_contig:
-	case qm_fd_sg:
+	if ((fd->format == qm_fd_contig) || (fd->format == qm_fd_sg))
 		return fd->offset;
-	case qm_fd_contig_big:
-	case qm_fd_sg_big:
-	case qm_fd_compound:
+	else
 		return 0;
-	}
-	BUG();
-	return -EINVAL;
 }
 
 static int __must_check __attribute__((nonnull))
