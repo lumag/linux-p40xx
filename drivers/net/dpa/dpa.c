@@ -417,17 +417,9 @@ _return_bman_free_pool:
 	return _errno;
 }
 
-static void * __must_check __attribute__((nonnull))
+static inline void * __must_check __attribute__((nonnull))
 dpa_phys2virt(const struct dpa_bp *dpa_bp, const struct bm_buffer *bmb)
 {
-#ifdef CONFIG_BUG
-	const struct bman_pool_params	*bp_params;
-
-	bp_params = bman_get_params(dpa_bp->pool);
-#endif
-	BUG_ON(bp_params->cb_ctx != dpa_bp);
-	BUG_ON(bp_params->bpid != bmb->bpid);
-
 	return dpa_bp->vaddr + (bmb->lo - dpa_bp->paddr);
 }
 
