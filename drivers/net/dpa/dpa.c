@@ -1359,19 +1359,17 @@ static int dpa_process_sg(struct net_device *net_dev, struct sk_buff *skb,
 				       __file__, __LINE__, __func__);
 
 		err = -1;
-		goto err_pspb_pull_failed;
+		goto err_pskb_pull_failed;
 	}
 	kunmap(page);
 	put_page(page);
 
 	return 0;
 
-err_pspb_pull_failed:
+err_pskb_pull_failed:
 err_bpid2pool_failed:
 	kunmap(page);
 	put_page(page);
-	/* Free all the buffers in the skb */
-	dev_kfree_skb(skb);
 	return err;
 }
 
@@ -1549,7 +1547,9 @@ static void __hot _dpa_rx(struct net_device		*net_dev,
 
 		percpu_priv->stats.rx_dropped++;
 
-		goto _return_dev_kfree_skb;
+		/* We only need to free the memory if it's a private pool */
+		if (dpa_bp->kernel_pool)
+			goto _return_dpa_fd_release;
 	}
 
 	net_dev->last_rx = jiffies;
