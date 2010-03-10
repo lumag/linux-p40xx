@@ -574,18 +574,10 @@ struct dpa_fd {
 static inline ssize_t __const __must_check __attribute__((nonnull))
 dpa_fd_length(const struct qm_fd *fd)
 {
-	switch (fd->format) {
-	case qm_fd_contig:
-	case qm_fd_sg:
+	if ((fd->format & 0x3) == 0)
 		return fd->length20;
-	case qm_fd_contig_big:
-	case qm_fd_sg_big:
+	else
 		return fd->length29;
-	case qm_fd_compound:
-		return fd->cong_weight;
-	}
-	BUG();
-	return -EINVAL;
 }
 
 static inline ssize_t __const __must_check __attribute__((nonnull))
