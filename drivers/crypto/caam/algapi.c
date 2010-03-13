@@ -1186,6 +1186,23 @@ static struct caam_alg_template driver_algs[] = {
 		.class2_alg_type = AUTH_TYPE_IPSEC_SHA1HMAC_96,
 	},
 	{
+		.name = "authenc(hmac(sha1),cbc(3des))",
+		.driver_name = "authenc-hmac-sha1-cbc-3des-caam",
+		.blocksize = DES3_EDE_BLOCK_SIZE,
+		.aead = {
+			.setkey = aead_authenc_setkey,
+			.setauthsize = aead_authenc_setauthsize,
+			.encrypt = aead_authenc_encrypt_first,
+			.decrypt = aead_authenc_decrypt_first,
+			.givencrypt = aead_authenc_givencrypt_first,
+			.geniv = "<built-in>",
+			.ivsize = DES3_EDE_BLOCK_SIZE,
+			.maxauthsize = SHA1_DIGEST_SIZE,
+			},
+		.class1_alg_type = CIPHER_TYPE_IPSEC_3DESCBC,
+		.class2_alg_type = AUTH_TYPE_IPSEC_SHA1HMAC_96,
+	},
+	{
 		.name = "authenc(hmac(sha1),cbc(des))",
 		.driver_name = "authenc-hmac-sha1-cbc-des-caam",
 		.blocksize = DES_BLOCK_SIZE,
