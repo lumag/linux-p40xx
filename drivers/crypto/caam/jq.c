@@ -2,7 +2,7 @@
  * CAAM/SEC 4.x transport/backend driver (prototype)
  * JobQ backend functionality
  *
- * Copyright (c) 2008, 2009, Freescale Semiconductor, Inc.
+ * Copyright (c) 2008-2010, Freescale Semiconductor, Inc.
  * All Rights Reserved
  *
  * Redistribution and use in source and binary forms, with or without
@@ -68,7 +68,9 @@ irqreturn_t caam_jq_interrupt(int irq, void *st_dev)
 	/* Have valid interrupt at this point, just ACK and trigger */
 	wr_reg32(&jqp->qregs->jqintstatus, irqstate);
 
-	tasklet_schedule(&jqp->irqtask);
+	preempt_disable();
+	tasklet_schedule(&jqp->irqtask[smp_processor_id()]);
+	preempt_enable();
 
 	return IRQ_HANDLED;
 }
@@ -132,11 +134,16 @@ void caam_jq_dequeue(unsigned long devarg)
 
 	spin_unlock_irqrestore(&jqp->outlock, flags);
 
+	if (rd_reg32(&jqp->qregs->outring_used)) {
+		preempt_disable();
+		tasklet_schedule(&jqp->irqtask[smp_processor_id()]);
+		preempt_enable();
+
+		return;
+	}
+
 	/* reenable / unmask IRQs */
 	clrbits32(&jqp->qregs->qconfig_lo, JQCFG_IMSK);
-
-	if (rd_reg32(&jqp->qregs->outring_used))
-		tasklet_schedule(&jqp->irqtask);
 }
 
 /**
@@ -310,7 +317,7 @@ int caam_jq_init(struct device *dev)
 {
 	struct caam_drv_private_jq *jqp;
 	u32 inpbusaddr, outbusaddr;
-	int error;
+	int i, error;
 
 	jqp = dev_get_drvdata(dev);
 
@@ -374,24 +381,24 @@ int caam_jq_init(struct device *dev)
 		  (JOBQ_INTC_TIME_THLD << JQCFG_ICTT_SHIFT));
 
 	/* Connect job queue interrupt handler. */
-	tasklet_init(&jqp->irqtask, caam_jq_dequeue, (u32)dev);
+	for_each_possible_cpu(i)
+		tasklet_init(&jqp->irqtask[i], caam_jq_dequeue, (u32)dev);
+
 	error = request_irq(jqp->irq, caam_jq_interrupt, 0,
 			    "caam-jobq", dev);
 	if (error) {
 		dev_err(dev, "can't connect JobQ %d interrupt (%d)\n",
 			jqp->qidx, jqp->irq);
-			irq_dispose_mapping(jqp->irq);
-			jqp->irq = 0;
-			dma_unmap_single(dev, inpbusaddr,
-					 sizeof(u32 *) * JOBQ_DEPTH,
-					 DMA_BIDIRECTIONAL);
-			dma_unmap_single(dev, outbusaddr,
-					 sizeof(u32 *) * JOBQ_DEPTH,
-					 DMA_BIDIRECTIONAL);
-			kfree(jqp->inpring);
-			kfree(jqp->outring);
-			kfree(jqp->entinfo);
-			return -EINVAL;
+		irq_dispose_mapping(jqp->irq);
+		jqp->irq = 0;
+		dma_unmap_single(dev, inpbusaddr, sizeof(u32 *) * JOBQ_DEPTH,
+				 DMA_BIDIRECTIONAL);
+		dma_unmap_single(dev, outbusaddr, sizeof(u32 *) * JOBQ_DEPTH,
+				 DMA_BIDIRECTIONAL);
+		kfree(jqp->inpring);
+		kfree(jqp->outring);
+		kfree(jqp->entinfo);
+		return -EINVAL;
 	}
 
 	jqp->assign = JOBQ_UNASSIGNED;
@@ -404,7 +411,7 @@ int caam_jq_init(struct device *dev)
 int caam_jq_shutdown(struct device *dev)
 {
 	struct caam_drv_private_jq *jqp;
-	u32 used;
+	u32 i, used;
 
 	jqp = dev_get_drvdata(dev);
 
@@ -414,6 +421,9 @@ int caam_jq_shutdown(struct device *dev)
 	used = rd_reg32(&jqp->qregs->outring_used);
 	wr_reg32(&jqp->qregs->outring_rmvd, used);
 	wr_reg32(&jqp->qregs->jqcommand, JQCR_RESET); /* complete flush */
+
+	for_each_possible_cpu(i)
+		tasklet_kill(&jqp->irqtask[i]);
 
 	/* Release interrupt */
 	free_irq(jqp->irq, dev);
