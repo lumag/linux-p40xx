@@ -2,7 +2,7 @@
  * P4080 DS Setup
  *
  * Maintained by Kumar Gala (see MAINTAINERS for contact information)
- * Copyright 2009 Freescale Semiconductor Inc.
+ * Copyright 2009-2010 Freescale Semiconductor Inc.
  *
  * This program is free software; you can redistribute  it and/or modify it
  * under  the terms of  the GNU General  Public License as published by the
@@ -223,7 +223,8 @@ define_machine(p4080_ds) {
 	.calibrate_decr		= generic_calibrate_decr,
 	.progress		= udbg_progress,
 	.init_early		= p4080_init_early,
-	.idle_loop		= wait_idle,
+	.idle_loop		= cpu_idle_simple,
+	.power_save		= ppc_wait,
 };
 
 machine_arch_initcall(p4080_ds, swiotlb_setup_bus_notifier);
