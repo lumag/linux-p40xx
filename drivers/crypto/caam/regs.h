@@ -164,9 +164,9 @@ struct caam_perfmon {
 	__be64 smpartowner;  /* SMPO  - SM Partition Owner        */
 
 	/* CAAM Global Status                                   fc0-fd7 */
-	__be64 faultaddr;    /* CFAR  - CAAM Fault Address        */
-	__be32 rsvd1;
-	__be32 faultdetail;  /* CFADR - CAAM Fault Addr Detail    */
+	__be64 faultaddr;    /* FAR  - Fault Address              */
+	__be32 faultliodn;   /* FALR - Fault Address LIODN (v2+)  */
+	__be32 faultdetail;  /* FADR - Fault Addr Detail          */
 	__be32 rsvd2;
 	__be32 status;       /* CSTA  - CAAM Status               */
 
