@@ -112,8 +112,9 @@ struct caam_ctx {
  * IPSec ESP Datapath Protocol Override Register (DPOVRD)
  */
 struct ipsec_deco_dpovrd {
-#define IPSEC_ENCAP_DECO_DPOVRD_USE cpu_to_be16(0x8000)
-	__be16 ip_hdr_len;
+#define IPSEC_ENCAP_DECO_DPOVRD_USE 0x80
+	u8 ovrd_ecn;
+	u8 ip_hdr_len;
 	u8 nh_offset;
 	u8 next_header;	/* reserved if decap */
 } __packed;
@@ -163,7 +164,7 @@ static int build_protocol_desc_ipsec_decap(struct caam_ctx *ctx,
 	}
 
 	/* ip hdr len currently fixed */
-	sh_desc->ip_hdr_len = cpu_to_be16(sizeof(struct iphdr));
+	sh_desc->ip_hdr_len = sizeof(struct iphdr);
 
 	/* we don't have a next hdr offset */
 	sh_desc->ip_nh_offset = 0;
@@ -295,7 +296,8 @@ static int build_protocol_desc_ipsec_encap(struct caam_ctx *ctx,
 	memcpy(&sh_desc->cbc.iv, "myivmyivmyivmyiv", sizeof(sh_desc->cbc.iv));
 #endif
 
-	/* indicate no IP header,
+	/*
+	 * indicate no IP header,
 	 * rather a jump instruction and key specification follow
 	 */
 	sh_desc->ip_hdr_len = 0;
@@ -956,7 +958,7 @@ static int ipsec_esp(struct ipsec_esp_edesc *edesc, struct aead_request *areq,
 	if ((direction == DIR_ENCAP) &&
 	    transport_mode(ctx->shared_encap->options)) {
 		/* insert the LOAD command */
-		dpovrd.ip_hdr_len |= IPSEC_ENCAP_DECO_DPOVRD_USE;
+		dpovrd.ovrd_ecn = IPSEC_ENCAP_DECO_DPOVRD_USE;
 		/* DECO class, no s-g, 7 == DPROVRD, 0 offset */
 		descptr = cmd_insert_load(descptr, &dpovrd, LDST_CLASS_DECO,
 					  0, 0x07 << 16, 0, sizeof(dpovrd),
