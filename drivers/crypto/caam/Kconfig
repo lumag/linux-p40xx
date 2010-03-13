@@ -10,7 +10,7 @@ config CRYPTO_DEV_FSL_CAAM_RINGSIZE
 	int "Job Queue ring size"
 	depends on CRYPTO_DEV_FSL_CAAM
 	range 2 9
-	default "8"
+	default "9"
 	help
 	  Select size of Job Queue rings as a power of 2, within the
 	  range 2-9 (ring size 4-512).
@@ -36,7 +36,7 @@ config CRYPTO_DEV_FSL_CAAM_INTC_COUNT_THLD
 	int "Job Queue interrupt coalescing count threshold"
 	depends on CRYPTO_DEV_FSL_CAAM_INTC
 	range 1 255
-	default 8
+	default 255
 	help
 	  Select number of descriptor completions to queue before
 	  raising an interrupt, in the range 1-255. Note that a selection
@@ -47,7 +47,7 @@ config CRYPTO_DEV_FSL_CAAM_INTC_TIME_THLD
 	int "Job Queue interrupt coalescing timer threshold"
 	depends on CRYPTO_DEV_FSL_CAAM_INTC
 	range 1 65535
-	default 8
+	default 2048
 	help
 	  Select number of bus clocks/64 to timeout in the case that one or
 	  more descriptor completions are queued without reaching the count
