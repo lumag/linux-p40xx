@@ -108,7 +108,6 @@ static int caam_probe(struct of_device *ofdev,
 	struct device_node *nprop, *np;
 	struct caam_full *topregs;
 	struct caam_drv_private *ctrlpriv;
-	u32 mstrcfg;
 
 	ctrlpriv = kzalloc(sizeof(struct caam_drv_private), GFP_KERNEL);
 	if (!ctrlpriv)
@@ -134,9 +133,7 @@ static int caam_probe(struct of_device *ofdev,
 	ctrlpriv->secvio_irq = of_irq_to_resource(nprop, 0, NULL);
 
 	/* Enable DECO watchdogs in master configuration register */
-	mstrcfg = rd_reg32(&ctrlpriv->ctrl->mcr);
-	mstrcfg |= MCFGR_WDENABLE;
-	wr_reg32(&ctrlpriv->ctrl->mcr, mstrcfg);
+	setbits32(&ctrlpriv->ctrl->mcr, MCFGR_WDENABLE);
 
 	/*
 	 * Device tree provides no information on the actual number
