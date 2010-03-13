@@ -1,7 +1,7 @@
 /*
  * caam - Freescale Integrated Security Engine (SEC) device driver
  *
- * Copyright (c) 2008,2009 Freescale Semiconductor, Inc.
+ * Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  *
  * Based on talitos Scatterlist Crypto API driver.
  *
@@ -99,7 +99,10 @@ struct caam_ctx {
 	unsigned int authkeylen;
 	unsigned int split_key_len;
 	unsigned int authsize;
-	u32 *shared_desc;
+	union {
+		struct ipsec_encap_pdb *shared_encap;
+		struct ipsec_decap_pdb *shared_decap;
+	};
 	u32 shared_desc_phys; /* FIXME: dma_addr_t */
 	int shared_desc_len;
 	spinlock_t first_lock;
@@ -230,14 +233,14 @@ static int build_protocol_desc_ipsec_decap(struct caam_ctx *ctx,
 	ctx->shared_desc_len = endidx * sizeof(u32);
 
 	/* now we know the length, stop wasting preallocated sh_desc space */
-	ctx->shared_desc = krealloc(sh_desc, ctx->shared_desc_len,
+	ctx->shared_decap = krealloc(sh_desc, ctx->shared_desc_len,
 				    GFP_DMA | flags);
 
 	ctx->shared_desc_phys = dma_map_single(dev, sh_desc, endidx *
 					       sizeof(u32), DMA_BIDIRECTIONAL);
 	if (dma_mapping_error(dev, ctx->shared_desc_phys)) {
 		dev_err(dev, "unable to map shared descriptor\n");
-		kfree(ctx->shared_desc);
+		kfree(ctx->shared_decap);
 		return -ENOMEM;
 	}
 
@@ -350,7 +353,7 @@ static int build_protocol_desc_ipsec_encap(struct caam_ctx *ctx,
 	ctx->shared_desc_len = endidx * sizeof(u32);
 
 	/* now we know the length, stop wasting preallocated sh_desc space */
-	ctx->shared_desc = krealloc(sh_desc, ctx->shared_desc_len,
+	ctx->shared_encap = krealloc(sh_desc, ctx->shared_desc_len,
 				    GFP_DMA | flags);
 
 	ctx->shared_desc_phys = dma_map_single(dev, sh_desc,
@@ -358,7 +361,7 @@ static int build_protocol_desc_ipsec_encap(struct caam_ctx *ctx,
 					       DMA_BIDIRECTIONAL);
 	if (dma_mapping_error(dev, ctx->shared_desc_phys)) {
 		dev_err(ctx->dev, "unable to map shared descriptor\n");
-		kfree(ctx->shared_desc);
+		kfree(ctx->shared_encap);
 		return -ENOMEM;
 	}
 
@@ -727,6 +730,11 @@ static void sg_to_link_tbl(struct scatterlist *sg, int sg_count,
 	link_tbl_ptr->len |= cpu_to_be32(0x40000000);
 }
 
+static int transport_mode(int options)
+{
+	return !(options & PDBOPTS_ESPCBC_TUNNEL);
+}
+
 /*
  * fill in and submit ipsec_esp job descriptor
  */
@@ -789,11 +797,10 @@ static int ipsec_esp(struct ipsec_esp_edesc *edesc, struct aead_request *areq,
 			/* cryptlen includes padlen / is blocksize aligned */
 			len = areq->cryptlen - padlen - 2;
 
-			if (!(ctx->shared_desc[1] & PDBOPTS_ESPCBC_TUNNEL)) {
+			if (transport_mode(ctx->shared_encap->options))
 				dpovrd.next_header = *(u8 *)((u8 *)sg_virt
 							     (areq->src) +
 							     areq->cryptlen-1);
-			}
 		} else {
 			sg_to_link_tbl(areq->src, sg_count, link_tbl_ptr, 0);
 #ifdef DEBUG
@@ -801,8 +808,7 @@ static int ipsec_esp(struct ipsec_esp_edesc *edesc, struct aead_request *areq,
 			       DUMP_PREFIX_ADDRESS, 16, 4, &edesc->link_tbl[0],
 			       edesc->dma_len, 1);
 #endif
-			ptr = dma_map_single(dev, link_tbl_ptr,
-						   edesc->dma_len,
+			ptr = dma_map_single(dev, link_tbl_ptr, edesc->dma_len,
 						   DMA_BIDIRECTIONAL);
 			edesc->link_tbl_phys = ptr;
 			sg = sg_last(areq->src, edesc->src_nents);
@@ -810,11 +816,10 @@ static int ipsec_esp(struct ipsec_esp_edesc *edesc, struct aead_request *areq,
 				 ctx->authsize - 2);
 			/* cryptlen includes padlen / is blocksize aligned */
 			len = areq->cryptlen - padlen - 2;
-			if (!(ctx->shared_desc[1] & PDBOPTS_ESPCBC_TUNNEL)) {
+			if (transport_mode(ctx->shared_encap->options))
 				dpovrd.next_header = *(u8 *)((u8 *)sg_virt(sg) +
 							     sg->length -
 							     ctx->authsize - 1);
-			}
 #ifdef DEBUG
 			print_hex_dump(KERN_ERR, "sglastin@"xstr(__LINE__)": ",
 				       DUMP_PREFIX_ADDRESS, 16, 4, sg_virt(sg),
@@ -823,7 +828,7 @@ static int ipsec_esp(struct ipsec_esp_edesc *edesc, struct aead_request *areq,
 		}
 
 		debug("pad length is %d\n", padlen);
-		if (!(ctx->shared_desc[1] & PDBOPTS_ESPCBC_TUNNEL))
+		if (transport_mode(ctx->shared_encap->options))
 			debug("next header is %d\n", dpovrd.next_header);
 	} else { /* DECAP */
 		debug("seq.num %d\n",
@@ -911,14 +916,14 @@ static int ipsec_esp(struct ipsec_esp_edesc *edesc, struct aead_request *areq,
 		len = areq->cryptlen + ctx->authsize;
 		if (!edesc->dma_len) {
 			ptr = sg_dma_address(areq->dst);
-			if (!(ctx->shared_desc[1] & PDBOPTS_ESPCBC_TUNNEL)) {
+			if (transport_mode(ctx->shared_decap->options)) {
 				ptr -= sizeof(struct iphdr) + areq->assoclen +
 				       ivsize;
 				len += sizeof(struct iphdr) + areq->assoclen +
 				       ivsize;
 			}
 		} else {
-			if (ctx->shared_desc[1] & PDBOPTS_ESPCBC_TUNNEL) {
+			if (!transport_mode(ctx->shared_decap->options)) {
 				link_tbl_ptr->ptr += sizeof(struct iphdr) +
 						     areq->assoclen + ivsize;
 				link_tbl_ptr->len -= sizeof(struct iphdr) +
@@ -942,7 +947,7 @@ static int ipsec_esp(struct ipsec_esp_edesc *edesc, struct aead_request *areq,
 					 PTR_SGLIST : PTR_DIRECT);
 
 	if ((direction == DIR_ENCAP) &&
-	    (!(ctx->shared_desc[1] & PDBOPTS_ESPCBC_TUNNEL))) {
+	    transport_mode(ctx->shared_encap->options)) {
 		/* insert the LOAD command */
 		dpovrd.ip_hdr_len |= IPSEC_ENCAP_DECO_DPOVRD_USE;
 		/* DECO class, no s-g, 7 == DPROVRD, 0 offset */
@@ -1088,8 +1093,8 @@ static int aead_authenc_decrypt_first(struct aead_request *req)
 	}
 
 	/* copy sequence number to PDB */
-	*(u32 *)(ctx->shared_desc + 5) =
-		*(u32 *)((u32 *)sg_virt(req->assoc) + 1);
+	ctx->shared_decap->seq_num = cpu_to_be32(*(u32 *)((u32 *)
+						 sg_virt(req->assoc) + 1));
 
 	crypto_aead_crt(aead)->decrypt = aead_authenc_decrypt;
 unlock:
@@ -1130,10 +1135,10 @@ static int aead_authenc_givencrypt_first(struct aead_givcrypt_request *req)
 	}
 
 	/* copy sequence number to PDB */
-	*(u64 *)(ctx->shared_desc + 2) = req->seq;
+	ctx->shared_encap->seq_num = cpu_to_be32(req->seq);
 
 	/* and the SPI */
-	*(ctx->shared_desc + 8) = *((u32 *)sg_virt(areq->assoc));
+	ctx->shared_encap->spi = cpu_to_be32(*((u32 *)sg_virt(areq->assoc)));
 
 	crypto_aead_crt(aead)->givencrypt = aead_authenc_givencrypt;
 unlock:
@@ -1224,7 +1229,7 @@ static void caam_cra_exit(struct crypto_tfm *tfm)
 	if (!dma_mapping_error(ctx->dev, ctx->shared_desc_phys))
 		dma_unmap_single(ctx->dev, ctx->shared_desc_phys,
 				 ctx->shared_desc_len, DMA_BIDIRECTIONAL);
-	kfree(ctx->shared_desc);
+	kfree(ctx->shared_encap);
 }
 
 void caam_algapi_remove(struct device *dev)
