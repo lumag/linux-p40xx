@@ -69,7 +69,7 @@ struct caam_drv_private_jq {
 	struct device *parentdev;	/* points back to controller dev */
 	int qidx;
 	struct caam_job_queue *qregs;	/* points to JobQ's register space */
-	struct tasklet_struct irqtask;
+	struct tasklet_struct irqtask[NR_CPUS];
 	int irq;			/* One per queue */
 	int assign;			/* busy/free */
 
