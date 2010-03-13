@@ -5,7 +5,7 @@
  * Freescale Hypervisor.
  *
  * Maintained by Kumar Gala (see MAINTAINERS for contact information)
- * Copyright 2008-2009 Freescale Semiconductor Inc.
+ * Copyright 2008-2010 Freescale Semiconductor Inc.
  *
  * This program is free software; you can redistribute  it and/or modify it
  * under  the terms of  the GNU General  Public License as published by the
@@ -208,6 +208,11 @@ static __init void p4080_init_early(void)
 #endif
 }
 
+static void hv_idle(void)
+{
+	fh_idle();
+}
+
 define_machine(p4080_hv) {
 	.name			= "P4080 HV",
 	.probe			= p4080_ds_probe,
@@ -223,5 +228,6 @@ define_machine(p4080_hv) {
 	.calibrate_decr		= generic_calibrate_decr,
 	.progress		= udbg_progress,
 	.init_early		= p4080_init_early,
-	.idle_loop		= wait_idle,
+	.idle_loop		= cpu_idle_simple,
+	.power_save		= hv_idle,
 };

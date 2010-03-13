@@ -1,7 +1,7 @@
 /*
  * Freescale hypervisor call interface
  *
- * Copyright (C) 2008-2009 Freescale Semiconductor, Inc.
+ * Copyright (C) 2008-2010 Freescale Semiconductor, Inc.
  * Author: Timur Tabi <timur@freescale.com>
  *
  * This file is licensed under the terms of the GNU General Public License
@@ -51,6 +51,7 @@
 #define FH_SEND_NMI                     22
 #define FH_VMPIC_GET_MSIR               23
 #define FH_SYSTEM_RESET                 24
+#define FH_IDLE                         25
 #define FH_PARTITION_SEND_DBELL         32
 
 /* Extended return codes */
@@ -777,4 +778,23 @@ static inline unsigned int fh_err_get_info(int queue, uint32_t *error_info)
 
 	return r3;
 }
+
+/**
+ * fh_idle -- wait for next interrupt on this core
+ *
+ * Returns 0 for success, or an error code.
+ */
+static inline unsigned int fh_idle(void)
+{
+	register uintptr_t r11 __asm__("r11") = FH_IDLE;
+	register uintptr_t r3 __asm__("r3");
+
+	__asm__ __volatile__ ("sc 1"
+		: "+r" (r11), "=r" (r3)
+		: : HCALL_CLOBBERS1
+	);
+
+	return r3;
+}
+
 #endif

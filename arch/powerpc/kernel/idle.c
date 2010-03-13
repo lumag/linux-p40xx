@@ -13,7 +13,7 @@
  *
  * 32-bit and 64-bit versions merged by Paul Mackerras <paulus@samba.org>
  *
- * Portions Copyright 2009 Freescale Semiconductor, Inc.
+ * Portions Copyright 2009-2010 Freescale Semiconductor, Inc.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -108,13 +108,13 @@ void cpu_idle(void)
 	}
 }
 
-void wait_idle(void)
+void cpu_idle_simple(void)
 {
 	while (1) {
 		tick_nohz_stop_sched_tick(1);
 
 		while (!need_resched() && !cpu_should_die())
-			asm volatile(PPC_WAIT(0));
+			ppc_md.power_save();
 
 		tick_nohz_restart_sched_tick();
 
@@ -125,6 +125,11 @@ void wait_idle(void)
 		schedule();
 		preempt_disable();
 	}
+}
+
+void ppc_wait(void)
+{
+	asm volatile(PPC_WAIT(0));
 }
 
 int powersave_nap;
