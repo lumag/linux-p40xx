@@ -42,7 +42,7 @@
 {								\
 	char *tmp;						\
 								\
-	tmp = kmalloc(sizeof(format) + max_alloc, GFP_KERNEL);	\
+	tmp = kmalloc(sizeof(format) + max_alloc, GFP_ATOMIC);	\
 	sprintf(tmp, format, param);				\
 	strcat(str, tmp);					\
 	kfree(tmp);						\
