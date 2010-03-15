@@ -596,63 +596,6 @@ ingress_rx_error_dqrr(struct qman_portal		*portal,
 	return ingress_dqrr(portal, fq, dq, RX, 0);
 }
 
-static void ingress_rx_error_ern(struct qman_portal		*portal,
-				 struct qman_fq			*fq,
-				 const struct qm_mr_entry	*msg)
-{
-	const struct net_device	*net_dev;
-	const struct dpa_priv_s	*priv;
-
-	net_dev = ((struct dpa_fq *)fq)->net_dev;
-	priv = (typeof(priv))netdev_priv(net_dev);
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "-> %s:%s()\n", __file__, __func__);
-
-	BUG();
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "%s:%s() ->\n", __file__, __func__);
-}
-
-static void ingress_rx_error_dc_ern(struct qman_portal		*portal,
-				    struct qman_fq		*fq,
-				    const struct qm_mr_entry	*msg)
-{
-	const struct net_device	*net_dev;
-	const struct dpa_priv_s	*priv;
-
-	net_dev = ((struct dpa_fq *)fq)->net_dev;
-	priv = (typeof(priv))netdev_priv(net_dev);
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "-> %s:%s()\n", __file__, __func__);
-
-	BUG();
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "%s:%s() ->\n", __file__, __func__);
-}
-
-static void ingress_rx_error_fqs(struct qman_portal		*portal,
-				 struct qman_fq			*fq,
-				 const struct qm_mr_entry	*msg)
-{
-	const struct net_device	*net_dev;
-	const struct dpa_priv_s	*priv;
-
-	net_dev = ((struct dpa_fq *)fq)->net_dev;
-	priv = (typeof(priv))netdev_priv(net_dev);
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "-> %s:%s()\n", __file__, __func__);
-
-	BUG();
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "%s:%s() ->\n", __file__, __func__);
-}
-
 static enum qman_cb_dqrr_result __hot
 ingress_rx_default_dqrr(struct qman_portal		*portal,
 			struct qman_fq			*fq,
@@ -715,63 +658,6 @@ ingress_rx_default_dqrr(struct qman_portal		*portal,
 	return ingress_dqrr(portal, fq, dq, RX, 1);
 }
 
-static void ingress_rx_default_ern(struct qman_portal		*portal,
-				   struct qman_fq		*fq,
-				   const struct qm_mr_entry	*msg)
-{
-	const struct net_device	*net_dev;
-	const struct dpa_priv_s	*priv;
-
-	net_dev = ((struct dpa_fq *)fq)->net_dev;
-	priv = (typeof(priv))netdev_priv(net_dev);
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "-> %s:%s()\n", __file__, __func__);
-
-	BUG();
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "%s:%s() ->\n", __file__, __func__);
-}
-
-static void ingress_rx_default_dc_ern(struct qman_portal	*portal,
-			      struct qman_fq		*fq,
-			      const struct qm_mr_entry	*msg)
-{
-	const struct net_device	*net_dev;
-	const struct dpa_priv_s	*priv;
-
-	net_dev = ((struct dpa_fq *)fq)->net_dev;
-	priv = (typeof(priv))netdev_priv(net_dev);
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "-> %s:%s()\n", __file__, __func__);
-
-	BUG();
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "%s:%s() ->\n", __file__, __func__);
-}
-
-static void ingress_rx_default_fqs(struct qman_portal		*portal,
-				   struct qman_fq		*fq,
-				   const struct qm_mr_entry	*msg)
-{
-	const struct net_device	*net_dev;
-	const struct dpa_priv_s	*priv;
-
-	net_dev = ((struct dpa_fq *)fq)->net_dev;
-	priv = (typeof(priv))netdev_priv(net_dev);
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "-> %s:%s()\n", __file__, __func__);
-
-	BUG();
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "%s:%s() ->\n", __file__, __func__);
-}
-
 static enum qman_cb_dqrr_result
 ingress_tx_error_dqrr(struct qman_portal		*portal,
 		      struct qman_fq			*fq,
@@ -797,63 +683,6 @@ ingress_tx_error_dqrr(struct qman_portal		*portal,
 #endif /* CONFIG_FSL_FMAN_TEST */
 
 	return ingress_dqrr(portal, fq, dq, TX, 0);
-}
-
-static void ingress_tx_error_ern(struct qman_portal		*portal,
-				 struct qman_fq			*fq,
-				 const struct qm_mr_entry	*msg)
-{
-	const struct net_device	*net_dev;
-	const struct dpa_priv_s	*priv;
-
-	net_dev = ((struct dpa_fq *)fq)->net_dev;
-	priv = (typeof(priv))netdev_priv(net_dev);
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "-> %s:%s()\n", __file__, __func__);
-
-	BUG();
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "%s:%s() ->\n", __file__, __func__);
-}
-
-static void ingress_tx_error_dc_ern(struct qman_portal		*portal,
-				    struct qman_fq		*fq,
-				    const struct qm_mr_entry	*msg)
-{
-	const struct net_device	*net_dev;
-	const struct dpa_priv_s	*priv;
-
-	net_dev = ((struct dpa_fq *)fq)->net_dev;
-	priv = (typeof(priv))netdev_priv(net_dev);
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "-> %s:%s()\n", __file__, __func__);
-
-	BUG();
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "%s:%s() ->\n", __file__, __func__);
-}
-
-static void ingress_tx_error_fqs(struct qman_portal		*portal,
-				 struct qman_fq			*fq,
-				 const struct qm_mr_entry	*msg)
-{
-	const struct net_device	*net_dev;
-	const struct dpa_priv_s	*priv;
-
-	net_dev = ((struct dpa_fq *)fq)->net_dev;
-	priv = (typeof(priv))netdev_priv(net_dev);
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "-> %s:%s()\n", __file__, __func__);
-
-	BUG();
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "%s:%s() ->\n", __file__, __func__);
 }
 
 static enum qman_cb_dqrr_result __hot
@@ -883,83 +712,6 @@ ingress_tx_default_dqrr(struct qman_portal		*portal,
 	return ingress_dqrr(portal, fq, dq, TX, 1);
 }
 
-static void ingress_tx_default_ern(struct qman_portal		*portal,
-				   struct qman_fq		*fq,
-				   const struct qm_mr_entry	*msg)
-{
-	const struct net_device	*net_dev;
-	const struct dpa_priv_s	*priv;
-
-	net_dev = ((struct dpa_fq *)fq)->net_dev;
-	priv = (typeof(priv))netdev_priv(net_dev);
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "-> %s:%s()\n", __file__, __func__);
-
-	BUG();
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "%s:%s() ->\n", __file__, __func__);
-}
-
-static void ingress_tx_default_dc_ern(struct qman_portal	*portal,
-				      struct qman_fq		*fq,
-				      const struct qm_mr_entry	*msg)
-{
-	const struct net_device	*net_dev;
-	const struct dpa_priv_s	*priv;
-
-	net_dev = ((struct dpa_fq *)fq)->net_dev;
-	priv = (typeof(priv))netdev_priv(net_dev);
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "-> %s:%s()\n", __file__, __func__);
-
-	BUG();
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "%s:%s() ->\n", __file__, __func__);
-}
-
-static void ingress_tx_default_fqs(struct qman_portal		*portal,
-				   struct qman_fq		*fq,
-				   const struct qm_mr_entry	*msg)
-{
-	const struct net_device	*net_dev;
-	const struct dpa_priv_s	*priv;
-
-	net_dev = ((struct dpa_fq *)fq)->net_dev;
-	priv = (typeof(priv))netdev_priv(net_dev);
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "-> %s:%s()\n", __file__, __func__);
-
-	BUG();
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "%s:%s() ->\n", __file__, __func__);
-}
-
-static enum qman_cb_dqrr_result egress_dqrr(struct qman_portal		*portal,
-					    struct qman_fq		*fq,
-					    const struct qm_dqrr_entry	*dq)
-{
-	const struct net_device	*net_dev;
-	const struct dpa_priv_s	*priv;
-
-	net_dev = ((struct dpa_fq *)fq)->net_dev;
-	priv = (typeof(priv))netdev_priv(net_dev);
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "-> %s:%s()\n", __file__, __func__);
-
-	BUG();
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "%s:%s() ->\n", __file__, __func__);
-
-	return qman_cb_dqrr_consume;
-}
 
 static void egress_ern(struct qman_portal	*portal,
 		       struct qman_fq		*fq,
@@ -1002,65 +754,23 @@ static void egress_ern(struct qman_portal	*portal,
 		cpu_netdev_dbg(net_dev, "%s:%s() ->\n", __file__, __func__);
 }
 
-static void egress_dc_ern(struct qman_portal		*portal,
-			  struct qman_fq		*fq,
-			  const struct qm_mr_entry	*msg)
-{
-	const struct net_device	*net_dev;
-	const struct dpa_priv_s	*priv;
-
-	net_dev = ((struct dpa_fq *)fq)->net_dev;
-	priv = (typeof(priv))netdev_priv(net_dev);
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "-> %s:%s()\n", __file__, __func__);
-
-	BUG();
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "%s:%s() ->\n", __file__, __func__);
-}
-
-static void egress_fqs(struct qman_portal	*portal,
-		       struct qman_fq		*fq,
-		       const struct qm_mr_entry	*msg)
-{
-	const struct net_device	*net_dev;
-	const struct dpa_priv_s	*priv;
-
-	net_dev = ((struct dpa_fq *)fq)->net_dev;
-	priv = (typeof(priv))netdev_priv(net_dev);
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "-> %s:%s()\n", __file__, __func__);
-
-	BUG();
-
-	if (netif_msg_intr(priv))
-		cpu_netdev_dbg(net_dev, "%s:%s() ->\n", __file__, __func__);
-}
-
 static const struct qman_fq ingress_fqs[][2] __devinitconst = {
 	[RX] = {
 		/* Error */
-		{.cb = {ingress_rx_error_dqrr, ingress_rx_error_ern,
-			ingress_rx_error_dc_ern, ingress_rx_error_fqs} },
+		{.cb = {ingress_rx_error_dqrr, NULL, NULL, NULL} },
 		 /* Default */
-		{.cb = {ingress_rx_default_dqrr, ingress_rx_default_ern,
-			ingress_rx_default_dc_ern, ingress_rx_default_fqs} }
+		{.cb = {ingress_rx_default_dqrr, NULL, NULL, NULL} }
 	},
 	[TX] = {
 		/* Error */
-		{.cb = {ingress_tx_error_dqrr, ingress_tx_error_ern,
-			ingress_tx_error_dc_ern, ingress_tx_error_fqs} },
+		{.cb = {ingress_tx_error_dqrr, NULL, NULL, NULL} },
 		 /* Default */
-		{.cb = {ingress_tx_default_dqrr, ingress_tx_default_ern,
-			ingress_tx_default_dc_ern, ingress_tx_default_fqs} }
+		{.cb = {ingress_tx_default_dqrr, NULL, NULL, NULL} }
 	}
 };
 
 static const struct qman_fq _egress_fqs __devinitconst = {
-	.cb = {egress_dqrr, egress_ern, egress_dc_ern, egress_fqs}
+	.cb = {NULL, egress_ern, NULL, NULL}
 };
 
 static struct net_device_stats * __cold
@@ -1141,14 +851,12 @@ static void _dpa_rx_error(struct net_device		*net_dev,
 			  struct dpa_percpu_priv_s	*percpu_priv,
 			  const struct dpa_fd		*dpa_fd)
 {
-	int	_errno;
+	int _errno;
 
 	if (netif_msg_hw(priv) && net_ratelimit())
 		cpu_netdev_warn(net_dev, "%s:%hu:%s(): FD status = 0x%08x\n",
 				__file__, __LINE__, __func__,
 				dpa_fd->fd.status & FM_FD_STAT_ERRORS);
-
-	BUG_ON((dpa_fd->fd.status & FM_FD_STAT_ERRORS) == 0);
 
 	percpu_priv->stats.rx_errors++;
 	percpu_priv->stats.rx_packets++;
@@ -1159,7 +867,6 @@ static void _dpa_rx_error(struct net_device		*net_dev,
 		dump_stack();
 		panic("Can't release buffer to the BM during RX\n");
 	}
-
 }
 
 static void _dpa_tx_error(struct net_device		*net_dev,
@@ -1167,16 +874,27 @@ static void _dpa_tx_error(struct net_device		*net_dev,
 			  struct dpa_percpu_priv_s	*percpu_priv,
 			  const struct dpa_fd		*dpa_fd)
 {
+	struct sk_buff *skb;
+
 	if (netif_msg_hw(priv) && net_ratelimit())
 		cpu_netdev_warn(net_dev, "%s:%hu:%s(): FD status = 0x%08x\n",
 				__file__, __LINE__, __func__,
 				dpa_fd->fd.status & FM_FD_STAT_ERRORS);
 
-	BUG_ON((dpa_fd->fd.status & FM_FD_STAT_ERRORS) == 0);
-
 	percpu_priv->stats.tx_errors++;
 
-	BUG();
+	skb = *(typeof(&skb))bus_to_virt(dpa_fd->fd.addr_lo);
+
+	dma_unmap_single(net_dev->dev.parent, dpa_fd->fd.addr_lo,
+			 skb_headlen(skb), DMA_TO_DEVICE);
+
+	if (skb_queue_len(&percpu_priv->rx_recycle) < DEFAULT_COUNT &&
+	    skb_recycle_check(skb, NET_IP_ALIGN + ETH_HLEN +
+			      NN_ALLOCATED_SPACE(net_dev) +
+			      TT_ALLOCATED_SPACE(net_dev)))
+		__skb_queue_head(&percpu_priv->rx_recycle, skb);
+	else
+		dev_kfree_skb(skb);
 }
 
 static void __hot _dpa_rx(struct net_device		*net_dev,
