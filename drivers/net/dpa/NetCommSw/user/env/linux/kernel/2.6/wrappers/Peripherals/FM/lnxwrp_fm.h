@@ -74,7 +74,6 @@ typedef struct {
     int                         minor;
     char                        name[20];
     bool                        active;
-    bool                        initialized;
     uint64_t                    baseAddr;
     uint32_t                    memSize;
     t_WrpFmPortDevSettings      settings;
