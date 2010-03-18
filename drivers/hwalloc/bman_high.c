@@ -483,7 +483,7 @@ static noinline void rel_set_thresh(struct bman_portal *p, int check)
 
 /* Used as a wait_event() expression. If it returns non-NULL, any lock will
  * remain held. */
-static struct bm_rcr_entry *try_rel_start(struct bman_portal **p)
+static struct bm_rcr_entry *__try_rel(struct bman_portal **p)
 {
 	struct bm_rcr_entry *r;
 	struct bm_portal *lowp;
@@ -505,9 +505,9 @@ static struct bm_rcr_entry *try_rel_start(struct bman_portal **p)
 	return r;
 }
 
-static inline struct bm_rcr_entry *__try_rel(struct bman_portal **p)
+static inline struct bm_rcr_entry *try_rel_start(struct bman_portal **p)
 {
-	struct bm_rcr_entry *rcr = try_rel_start(p);
+	struct bm_rcr_entry *rcr = __try_rel(p);
 	if (unlikely(!rcr))
 		rel_set_thresh(*p, 1);
 	return rcr;
