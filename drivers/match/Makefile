@@ -3,7 +3,6 @@ obj-$(CONFIG_FSL_PME2)		+= pme2.o
 pme2-y				:= pme2_low.o
 pme2-$(CONFIG_FSL_PME2_HIGH)	+= pme2_high.o
 pme2-$(CONFIG_FSL_PME2_SAMPLE_DB) += pme2_sample_db.o
-obj-$(CONFIG_FSL_PME2_TEST_LOW)	+= pme2_test_low.o
 obj-$(CONFIG_FSL_PME2_TEST_HIGH) += pme2_test_high.o
 obj-$(CONFIG_FSL_PME2_TEST_SCAN) += pme2_test_scan.o
 obj-$(CONFIG_FSL_PME2_DB)       += pme2_db.o

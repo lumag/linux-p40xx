@@ -42,31 +42,10 @@ static int test_init(void)
 #ifdef CONFIG_FSL_QMAN_FQRANGE
 	qman_test_fqrange();
 #endif
-#ifdef CONFIG_FSL_QMAN_TEST_LOW
-	struct qm_portal *portal;
-	const struct qm_portal_config *config = NULL;
-	u8 num = qm_portal_num();
-
-	while (!config && (num-- > 0)) {
-		portal = qm_portal_get(num);
-		config = qm_portal_config(portal);
-		if (!config->bound)
-			pr_info("Portal %d is available, using it\n", num);
-		else
-			config = NULL;
-	}
-	if (!config) {
-		pr_err("No unused Qman portals available!\n");
-		return -ENOSYS;
-	}
-#endif
 	loop = 1;
 	while(loop--) {
 #ifdef CONFIG_FSL_QMAN_TEST_STASH_POTATO
 		qman_test_hotpotato();
-#endif
-#ifdef CONFIG_FSL_QMAN_TEST_LOW
-		qman_test_low(portal);
 #endif
 #ifdef CONFIG_FSL_QMAN_TEST_HIGH
 		qman_test_high();

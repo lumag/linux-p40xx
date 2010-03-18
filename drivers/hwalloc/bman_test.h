@@ -1,4 +1,4 @@
-/* Copyright (c) 2008, 2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -40,7 +40,6 @@
 
 #include <linux/fsl_bman.h>
 
-void bman_test_low(struct bm_portal *portal);
 void bman_test_high(void);
 
 static inline void __hexdump(unsigned long start, unsigned long end,
