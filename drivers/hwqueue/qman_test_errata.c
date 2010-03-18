@@ -156,9 +156,74 @@ static void test_tdthresh(void)
 	BUG_ON(ret);
 }
 
+/********************/
+/* "ern code6" test */
+/********************/
+
+/* Dummy FD to enqueue out-of-sequence and generate an ERN */
+static const struct qm_fd c6_eq =
+	QM_FD_FMT_29(0, 0xabba, 0xdeadbeef, QM_FD_CONTIG_BIG, 1234);
+
+struct code6_fq {
+	struct qman_fq fq;
+	struct qm_mr_entry mr;
+	struct completion got_ern;
+};
+
+static void cb_ern_code6(struct qman_portal *p, struct qman_fq *__fq,
+					const struct qm_mr_entry *mr)
+{
+	struct code6_fq *c = (void *)__fq;
+	memcpy(&c->mr, mr, sizeof(*mr));
+	complete(&c->got_ern);
+}
+
+static void test_ern_code6(void)
+{
+	struct code6_fq c6fq = {
+		.fq = {
+			.cb = {
+				.ern = cb_ern_code6
+			}
+		},
+		.got_ern = COMPLETION_INITIALIZER(c6fq.got_ern)
+	};
+	struct qman_fq *fq = &c6fq.fq;
+	struct qm_mcc_initfq opts = {
+		.we_mask = QM_INITFQ_WE_FQCTRL,
+		.fqd = {
+			.fq_ctrl = QM_FQCTRL_ORP
+		}
+	};
+	u32 flags;
+	int ret = qman_create_fq(0, QMAN_FQ_FLAG_DYNAMIC_FQID, fq);
+	BUG_ON(ret);
+	/* leave it parked, and set it for local dequeue (loopback) */
+	ret = qman_init_fq(fq, QMAN_INITFQ_FLAG_LOCAL, &opts);
+	BUG_ON(ret);
+	/* enqueue with ORP using a "too early" sequence number */
+	ret = qman_enqueue_orp(fq, &c6_eq,
+			QMAN_ENQUEUE_FLAG_WAIT | QMAN_ENQUEUE_FLAG_WAIT_SYNC,
+			fq, 5);
+	BUG_ON(ret);
+	pr_info("  code6: eq complete\n");
+	ret = qman_retire_fq(fq, &flags);
+	BUG_ON(ret);
+	pr_info("  code6: retire complete, flags=%08x\n", flags);
+	BUG_ON(flags != QMAN_FQ_STATE_ORL);
+	wait_for_completion(&c6fq.got_ern);
+	pr_info("  code6: ERN, VERB=0x%02x, RC==0x%02x\n",
+		c6fq.mr.verb, c6fq.mr.ern.rc);
+	BUG_ON(c6fq.mr.verb & 0x20);
+	BUG_ON((c6fq.mr.ern.rc & QM_MR_RC_MASK) != QM_MR_RC_ORPWINDOW_RETIRED);
+	ret = qman_oos_fq(fq);
+	BUG_ON(ret);
+}
+
 void qman_test_errata(void)
 {
 	pr_info("Testing Qman errata handling ...\n");
 	test_tdthresh();
+	test_ern_code6();
 	pr_info("                              ... SUCCESS!\n");
 }
