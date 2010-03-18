@@ -33,6 +33,10 @@
 #ifndef FSL_QMAN_H
 #define FSL_QMAN_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* Last updated for v00.800 of the BG */
 
 /*************************************************/
@@ -750,7 +754,17 @@ struct qm_mr_entry {
 
 /* This identical structure of FQD fields is present in the "Init FQ" command
  * and the "Query FQ" result. It's suctioned out here into its own struct. It's
- * also used as the qman_query_fq() result structure in the high-level API. */
+ * also used as the qman_query_fq() result structure in the high-level API. NB,
+ * qm_fqd_stashing is predeclared because of C++ finickyness. */
+struct qm_fqd_stashing {
+	/* See QM_STASHING_EXCL_<...> */
+	u8 exclusive;
+	u8 __reserved1:2;
+	/* Numbers of cachelines */
+	u8 annotation_cl:2;
+	u8 data_cl:2;
+	u8 context_cl:2;
+} __packed;
 struct qm_fqd {
 	union {
 		u8 orpc;
@@ -787,15 +801,7 @@ struct qm_fqd {
 		/* Treat it as s/w portal stashing config */
 		/* See 1.5.6.7.1: "FQD Context_A field used for [...] */
 		struct {
-			struct qm_fqd_stashing {
-				/* See QM_STASHING_EXCL_<...> */
-				u8 exclusive;
-				u8 __reserved1:2;
-				/* Numbers of cachelines */
-				u8 annotation_cl:2;
-				u8 data_cl:2;
-				u8 context_cl:2;
-			} __packed stashing;
+			struct qm_fqd_stashing stashing;
 			/* 48-bit address of FQ context to
 			 * stash, must be cacheline-aligned */
 			u16 context_hi;
@@ -883,60 +889,68 @@ struct __qm_mc_cgr {
 /* See 1.5.8.6.1: "Initialize/Modify CGR" */
 /* See 1.5.8.6.2: "Query CGR" */
 /* See 1.5.8.6.3: "Query Congestion Group State" */
+struct qm_mcc_initfq {
+	u8 __reserved1;
+	u16 we_mask;	/* Write Enable Mask */
+	u32 fqid;	/* 24-bit */
+	u16 count;	/* Initialises 'count+1' FQDs */
+	struct qm_fqd fqd; /* the FQD fields go here */
+	u8 __reserved3[32];
+} __packed;
+struct qm_mcc_queryfq {
+	u8 __reserved1[3];
+	u32 fqid;	/* 24-bit */
+	u8 __reserved2[56];
+} __packed;
+struct qm_mcc_queryfq_np {
+	u8 __reserved1[3];
+	u32 fqid;	/* 24-bit */
+	u8 __reserved2[56];
+} __packed;
+struct qm_mcc_alterfq {
+	u8 __reserved1[3];
+	u32 fqid;	/* 24-bit */
+	u8 __reserved2[56];
+} __packed;
+struct qm_mcc_initcgr {
+	u8 __reserved1;
+	u16 we_mask;	/* Write Enable Mask */
+	struct __qm_mc_cgr cgr;	/* CGR fields */
+	u8 __reserved2[3];
+	u8 cgid;
+	u8 __reserved4[32];
+} __packed;
+struct qm_mcc_querycgr {
+	u8 __reserved1[30];
+	u8 cgid;
+	u8 __reserved2[32];
+} __packed;
+struct qm_mcc_querycongestion {
+	u8 __reserved[63];
+} __packed;
+struct qm_mcc_querywq {
+	u8 __reserved;
+	/* select channel if verb != QUERYWQ_DEDICATED */
+	union {
+		u16 channel_wq; /* ignores wq (3 lsbits) */
+		struct {
+			u16 id:13; /* enum qm_channel */
+			u16 __reserved1:3;
+		} __packed channel;
+	};
+	u8 __reserved2[60];
+} __packed;
 struct qm_mc_command {
 	u8 __dont_write_directly__verb;
 	union {
-		struct qm_mcc_initfq {
-			u8 __reserved1;
-			u16 we_mask;	/* Write Enable Mask */
-			u32 fqid;	/* 24-bit */
-			u16 count;	/* Initialises 'count+1' FQDs */
-			struct qm_fqd fqd; /* the FQD fields go here */
-			u8 __reserved3[32];
-		} __packed initfq;
-		struct qm_mcc_queryfq {
-			u8 __reserved1[3];
-			u32 fqid;	/* 24-bit */
-			u8 __reserved2[56];
-		} __packed queryfq;
-		struct qm_mcc_queryfq_np {
-			u8 __reserved1[3];
-			u32 fqid;	/* 24-bit */
-			u8 __reserved2[56];
-		} __packed queryfq_np;
-		struct qm_mcc_alterfq {
-			u8 __reserved1[3];
-			u32 fqid;	/* 24-bit */
-			u8 __reserved2[56];
-		} __packed alterfq;
-		struct qm_mcc_initcgr {
-			u8 __reserved1;
-			u16 we_mask;	/* Write Enable Mask */
-			struct __qm_mc_cgr cgr;	/* CGR fields */
-			u8 __reserved2[3];
-			u8 cgid;
-			u8 __reserved4[32];
-		} __packed initcgr;
-		struct qm_mcc_querycgr {
-			u8 __reserved1[30];
-			u8 cgid;
-			u8 __reserved2[32];
-		} __packed querycgr;
-		struct qm_mcc_querycongestion {
-			u8 __reserved[63];
-		} __packed querycongestion;
-		struct qm_mcc_querywq {
-			u8 __reserved;
-			/* select channel if verb != QUERYWQ_DEDICATED */
-			union {
-				u16 channel_wq; /* ignores wq (3 lsbits) */
-				struct {
-					u16 id:13; /* enum qm_channel */
-					u16 __reserved1:3;
-				} __packed channel;
-			};
-			u8 __reserved2[60];
-		} __packed querywq;
+		struct qm_mcc_initfq initfq;
+		struct qm_mcc_queryfq queryfq;
+		struct qm_mcc_queryfq_np queryfq_np;
+		struct qm_mcc_alterfq alterfq;
+		struct qm_mcc_initcgr initcgr;
+		struct qm_mcc_querycgr querycgr;
+		struct qm_mcc_querycongestion querycongestion;
+		struct qm_mcc_querywq querywq;
 	};
 } __packed;
 #define QM_MCC_VERB_VBIT		0x80
@@ -985,88 +999,97 @@ struct qm_mc_command {
 /* See 1.5.8.6.1: "Initialize/Modify CGR" */
 /* See 1.5.8.6.2: "Query CGR" */
 /* See 1.5.8.6.3: "Query Congestion Group State" */
+struct qm_mcr_initfq {
+	u8 __reserved1[62];
+} __packed;
+struct qm_mcr_queryfq {
+	u8 __reserved1[8];
+	struct qm_fqd fqd;	/* the FQD fields are here */
+	u8 __reserved2[32];
+} __packed;
+struct qm_mcr_queryfq_np {
+	u8 __reserved1;
+	u8 state;	/* QM_MCR_NP_STATE_*** */
+	u8 __reserved2;
+	u32 fqd_link:24;
+	u16 odp_seq;
+	u16 orp_nesn;
+	u16 orp_ea_hseq;
+	u16 orp_ea_tseq;
+	u8 __reserved3;
+	u32 orp_ea_hptr:24;
+	u8 __reserved4;
+	u32 orp_ea_tptr:24;
+	u8 __reserved5;
+	u32 pfdr_hptr:24;
+	u8 __reserved6;
+	u32 pfdr_tptr:24;
+	u8 __reserved7[5];
+	u8 __reserved8:7;
+	u8 is:1;
+	u16 ics_surp;
+	u32 byte_cnt;
+	u8 __reserved9;
+	u32 frm_cnt:24;
+	u32 __reserved10;
+	u16 ra1_sfdr;	/* QM_MCR_NP_RA1_*** */
+	u16 ra2_sfdr;	/* QM_MCR_NP_RA2_*** */
+	u16 __reserved11;
+	u16 od1_sfdr;	/* QM_MCR_NP_OD1_*** */
+	u16 od2_sfdr;	/* QM_MCR_NP_OD2_*** */
+	u16 od3_sfdr;	/* QM_MCR_NP_OD3_*** */
+} __packed;
+struct qm_mcr_alterfq {
+	u8 fqs;		/* Frame Queue Status */
+	u8 __reserved1[61];
+} __packed;
+struct qm_mcr_initcgr {
+	u8 __reserved1[62];
+} __packed;
+struct qm_mcr_querycgr {
+	u16 __reserved1;
+	struct __qm_mc_cgr cgr; /* CGR fields */
+	u32 __reserved2;
+	u32 __reserved3:24;
+	u32 i_bcnt_hi:8;/* high 8-bits of 40-bit "Instant" */
+	u32 i_bcnt_lo;	/* low 32-bits of 40-bit */
+	u32 __reserved4:24;
+	u32 a_bcnt_hi:8;/* high 8-bits of 40-bit "Average" */
+	u32 a_bcnt_lo;	/* low 32-bits of 40-bit */
+	u32 lgt;	/* Last Group Tick */
+	u8 __reserved5[12];
+} __packed;
+struct __qm_mcr_querycongestion {
+	u32 __state[8];
+};
+struct qm_mcr_querycongestion {
+	u8 __reserved[30];
+	/* Access this struct using QM_MCR_QUERYCONGESTION() */
+	struct __qm_mcr_querycongestion state;
+} __packed;
+struct qm_mcr_querywq {
+	union {
+		u16 channel_wq; /* ignores wq (3 lsbits) */
+		struct {
+			u16 id:13; /* enum qm_channel */
+			u16 __reserved:3;
+		} __packed channel;
+	};
+	u8 __reserved[28];
+	u32 wq_len[8];
+} __packed;
 struct qm_mc_result {
 	u8 verb;
 	u8 result;
 	union {
-		struct qm_mcr_initfq {
-			u8 __reserved1[62];
-		} __packed initfq;
-		struct qm_mcr_queryfq {
-			u8 __reserved1[8];
-			struct qm_fqd fqd;	/* the FQD fields are here */
-			u8 __reserved2[32];
-		} __packed queryfq;
-		struct qm_mcr_queryfq_np {
-			u8 __reserved1;
-			u8 state;	/* QM_MCR_NP_STATE_*** */
-			u8 __reserved2;
-			u32 fqd_link:24;
-			u16 odp_seq;
-			u16 orp_nesn;
-			u16 orp_ea_hseq;
-			u16 orp_ea_tseq;
-			u8 __reserved3;
-			u32 orp_ea_hptr:24;
-			u8 __reserved4;
-			u32 orp_ea_tptr:24;
-			u8 __reserved5;
-			u32 pfdr_hptr:24;
-			u8 __reserved6;
-			u32 pfdr_tptr:24;
-			u8 __reserved7[5];
-			u8 __reserved8:7;
-			u8 is:1;
-			u16 ics_surp;
-			u32 byte_cnt;
-			u8 __reserved9;
-			u32 frm_cnt:24;
-			u32 __reserved10;
-			u16 ra1_sfdr;	/* QM_MCR_NP_RA1_*** */
-			u16 ra2_sfdr;	/* QM_MCR_NP_RA2_*** */
-			u16 __reserved11;
-			u16 od1_sfdr;	/* QM_MCR_NP_OD1_*** */
-			u16 od2_sfdr;	/* QM_MCR_NP_OD2_*** */
-			u16 od3_sfdr;	/* QM_MCR_NP_OD3_*** */
-		} __packed queryfq_np;
-		struct qm_mcr_alterfq {
-			u8 fqs;		/* Frame Queue Status */
-			u8 __reserved1[61];
-		} __packed alterfq;
-		struct qm_mcr_initcgr {
-			u8 __reserved1[62];
-		} __packed initcgr;
-		struct qm_mcr_querycgr {
-			u16 __reserved1;
-			struct __qm_mc_cgr cgr; /* CGR fields */
-			u32 __reserved2;
-			u32 __reserved3:24;
-			u32 i_bcnt_hi:8;/* high 8-bits of 40-bit "Instant" */
-			u32 i_bcnt_lo;	/* low 32-bits of 40-bit */
-			u32 __reserved4:24;
-			u32 a_bcnt_hi:8;/* high 8-bits of 40-bit "Average" */
-			u32 a_bcnt_lo;	/* low 32-bits of 40-bit */
-			u32 lgt;	/* Last Group Tick */
-			u8 __reserved5[12];
-		} __packed querycgr;
-		struct qm_mcr_querycongestion {
-			u8 __reserved[30];
-			/* Access this struct using QM_MCR_QUERYCONGESTION() */
-			struct __qm_mcr_querycongestion {
-				u32 __state[8];
-			} state;
-		} __packed querycongestion;
-		struct qm_mcr_querywq {
-			union {
-				u16 channel_wq; /* ignores wq (3 lsbits) */
-				struct {
-					u16 id:13; /* enum qm_channel */
-					u16 __reserved:3;
-				} __packed channel;
-			};
-			u8 __reserved[28];
-			u32 wq_len[8];
-		} __packed querywq;
+		struct qm_mcr_initfq initfq;
+		struct qm_mcr_queryfq queryfq;
+		struct qm_mcr_queryfq_np queryfq_np;
+		struct qm_mcr_alterfq alterfq;
+		struct qm_mcr_initcgr initcgr;
+		struct qm_mcr_querycgr querycgr;
+		struct qm_mcr_querycongestion querycongestion;
+		struct qm_mcr_querywq querywq;
 	};
 } __packed;
 #define QM_MCR_VERB_RRID		0x80
@@ -1244,14 +1267,17 @@ enum qman_fq_state {
  *     many cachelines are required to stash 'struct my_fq', to accelerate not
  *     only the Qman driver but the callback as well.
  */
+
+struct qman_fq_cb {
+	qman_cb_dqrr dqrr;      /* for dequeued frames */
+	qman_cb_mr ern;         /* for s/w ERNs */
+	qman_cb_mr dc_ern;      /* for diverted h/w ERNs */
+	qman_cb_mr fqs;         /* frame-queue state changes*/
+};
+
 struct qman_fq {
 	/* Caller of qman_create_fq() provides these demux callbacks */
-	struct qman_fq_cb {
-		qman_cb_dqrr dqrr;	/* for dequeued frames */
-		qman_cb_mr ern;		/* for s/w ERNs */
-		qman_cb_mr dc_ern;	/* for diverted h/w ERNs */
-		qman_cb_mr fqs;		/* frame-queue state changes*/
-	} cb;
+	struct qman_fq_cb cb;
 	/* These are internal to the driver, don't touch. In particular, they
 	 * may change, be removed, or extended (so you shouldn't rely on
 	 * sizeof(qman_fq) being a constant). */
@@ -1720,6 +1746,10 @@ static inline int qman_poll_fq_for_init(struct qman_fq *fq)
 		return 1;
 	return 0;
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* FSL_QMAN_H */
 

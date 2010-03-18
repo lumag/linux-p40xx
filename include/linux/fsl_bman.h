@@ -1,4 +1,4 @@
-/* Copyright (c) 2008, 2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -32,6 +32,10 @@
 
 #ifndef FSL_BMAN_H
 #define FSL_BMAN_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /* Last updated for v00.79 of the BG */
 
@@ -286,16 +290,18 @@ struct bm_rcr_entry {
 
 /* See 1.5.3.1: "Acquire Command" */
 /* See 1.5.3.2: "Query Command" */
+struct bm_mcc_acquire {
+	u8 bpid;
+	u8 __reserved1[62];
+} __packed;
+struct bm_mcc_query {
+	u8 __reserved2[63];
+} __packed;
 struct bm_mc_command {
 	u8 __dont_write_directly__verb;
 	union {
-		struct bm_mcc_acquire {
-			u8 bpid;
-			u8 __reserved1[62];
-		} __packed acquire;
-		struct bm_mcc_query {
-			u8 __reserved1[63];
-		} __packed query;
+		struct bm_mcc_acquire acquire;
+		struct bm_mcc_query query;
 	};
 } __packed;
 #define BM_MCC_VERB_VBIT		0x80
@@ -481,5 +487,9 @@ int bman_release(struct bman_pool *pool, const struct bm_buffer *bufs, u8 num,
  */
 int bman_acquire(struct bman_pool *pool, struct bm_buffer *bufs, u8 num,
 			u32 flags);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* FSL_BMAN_H */
