@@ -1,4 +1,4 @@
-/* Copyright (c) 2008, 2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -69,7 +69,7 @@ static int __bm_pool_add(u32 bpid, u32 *cfg, int triplets)
 {
 	u64 total = 0;
 	BUG_ON((bpid + 1) > POOL_MAX);
-	if (bman_depletion_get(&pools, bpid)) {
+	if (bman_have_ccsr() && bman_depletion_get(&pools, bpid)) {
 		pr_err("Duplicate pool for bpid %d\n", bpid);
 		return -EBUSY;
 	}
@@ -103,8 +103,10 @@ static int __bm_pool_add(u32 bpid, u32 *cfg, int triplets)
 		bman_free_pool(pobj);
 		cfg += 6;
 	}
-	bman_depletion_set(&pools, bpid);
-	num_pools++;
+	if (bman_have_ccsr()) {
+		bman_depletion_set(&pools, bpid);
+		num_pools++;
+	}
 	if (total)
 		pr_info("Bman: reserved bpid %d, seeded %lld items\n", bpid,
 			total);
