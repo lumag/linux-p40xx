@@ -115,6 +115,14 @@ config FSL_QMAN_TEST_HIGH
 	  high-level API testing with them (whichever portal(s) are affine to
 	  the cpu(s) the test executes on).
 
+config FSL_QMAN_TEST_ERRATA
+	bool "Qman errata-handling self-test"
+	depends on FSL_QMAN_TEST && !FSL_QMAN_PORTAL_DISABLEAUTO
+	default y
+	---help---
+	  This requires the presence of cpu-affine portals, and performs
+	  testing that handling for known hardware-errata is correct.
+
 # H/w settings that can be hard-coded for now.
 
 # Corenet initiator settings. Stash request queues are 4-deep to match cores'
