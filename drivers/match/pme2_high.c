@@ -783,8 +783,8 @@ found:
 	return token;
 }
 
-static inline void cb_helper(struct qman_portal *portal, struct pme_ctx *ctx,
-				const struct qm_fd *fd, int error)
+static inline void cb_helper(__always_unused struct qman_portal *portal,
+			struct pme_ctx *ctx, const struct qm_fd *fd, int error)
 {
 	struct pme_ctx_token *token;
 	struct pme_ctx_ctrl_token *ctrl_token;
@@ -849,8 +849,8 @@ static enum qman_cb_dqrr_result cb_dqrr(struct qman_portal *portal,
 	return qman_cb_dqrr_consume;
 }
 
-static void cb_ern(struct qman_portal *portal, struct qman_fq *fq,
-				const struct qm_mr_entry *mr)
+static void cb_ern(__always_unused struct qman_portal *portal,
+		struct qman_fq *fq, const struct qm_mr_entry *mr)
 {
 	struct pme_ctx *ctx;
 	struct pme_nostash *data;
@@ -903,8 +903,9 @@ static void cb_dc_ern(struct qman_portal *portal, struct qman_fq *fq,
 	cb_helper(portal, ctx, &mr->dcern.fd, 1);
 }
 
-static void cb_fqs(struct qman_portal *portal, struct qman_fq *fq,
-				const struct qm_mr_entry *mr)
+static void cb_fqs(__always_unused struct qman_portal *portal,
+			__always_unused struct qman_fq *fq,
+			const struct qm_mr_entry *mr)
 {
 	u8 verb = mr->verb & QM_MR_VERB_TYPE_MASK;
 	if (verb == QM_MR_VERB_FQRNI)

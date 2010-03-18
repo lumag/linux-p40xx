@@ -1,4 +1,4 @@
-/* Copyright (c) 2008, 2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -121,12 +121,13 @@ static inline void __poll_portal_fast(struct bman_portal *p,
 
 #ifdef CONFIG_FSL_BMAN_HAVE_IRQ
 /* Portal interrupt handler */
-static irqreturn_t portal_isr(int irq, void *ptr)
+static irqreturn_t portal_isr(__always_unused int irq, void *ptr)
 {
 	struct bman_portal *p = ptr;
 	struct bm_portal *lowp = p->p;
+	u32 clear = 0;
 #ifdef CONFIG_FSL_BMAN_PORTAL_FLAG_IRQ_SLOW
-	u32 clear = 0, is = bm_isr_status_read(lowp);
+	u32 is = bm_isr_status_read(lowp);
 #endif
 	/* Only do fast-path handling if it's required */
 #ifdef CONFIG_FSL_BMAN_PORTAL_FLAG_IRQ_FAST
@@ -144,7 +145,9 @@ struct bman_portal *bman_create_portal(struct bm_portal *__p,
 				const struct bman_depletion *pools)
 {
 	struct bman_portal *portal;
+#ifdef CONFIG_FSL_BMAN_HAVE_IRQ
 	const struct bm_portal_config *config = bm_portal_config(__p);
+#endif
 	int ret;
 
 	portal = kmalloc(sizeof(*portal), GFP_KERNEL);
@@ -185,7 +188,11 @@ struct bman_portal *bman_create_portal(struct bm_portal *__p,
 	memset(&portal->cb, 0, sizeof(portal->cb));
 	/* Write-to-clear any stale interrupt status bits */
 	bm_isr_disable_write(portal->p, 0xffffffff);
+#ifdef CONFIG_FSL_BMAN_HAVE_IRQ
 	bm_isr_enable_write(portal->p, BM_PIRQ_RCRI | BM_PIRQ_BSCN);
+#else
+	bm_isr_enable_write(portal->p, 0);
+#endif
 	bm_isr_status_clear(portal->p, 0xffffffff);
 #ifdef CONFIG_FSL_BMAN_HAVE_IRQ
 	snprintf(portal->irqname, MAX_IRQNAME, IRQNAME, config->cpu);
@@ -218,11 +225,11 @@ struct bman_portal *bman_create_portal(struct bm_portal *__p,
 	bm_isr_disable_write(portal->p, 0);
 	return portal;
 fail_rcr_empty:
-fail_affinity:
 #ifdef CONFIG_FSL_BMAN_HAVE_IRQ
+fail_affinity:
 	free_irq(config->irq, portal);
-#endif
 fail_irq:
+#endif
 	if (portal->pools)
 		kfree(portal->pools);
 fail_pools:
@@ -326,8 +333,8 @@ static u32 __poll_portal_slow(struct bman_portal *p, struct bm_portal *lowp,
 	return ret;
 }
 
-static inline void __poll_portal_fast(struct bman_portal *p,
-				struct bm_portal *lowp)
+static inline void __poll_portal_fast(__always_unused struct bman_portal *p,
+					__always_unused struct bm_portal *lowp)
 {
 	/* nothing yet, this is where we'll put optimised RCR consumption
 	 * tracking */
@@ -349,7 +356,7 @@ void bman_poll(void)
 	struct bm_portal *lowp = p->p;
 #ifndef CONFIG_FSL_BMAN_PORTAL_FLAG_IRQ_SLOW
 	if (!(p->slowpoll--)) {
-		u32 is = qm_isr_status_read(lowp);
+		u32 is = bm_isr_status_read(lowp);
 		u32 active = __poll_portal_slow(p, lowp, is);
 		if (active)
 			p->slowpoll = SLOW_POLL_BUSY;
@@ -659,7 +666,7 @@ static inline int __bman_acquire(struct bman_pool *pool, struct bm_buffer *bufs,
 	struct bman_portal *p = get_affine_portal();
 	struct bm_mc_command *mcc;
 	struct bm_mc_result *mcr;
-	u8 ret;
+	int ret;
 
 	local_irq_disable();
 	mcc = bm_mc_start(p->p);
@@ -668,10 +675,13 @@ static inline int __bman_acquire(struct bman_pool *pool, struct bm_buffer *bufs,
 			(num & BM_MCC_VERB_ACQUIRE_BUFCOUNT));
 	while (!(mcr = bm_mc_result(p->p)))
 		cpu_relax();
-	ret = num = mcr->verb & BM_MCR_VERB_ACQUIRE_BUFCOUNT;
-	memcpy(&bufs[0], &mcr->acquire.bufs[0], num * sizeof(bufs[0]));
+	ret = mcr->verb & BM_MCR_VERB_ACQUIRE_BUFCOUNT;
+	if (bufs)
+		memcpy(&bufs[0], &mcr->acquire.bufs[0], num * sizeof(bufs[0]));
 	local_irq_enable();
 	put_affine_portal();
+	if (ret != num)
+		ret = -ENOMEM;
 	return ret;
 }
 
@@ -693,8 +703,8 @@ int bman_acquire(struct bman_pool *pool, struct bm_buffer *bufs, u8 num,
 	/* Only need a h/w op if we'll hit the low-water thresh */
 	if (!(flags & BMAN_ACQUIRE_FLAG_STOCKPILE) &&
 			(pool->sp_fill <= (BMAN_STOCKPILE_LOW + num))) {
-		u8 ret = __bman_acquire(pool, pool->sp + pool->sp_fill, 8);
-		if (!ret)
+		int ret = __bman_acquire(pool, pool->sp + pool->sp_fill, 8);
+		if (ret < 0)
 			goto hw_starved;
 		BUG_ON(ret != 8);
 		pool->sp_fill += 8;
