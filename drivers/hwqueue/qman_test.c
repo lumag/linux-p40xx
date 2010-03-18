@@ -1,4 +1,4 @@
-/* Copyright (c) 2008, 2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -49,6 +49,9 @@ static int test_init(void)
 #endif
 #ifdef CONFIG_FSL_QMAN_TEST_HIGH
 		qman_test_high();
+#endif
+#ifdef CONFIG_FSL_QMAN_TEST_ERRATA
+		qman_test_errata();
 #endif
 	}
 	return 0;

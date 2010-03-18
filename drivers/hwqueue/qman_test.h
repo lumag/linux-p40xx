@@ -1,4 +1,4 @@
-/* Copyright (c) 2008, 2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -42,6 +42,7 @@
 
 void qman_test_hotpotato(void);
 void qman_test_high(void);
+void qman_test_errata(void);
 void qman_test_fqrange(void);
 
 static inline void __hexdump(unsigned long start, unsigned long end,
