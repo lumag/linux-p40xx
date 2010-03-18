@@ -115,3 +115,7 @@
 #define BM_ASSERT(x)
 #endif
 
+/* In present versions of the kernel code-base, "__always_unused" isn't yet
+ * defined. It will be once we rebase onto newer code (and this definition will
+ * presumably fail compilation, triggering someone to remove it). */
+#define __always_unused	__maybe_unused

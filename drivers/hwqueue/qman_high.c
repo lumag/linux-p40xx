@@ -170,7 +170,7 @@ static inline void __poll_portal_fast(struct qman_portal *p,
 
 #ifdef CONFIG_FSL_QMAN_HAVE_IRQ
 /* Portal interrupt handler */
-static irqreturn_t portal_isr(int irq, void *ptr)
+static irqreturn_t portal_isr(__always_unused int irq, void *ptr)
 {
 	struct qman_portal *p = ptr;
 	struct qm_portal *lowp = p->p;
@@ -292,11 +292,15 @@ struct qman_portal *qman_create_portal(struct qm_portal *__p, u32 flags,
 	qman_rbtree_init(&portal->retire_table);
 	isdr = 0xffffffff;
 	qm_isr_disable_write(portal->p, isdr);
+#ifdef CONFIG_FSL_QMAN_HAVE_IRQ
 	qm_isr_enable_write(portal->p, QM_PIRQ_EQCI | QM_PIRQ_EQRI |
 #ifdef CONFIG_FSL_QMAN_PORTAL_FLAG_IRQ_FAST
 		QM_PIRQ_DQRI |
 #endif
 		QM_PIRQ_MRI | (cgrs ? QM_PIRQ_CSCI : 0));
+#else
+	qm_isr_enable_write(portal->p, 0);
+#endif
 	qm_isr_status_clear(portal->p, 0xffffffff);
 #ifdef CONFIG_FSL_QMAN_HAVE_IRQ
 	snprintf(portal->irqname, MAX_IRQNAME, IRQNAME, config->cpu);
@@ -354,11 +358,11 @@ struct qman_portal *qman_create_portal(struct qm_portal *__p, u32 flags,
 	return portal;
 fail_dqrr_mr_empty:
 fail_eqcr_empty:
-fail_affinity:
 #ifdef CONFIG_FSL_QMAN_HAVE_IRQ
+fail_affinity:
 	free_irq(config->irq, portal);
-#endif
 fail_irq:
+#endif
 	platform_device_del(portal->pdev);
 fail_devadd:
 	platform_device_put(portal->pdev);
@@ -840,7 +844,7 @@ err:
 }
 EXPORT_SYMBOL(qman_create_fq);
 
-void qman_destroy_fq(struct qman_fq *fq, u32 flags)
+void qman_destroy_fq(struct qman_fq *fq, __maybe_unused u32 flags)
 {
 	/* We don't need to lock the FQ as it is a pre-condition that the FQ be
 	 * quiesced. Instead, run some checks. */
@@ -920,11 +924,12 @@ int qman_init_fq(struct qman_fq *fq, u32 flags, struct qm_mcc_initfq *opts)
 			mcc->initfq.we_mask |= QM_INITFQ_WE_CONTEXTA;
 			memset(&mcc->initfq.fqd.context_a, 0,
 				sizeof(&mcc->initfq.fqd.context_a));
+		} else {
+			phys_fq = dma_map_single(&p->pdev->dev, fq, sizeof(*fq),
+						DMA_TO_DEVICE);
+			mcc->initfq.fqd.context_a.context_hi = 0;
+			mcc->initfq.fqd.context_a.context_lo = (u32)phys_fq;
 		}
-		phys_fq = dma_map_single(&p->pdev->dev, fq, sizeof(*fq),
-					DMA_TO_DEVICE);
-		mcc->initfq.fqd.context_a.context_hi = 0;
-		mcc->initfq.fqd.context_a.context_lo = (u32)phys_fq;
 	}
 	if (flags & QMAN_INITFQ_FLAG_LOCAL) {
 		mcc->initfq.fqd.dest.channel = p->p->config.channel;

@@ -1,4 +1,4 @@
-/* Copyright (c) 2008, 2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -141,7 +141,7 @@ static inline void RCR_INC(struct bm_rcr *rcr)
 }
 
 int bm_rcr_init(struct bm_portal *portal, enum bm_rcr_pmode pmode,
-		enum bm_rcr_cmode cmode)
+		__maybe_unused enum bm_rcr_cmode cmode)
 {
 	/* This use of 'register', as well as all other occurances, is because
 	 * it has been observed to generate much faster code with gcc than is

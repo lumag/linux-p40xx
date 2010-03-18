@@ -158,7 +158,7 @@ static inline void EQCR_INC(struct qm_eqcr *eqcr)
 }
 
 int qm_eqcr_init(struct qm_portal *portal, enum qm_eqcr_pmode pmode,
-		enum qm_eqcr_cmode cmode)
+		__maybe_unused enum qm_eqcr_cmode cmode)
 {
 	/* This use of 'register', as well as all other occurances, is because
 	 * it has been observed to generate much faster code with gcc than is
@@ -426,8 +426,9 @@ static inline struct qm_dqrr_entry *DQRR_INC(struct qm_dqrr_entry *e)
 }
 
 int qm_dqrr_init(struct qm_portal *portal, enum qm_dqrr_dmode dmode,
-		enum qm_dqrr_pmode pmode, enum qm_dqrr_cmode cmode,
-		u8 max_fill, int stash_ring, int stash_data)
+		__maybe_unused enum qm_dqrr_pmode pmode,
+		enum qm_dqrr_cmode cmode, u8 max_fill,
+		int stash_ring, int stash_data)
 {
 	register struct qm_dqrr *dqrr = &portal->dqrr;
 	const struct qm_portal_config *config = qm_portal_config(portal);
