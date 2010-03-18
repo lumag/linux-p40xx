@@ -557,6 +557,13 @@ enum qm_fd_format {
 	qm_fd_compound = QM_FD_FORMAT_COMPOUND
 };
 
+/* Capitalised versions are un-typed but can be used in static expressions */
+#define QM_FD_CONTIG	0
+#define QM_FD_CONTIG_BIG QM_FD_FORMAT_LONG
+#define QM_FD_SG	QM_FD_FORMAT_SG
+#define QM_FD_SG_BIG	(QM_FD_FORMAT_SG | QM_FD_FORMAT_LONG)
+#define QM_FD_COMPOUND	QM_FD_FORMAT_COMPOUND
+
 /* See 1.5.1.1: "Frame Descriptor (FD)" */
 struct qm_fd {
 	u8 dd:2;	/* dynamic debug */
@@ -568,8 +575,13 @@ struct qm_fd {
 	u32 addr_lo;	/* low 32-bits of 40-bit address */
 	/* The 'format' field indicates the interpretation of the remaining 29
 	 * bits of the 32-bit word. For packing reasons, it is duplicated in the
-	 * other union elements. */
+	 * other union elements. Note, union'd structs are difficult to use with
+	 * static initialisation under gcc, in which case use the "opaque" form
+	 * with one of the macros. */
 	union {
+		/* For easier/faster copying of this part of the fd (eg. from a
+		 * DQRR entry to an EQCR entry) copy 'opaque' */
+		u32 opaque;
 		/* If 'format' is _contig or _sg, 20b length and 9b offset */
 		struct {
 			enum qm_fd_format format:3;
@@ -586,9 +598,6 @@ struct qm_fd {
 			enum qm_fd_format _format2:3;
 			u32 cong_weight:29;
 		} __packed;
-		/* For easier/faster copying of this part of the fd (eg. from a
-		 * DQRR entry to an EQCR entry) copy 'opaque' */
-		u32 opaque;
 	} __packed;
 	union {
 		u32 cmd;
@@ -597,6 +606,21 @@ struct qm_fd {
 } __packed;
 #define QM_FD_DD_NULL		0x00
 #define QM_FD_PID_MASK		0x3f
+
+/* For static initialisation of FDs (which is complicated by the use of unions
+ * in "struct qm_fd"), use the following macros. Note that;
+ * - 'dd', 'pid' and 'bpid' are ignored because there's no static initialisation
+ *   use-case),
+ * - use capitalised QM_FD_*** formats for static initialisation.
+ */
+#define QM_FD_FMT_20(cmd, addr_hi, addr_lo, fmt, off, len) \
+	{ 0, 0, 0, addr_hi, addr_lo, \
+	{ (((fmt)&0x7) << 29) | (((off)&0x1ff) << 20) | ((len)&0xfffff) }, \
+	{ cmd } }
+#define QM_FD_FMT_29(cmd, addr_hi, addr_lo, fmt, len) \
+	{ 0, 0, 0, addr_hi, addr_lo, \
+	{ (((fmt)&0x7) << 29) | ((len)&0x1ffffff) }, \
+	{ cmd } }
 
 /* See 2.2.1.3 Multi-Core Datapath Acceleration Architecture */
 struct qm_sg_entry {
@@ -748,14 +772,11 @@ struct qm_fqd {
 	};
 	u16 __reserved2:1;
 	u16 ics_cred:15;
-	union {
-		u16 td_thresh;
-		struct {
-			u16 __reserved1:3;
-			u16 exp:5;
-			u16 mant:8;
-		} __packed td;
-	};
+	struct {
+		u16 __reserved1:3;
+		u16 exp:5;
+		u16 mant:8;
+	} __packed td;
 	u32 context_b;
 	union {
 		/* Treat it as 64-bit opaque */
