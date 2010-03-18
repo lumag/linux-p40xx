@@ -370,7 +370,7 @@ typedef void (*bman_cb_depletion)(struct bman_portal *bm,
 
 /* This struct specifies parameters for a bman_pool object. */
 struct bman_pool_params {
-	/* index of the buffer pool to encapsulate (0-63), overwritten if
+	/* index of the buffer pool to encapsulate (0-63), ignored if
 	 * BMAN_POOL_FLAG_DYNAMIC_BPID is set. */
 	u32 bpid;
 	/* bit-mask of BMAN_POOL_FLAG_*** options */
