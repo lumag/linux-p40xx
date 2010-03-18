@@ -614,12 +614,12 @@ struct qm_fd {
  * - use capitalised QM_FD_*** formats for static initialisation.
  */
 #define QM_FD_FMT_20(cmd, addr_hi, addr_lo, fmt, off, len) \
-	{ 0, 0, 0, addr_hi, addr_lo, \
+	{ 0, 0, 0, 0, 0, addr_hi, addr_lo, \
 	{ (((fmt)&0x7) << 29) | (((off)&0x1ff) << 20) | ((len)&0xfffff) }, \
 	{ cmd } }
 #define QM_FD_FMT_29(cmd, addr_hi, addr_lo, fmt, len) \
-	{ 0, 0, 0, addr_hi, addr_lo, \
-	{ (((fmt)&0x7) << 29) | ((len)&0x1ffffff) }, \
+	{ 0, 0, 0, 0, 0, addr_hi, addr_lo, \
+	{ (((fmt)&0x7) << 29) | ((len)&0x1fffffff) }, \
 	{ cmd } }
 
 /* See 2.2.1.3 Multi-Core Datapath Acceleration Architecture */
@@ -774,8 +774,8 @@ struct qm_fqd {
 	u16 ics_cred:15;
 	struct {
 		u16 __reserved1:3;
-		u16 exp:5;
 		u16 mant:8;
+		u16 exp:5;
 	} __packed td;
 	u32 context_b;
 	union {
