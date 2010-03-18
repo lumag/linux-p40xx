@@ -1124,7 +1124,6 @@
 			reg = <0x316000 0x10000>;
 			/* fsl,pme-pdsr = <0x0 0x23000000 0x0 0x01000000>; */
 			/* fsl,pme-sre = <0x0 0x24000000 0x0 0x00a00000>; */
-			clock-frequency = <400000000>;
 			interrupts = <16 2 1 5>;
 			interrupt-parent = <&mpic>;
 		};
