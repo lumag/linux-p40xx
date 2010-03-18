@@ -106,14 +106,6 @@ config FSL_QMAN_TEST_STASH_POTATO
 	  across a series of FQs scheduled to different portals (and cpus), with
 	  DQRR, data and context stashing always on.
 
-config FSL_QMAN_TEST_LOW
-	bool "Qman low-level self-test"
-	depends on FSL_QMAN_TEST && FSL_QMAN_PORTAL_DISABLEAUTO
-	default y
-	---help---
-	  This takes an unused portal and portal and performs low-level
-	  API testing with it.
-
 config FSL_QMAN_TEST_HIGH
 	bool "Qman high-level self-test"
 	depends on FSL_QMAN_TEST && !FSL_QMAN_PORTAL_DISABLEAUTO

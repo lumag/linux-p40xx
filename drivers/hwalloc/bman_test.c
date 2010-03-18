@@ -1,4 +1,4 @@
-/* Copyright (c) 2008, 2009 Freescale Semiconductor, Inc.
+/* Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -38,34 +38,11 @@ MODULE_DESCRIPTION("Bman testing");
 
 static int test_init(void)
 {
-	int loop;
-#ifdef CONFIG_FSL_BMAN_TEST_LOW
-	struct bm_portal *portal;
-	const struct bm_portal_config *config = NULL;
-	u8 num = bm_portal_num();
-
-	while (!config && (num-- > 0)) {
-		portal = bm_portal_get(num);
-		config = bm_portal_config(portal);
-		if (!config->bound)
-			pr_info("Portal %d is available, using it\n", num);
-		else
-			config = NULL;
-	}
-	if (!config) {
-		pr_err("No Bman portals available!\n");
-		return -ENOSYS;
-	}
-#endif
-	loop = 1;
-	while (loop--) {
-#ifdef CONFIG_FSL_BMAN_TEST_LOW
-		bman_test_low(portal);
-#endif
 #ifdef CONFIG_FSL_BMAN_TEST_HIGH
+	int loop = 1;
+	while (loop--)
 		bman_test_high();
 #endif
-	}
 	return 0;
 }
 

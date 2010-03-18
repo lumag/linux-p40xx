@@ -41,7 +41,6 @@
 #include <linux/fsl_qman.h>
 
 void qman_test_hotpotato(void);
-void qman_test_low(struct qm_portal *p);
 void qman_test_high(void);
 void qman_test_fqrange(void);
 

@@ -54,14 +54,6 @@ config FSL_BMAN_TEST
 	---help---
 	  This option compiles self-test code for Bman.
 
-config FSL_BMAN_TEST_LOW
-	bool "Bman low-level self-test"
-	depends on FSL_BMAN_TEST && FSL_BMAN_PORTAL_DISABLEAUTO
-	default y
-	---help---
-	  This takes an unused portal and portal and performs low-level
-	  API testing with it.
-
 config FSL_BMAN_TEST_HIGH
 	bool "Bman high-level self-test"
 	depends on FSL_BMAN_TEST && !FSL_BMAN_PORTAL_DISABLEAUTO
