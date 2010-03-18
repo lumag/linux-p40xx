@@ -351,7 +351,7 @@ static int __devinit of_fsl_pme_probe(struct of_device *ofdev,
 	value = of_get_property(nprop, "clock-frequency", NULL);
 	if (value)
 		clkfreq = *value;
-	pme_out(global_pme, SFRCC, clkfreq/1000000);
+	pme_out(global_pme, SFRCC, DIV_ROUND_UP(clkfreq, 1000000));
 
 	BUG_ON(sizeof(dxe_a) != 4);
 	pme_out(global_pme, PDSRBAL, (u32)dxe_a);
