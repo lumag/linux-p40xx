@@ -742,7 +742,7 @@ static int ipsec_esp(struct ipsec_esp_edesc *edesc, struct aead_request *areq,
 	int startidx, endidx, ret, sg_count, assoc_sg_count, len, padlen;
 	int ivsize = crypto_aead_ivsize(aead);
 	dma_addr_t ptr;
-	struct ipsec_deco_dpovrd dpovrd = { 0, 0, IPPROTO_IPIP};
+	struct ipsec_deco_dpovrd dpovrd = {0, 0, 0, 0};
 
 #ifdef DEBUG
 	debug("assoclen %d cryptlen %d authsize %d\n",
@@ -920,7 +920,7 @@ static int ipsec_esp(struct ipsec_esp_edesc *edesc, struct aead_request *areq,
 
 	if (direction == DIR_ENCAP) {
 		/* insert the LOAD command */
-		dpovrd.ovrd_ecn = IPSEC_ENCAP_DECO_DPOVRD_USE;
+		dpovrd.ovrd_ecn |= IPSEC_ENCAP_DECO_DPOVRD_USE;
 		/* DECO class, no s-g, 7 == DPROVRD, 0 offset */
 		descptr = cmd_insert_load(descptr, &dpovrd, LDST_CLASS_DECO,
 					  0, 0x07 << 16, 0, sizeof(dpovrd),
