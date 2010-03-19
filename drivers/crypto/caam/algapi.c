@@ -146,9 +146,6 @@ static int build_protocol_desc_ipsec_decap(struct caam_ctx *ctx,
 	struct device *dev = ctx->dev;
 	gfp_t flags = req->base.flags & CRYPTO_TFM_REQ_MAY_SLEEP ? GFP_KERNEL :
 		      GFP_ATOMIC;
-	struct crypto_async_request *req_base = &req->base;
-	struct sk_buff *skb = req_base->data;
-	struct xfrm_state *x = xfrm_input_state(skb);
 	struct ipsec_decap_pdb *sh_desc;
 	int seq_no_offset = offsetof(struct ip_esp_hdr, seq_no);
 	void *sh_desc_ptr;
@@ -170,14 +167,13 @@ static int build_protocol_desc_ipsec_decap(struct caam_ctx *ctx,
 	sh_desc->ip_nh_offset = 0;
 
 	/*
-	 * options: ipv4, only the decapsulated output if tunnel mode
+	 * options: ipv4, beneath crypto api, no real way of
+	 * knowing tunnel vs. transport, so we treat tunnel mode
+	 * as a special case of transport mode.
 	 * linux doesn't support Extended Sequence Numbers
 	 * as of time of writing: thus PDBOPTS_ESPCBC_ESN not set.
 	 */
-	debug("xfrm is in %s mode\n", x->props.mode == XFRM_MODE_TUNNEL ?
-	      "tunnel" : "transport");
-	sh_desc->options = (x->props.mode == XFRM_MODE_TUNNEL) ?
-			   (PDBOPTS_ESPCBC_TUNNEL | PDBOPTS_ESPCBC_OUTFMT) : 0;
+	sh_desc->options = 0;
 
 	/* copy Sequence Number
 	 * equivalent to:
@@ -254,10 +250,6 @@ static int build_protocol_desc_ipsec_encap(struct caam_ctx *ctx,
 	gfp_t flags = areq->base.flags & CRYPTO_TFM_REQ_MAY_SLEEP ? GFP_KERNEL :
 		      GFP_ATOMIC;
 	struct device *dev = ctx->dev;
-	struct crypto_async_request *req_base = &areq->base;
-	struct sk_buff *skb = req_base->data;
-	struct dst_entry *dst = skb_dst(skb);
-	struct xfrm_state *x = dst->xfrm;
 	struct ipsec_encap_pdb *sh_desc;
 	int endidx;
 	void *sh_desc_ptr;
@@ -275,13 +267,6 @@ static int build_protocol_desc_ipsec_encap(struct caam_ctx *ctx,
 	 * options byte: IVsrc is RNG
 	 * we do not Prepend IP header to output frame
 	 */
-	debug("xfrm is in %s mode\n", x->props.mode == XFRM_MODE_TUNNEL ?
-	      "tunnel" : "transport");
-
-	if (x->props.mode == XFRM_MODE_TUNNEL) {
-		sh_desc->ip_nh = IPPROTO_IPIP; /* next hdr = IPv4 */
-		sh_desc->options = PDBOPTS_ESPCBC_TUNNEL;
-	}
 #if !defined(DEBUG)
 	sh_desc->options |= PDBOPTS_ESPCBC_IVSRC; /* IV src is RNG */
 #endif
@@ -739,11 +724,6 @@ static void sg_to_link_tbl(struct scatterlist *sg, int sg_count,
 	link_tbl_ptr->len |= cpu_to_be32(0x40000000);
 }
 
-static int transport_mode(int options)
-{
-	return !(options & PDBOPTS_ESPCBC_TUNNEL);
-}
-
 /*
  * fill in and submit ipsec_esp job descriptor
  */
@@ -762,7 +742,6 @@ static int ipsec_esp(struct ipsec_esp_edesc *edesc, struct aead_request *areq,
 	int startidx, endidx, ret, sg_count, assoc_sg_count, len, padlen;
 	int ivsize = crypto_aead_ivsize(aead);
 	dma_addr_t ptr;
-	/* defaults; may be overwritten */
 	struct ipsec_deco_dpovrd dpovrd = { 0, 0, IPPROTO_IPIP};
 
 #ifdef DEBUG
@@ -805,11 +784,8 @@ static int ipsec_esp(struct ipsec_esp_edesc *edesc, struct aead_request *areq,
 					 + areq->cryptlen - 2);
 			/* cryptlen includes padlen / is blocksize aligned */
 			len = areq->cryptlen - padlen - 2;
-
-			if (transport_mode(ctx->shared_encap->options))
-				dpovrd.next_header = *(u8 *)((u8 *)sg_virt
-							     (areq->src) +
-							     areq->cryptlen-1);
+			dpovrd.next_header = *(u8 *)((u8 *)sg_virt(areq->src) +
+						     areq->cryptlen - 1);
 		} else {
 			sg_to_link_tbl(areq->src, sg_count, link_tbl_ptr, 0);
 #ifdef DEBUG
@@ -825,10 +801,9 @@ static int ipsec_esp(struct ipsec_esp_edesc *edesc, struct aead_request *areq,
 				 ctx->authsize - 2);
 			/* cryptlen includes padlen / is blocksize aligned */
 			len = areq->cryptlen - padlen - 2;
-			if (transport_mode(ctx->shared_encap->options))
-				dpovrd.next_header = *(u8 *)((u8 *)sg_virt(sg) +
-							     sg->length -
-							     ctx->authsize - 1);
+			dpovrd.next_header = *(u8 *)((u8 *)sg_virt(sg) +
+						     sg->length -
+						     ctx->authsize - 1);
 #ifdef DEBUG
 			print_hex_dump(KERN_ERR, "sglastin@"xstr(__LINE__)": ",
 				       DUMP_PREFIX_ADDRESS, 16, 4, sg_virt(sg),
@@ -837,8 +812,7 @@ static int ipsec_esp(struct ipsec_esp_edesc *edesc, struct aead_request *areq,
 		}
 
 		debug("pad length is %d\n", padlen);
-		if (transport_mode(ctx->shared_encap->options))
-			debug("next header is %d\n", dpovrd.next_header);
+		debug("next header is %d\n", dpovrd.next_header);
 	} else { /* DECAP */
 		debug("seq.num %d\n",
 		      *(u32 *)((u32 *)sg_virt(areq->assoc) + 1));
@@ -924,23 +898,12 @@ static int ipsec_esp(struct ipsec_esp_edesc *edesc, struct aead_request *areq,
 	} else { /* DECAP */
 		len = areq->cryptlen + ctx->authsize;
 		if (!edesc->dma_len) {
-			ptr = sg_dma_address(areq->dst);
-			if (transport_mode(ctx->shared_decap->options)) {
-				ptr -= sizeof(struct iphdr) + areq->assoclen +
-				       ivsize;
-				len += sizeof(struct iphdr) + areq->assoclen +
-				       ivsize;
-			}
+			ptr = sg_dma_address(areq->dst) - sizeof(struct iphdr) +
+			      areq->assoclen + ivsize;
+			len += sizeof(struct iphdr) + areq->assoclen + ivsize;
 		} else {
-			if (!transport_mode(ctx->shared_decap->options)) {
-				link_tbl_ptr->ptr += sizeof(struct iphdr) +
-						     areq->assoclen + ivsize;
-				link_tbl_ptr->len -= sizeof(struct iphdr) +
-						     areq->assoclen + ivsize;
-			} else { /* transport mode */
-				len += sizeof(struct iphdr) + areq->assoclen +
-				       ivsize + ctx->authsize;
-			}
+			len += sizeof(struct iphdr) + areq->assoclen + ivsize +
+			       ctx->authsize;
 			ptr += sg_count * sizeof(struct link_tbl_entry);
 			/* FIXME: need dma_sync since post-map adjustments? */
 #ifdef DEBUG
@@ -955,8 +918,7 @@ static int ipsec_esp(struct ipsec_esp_edesc *edesc, struct aead_request *areq,
 					 edesc->dma_len ?
 					 PTR_SGLIST : PTR_DIRECT);
 
-	if ((direction == DIR_ENCAP) &&
-	    transport_mode(ctx->shared_encap->options)) {
+	if (direction == DIR_ENCAP) {
 		/* insert the LOAD command */
 		dpovrd.ovrd_ecn = IPSEC_ENCAP_DECO_DPOVRD_USE;
 		/* DECO class, no s-g, 7 == DPROVRD, 0 offset */
@@ -1062,11 +1024,50 @@ static struct ipsec_esp_edesc *ipsec_esp_edesc_alloc(struct aead_request *areq,
 	return edesc;
 }
 
-static int aead_authenc_encrypt_first(struct aead_request *req)
+static int aead_authenc_encrypt(struct aead_request *areq)
 {
-	printk(KERN_ERR "%s unimplemented\n", __func__);
+	struct aead_givcrypt_request *req =
+		 container_of(areq, struct aead_givcrypt_request, areq);
+	struct ipsec_esp_edesc *edesc;
 
-	return -EINVAL;
+	/* allocate extended descriptor */
+	edesc = ipsec_esp_edesc_alloc(areq, DIR_ENCAP);
+	if (IS_ERR(edesc))
+		return PTR_ERR(edesc);
+
+	return ipsec_esp(edesc, areq, req->giv, DIR_ENCAP,
+			 ipsec_esp_encrypt_done);
+}
+
+static int aead_authenc_encrypt_first(struct aead_request *areq)
+{
+	struct crypto_aead *aead = crypto_aead_reqtfm(areq);
+	struct caam_ctx *ctx = crypto_aead_ctx(aead);
+	struct aead_givcrypt_request *req =
+		 container_of(areq, struct aead_givcrypt_request, areq);
+	int err;
+
+	spin_lock_bh(&ctx->first_lock);
+	if (crypto_aead_crt(aead)->encrypt != aead_authenc_encrypt_first)
+		goto unlock;
+
+	err = build_protocol_desc_ipsec_encap(ctx, areq);
+	if (err) {
+		spin_unlock_bh(&ctx->first_lock);
+		return err;
+	}
+
+	/* copy sequence number to PDB */
+	ctx->shared_encap->seq_num = req->seq;
+
+	/* and the SPI */
+	ctx->shared_encap->spi = *((u32 *)sg_virt(areq->assoc));
+
+	crypto_aead_crt(aead)->encrypt = aead_authenc_encrypt;
+unlock:
+	spin_unlock_bh(&ctx->first_lock);
+
+	return aead_authenc_encrypt(areq);
 }
 
 static int aead_authenc_decrypt(struct aead_request *req)
