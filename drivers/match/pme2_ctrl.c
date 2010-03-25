@@ -259,7 +259,8 @@ static int of_fsl_pme_remove(struct of_device *ofdev)
 	/* Disable PME..TODO need to wait till it's quiet */
 	pme_out(global_pme, FACONF, PME_FACONF_RESET);
 	/* Release interrupt */
-	free_irq(pme_err_irq, &ofdev->dev);
+	if (likely(pme_err_irq != NO_IRQ))
+		free_irq(pme_err_irq, &ofdev->dev);
 	/* Remove sysfs attribute */
 	pme2_remove_sysfs_dev_files(ofdev);
 	/* Unmap controller region */
@@ -282,12 +283,9 @@ static int __devinit of_fsl_pme_probe(struct of_device *ofdev,
 	u32 dec1;
 
 	pme_err_irq = of_irq_to_resource(nprop, 0, NULL);
-	if (pme_err_irq == NO_IRQ) {
-		dev_err(dev, "Can't get %s property '%s'\n", nprop->full_name,
-			"interrupts");
-		err = -ENODEV;
-		goto out;
-	}
+	if (unlikely(pme_err_irq == NO_IRQ))
+		dev_warn(dev, "Can't get %s property '%s'\n", nprop->full_name,
+			 "interrupts");
 
 	/* Get configuration properties from device tree */
 	/* First, get register page */
@@ -317,11 +315,14 @@ static int __devinit of_fsl_pme_probe(struct of_device *ofdev,
 	pme_out(global_pme, DMCR, 0x00000001);
 	pme_out(global_pme, SMCR, 0x00000211);
 
-	/* Register the pme ISR handler */
-	err = request_irq(pme_err_irq, pme_isr, IRQF_SHARED, "pme-err", dev);
-	if (err) {
-		dev_err(dev, "request_irq() failed\n");
-		goto out_unmap_ctrl_region;
+	if (likely(pme_err_irq != NO_IRQ)) {
+		/* Register the pme ISR handler */
+		err = request_irq(pme_err_irq, pme_isr, IRQF_SHARED, "pme-err",
+				  dev);
+		if (err) {
+			dev_err(dev, "request_irq() failed\n");
+			goto out_unmap_ctrl_region;
+		}
 	}
 
 #ifdef CONFIG_FSL_PME2_SRE_AIM
@@ -410,7 +411,8 @@ out_stop_accumulator:
 		cancel_delayed_work_sync(&accumulator_work);
 	}
 out_free_irq:
-	free_irq(pme_err_irq, &ofdev->dev);
+	if (likely(pme_err_irq != NO_IRQ))
+		free_irq(pme_err_irq, &ofdev->dev);
 out_unmap_ctrl_region:
 	pme_out(global_pme, FACONF, PME_FACONF_RESET);
 	iounmap(global_pme);
