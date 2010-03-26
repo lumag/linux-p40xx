@@ -953,6 +953,8 @@ static ssize_t pktgen_if_write(struct file *file,
 			return len;
 
 		i += len;
+		if (!(pkt_dev->odev->features & NETIF_F_SG))
+			value = 0;
 		pkt_dev->nfrags = value;
 		sprintf(pg_result, "OK: frags=%u", pkt_dev->nfrags);
 		return count;
@@ -2570,19 +2572,17 @@ static struct sk_buff *fill_packet_ipv4(struct net_device *odev,
 	queue_map = pkt_dev->cur_queue_map;
 	mod_cur_headers(pkt_dev);
 
-	datalen = (odev->hard_header_len + 16) & ~0xf;
-	skb = __netdev_alloc_skb(odev,
-				 pkt_dev->cur_pkt_size + 64
-				 + datalen + pkt_dev->pkt_overhead, GFP_NOWAIT);
+	skb = netdev_alloc_skb(odev, LL_ALLOCATED_SPACE(odev) +
+			       pkt_dev->cur_pkt_size + 64 + pkt_dev->pkt_overhead);
 	if (!skb) {
 		sprintf(pkt_dev->result, "No memory");
 		return NULL;
 	}
 
-	skb_reserve(skb, datalen);
+	skb_reserve(skb, LL_RESERVED_SPACE(odev));
 
 	/*  Reserve for ethernet and IP header  */
-	eth = (__u8 *) skb_push(skb, 14);
+	eth = (__u8 *) skb_push(skb, ETH_HLEN);
 	mpls = (__be32 *)skb_put(skb, pkt_dev->nr_labels*sizeof(__u32));
 	if (pkt_dev->nr_labels)
 		mpls_push(mpls, pkt_dev);
@@ -2611,22 +2611,23 @@ static struct sk_buff *fill_packet_ipv4(struct net_device *odev,
 	iph = ip_hdr(skb);
 	udph = udp_hdr(skb);
 
-	memcpy(eth, pkt_dev->hh, 12);
-	*(__be16 *) & eth[12] = protocol;
+	memcpy(eth, pkt_dev->hh, 2 * ETH_ALEN);
+	*(__be16 *) & eth[2*ETH_ALEN] = protocol;
 
 	/* Eth + IPh + UDPh + mpls */
-	datalen = pkt_dev->cur_pkt_size - 14 - 20 - 8 -
+	datalen = pkt_dev->cur_pkt_size - ETH_HLEN -
+		  sizeof(struct iphdr) -  sizeof(struct udphdr) -
 		  pkt_dev->pkt_overhead;
 	if (datalen < sizeof(struct pktgen_hdr))
 		datalen = sizeof(struct pktgen_hdr);
 
 	udph->source = htons(pkt_dev->cur_udp_src);
 	udph->dest = htons(pkt_dev->cur_udp_dst);
-	udph->len = htons(datalen + 8);	/* DATA + udphdr */
+	udph->len = htons(datalen + sizeof(struct udphdr));	/* DATA + udphdr */
 	udph->check = 0;	/* No checksum */
 
-	iph->ihl = 5;
-	iph->version = 4;
+	iph->ihl = sizeof(struct iphdr) / sizeof(uint32_t);
+	iph->version = IPVERSION;
 	iph->ttl = 32;
 	iph->tos = pkt_dev->tos;
 	iph->protocol = IPPROTO_UDP;	/* UDP */
@@ -2635,14 +2636,13 @@ static struct sk_buff *fill_packet_ipv4(struct net_device *odev,
 	iph->id = htons(pkt_dev->ip_id);
 	pkt_dev->ip_id++;
 	iph->frag_off = 0;
-	iplen = 20 + 8 + datalen;
+	iplen = sizeof(struct iphdr) +  sizeof(struct udphdr) + datalen;
 	iph->tot_len = htons(iplen);
 	iph->check = 0;
 	iph->check = ip_fast_csum((void *)iph, iph->ihl);
 	skb->protocol = protocol;
 	skb->mac_header = (skb->network_header - ETH_HLEN -
 			   pkt_dev->pkt_overhead);
-	skb->dev = odev;
 	skb->pkt_type = PACKET_HOST;
 
 	if (pkt_dev->nfrags <= 0) {
@@ -2652,7 +2652,7 @@ static struct sk_buff *fill_packet_ipv4(struct net_device *odev,
 		int frags = pkt_dev->nfrags;
 		int i, len;
 
-		pgh = (struct pktgen_hdr *)(((char *)(udph)) + 8);
+		pgh = (struct pktgen_hdr *)(((char *)(udph)) + sizeof(struct udphdr));
 
 		if (frags > MAX_SKB_FRAGS)
 			frags = MAX_SKB_FRAGS;
@@ -2916,18 +2916,17 @@ static struct sk_buff *fill_packet_ipv6(struct net_device *odev,
 	queue_map = pkt_dev->cur_queue_map;
 	mod_cur_headers(pkt_dev);
 
-	skb = __netdev_alloc_skb(odev,
-				 pkt_dev->cur_pkt_size + 64
-				 + 16 + pkt_dev->pkt_overhead, GFP_NOWAIT);
+	skb = netdev_alloc_skb(odev, LL_ALLOCATED_SPACE(odev) +
+			       pkt_dev->cur_pkt_size + 64 + pkt_dev->pkt_overhead);
 	if (!skb) {
 		sprintf(pkt_dev->result, "No memory");
 		return NULL;
 	}
 
-	skb_reserve(skb, 16);
+	skb_reserve(skb, LL_RESERVED_SPACE(odev));
 
 	/*  Reserve for ethernet and IP header  */
-	eth = (__u8 *) skb_push(skb, 14);
+	eth = (__u8 *) skb_push(skb, ETH_HLEN);
 	mpls = (__be32 *)skb_put(skb, pkt_dev->nr_labels*sizeof(__u32));
 	if (pkt_dev->nr_labels)
 		mpls_push(mpls, pkt_dev);
@@ -2956,11 +2955,11 @@ static struct sk_buff *fill_packet_ipv6(struct net_device *odev,
 	iph = ipv6_hdr(skb);
 	udph = udp_hdr(skb);
 
-	memcpy(eth, pkt_dev->hh, 12);
-	*(__be16 *) &eth[12] = protocol;
+	memcpy(eth, pkt_dev->hh, 2 * ETH_ALEN);
+	*(__be16 *) & eth[2*ETH_ALEN] = protocol;
 
 	/* Eth + IPh + UDPh + mpls */
-	datalen = pkt_dev->cur_pkt_size - 14 -
+	datalen = pkt_dev->cur_pkt_size - ETH_HLEN -
 		  sizeof(struct ipv6hdr) - sizeof(struct udphdr) -
 		  pkt_dev->pkt_overhead;
 
@@ -2994,7 +2993,6 @@ static struct sk_buff *fill_packet_ipv6(struct net_device *odev,
 	skb->mac_header = (skb->network_header - ETH_HLEN -
 			   pkt_dev->pkt_overhead);
 	skb->protocol = protocol;
-	skb->dev = odev;
 	skb->pkt_type = PACKET_HOST;
 
 	if (pkt_dev->nfrags <= 0)
@@ -3003,7 +3001,7 @@ static struct sk_buff *fill_packet_ipv6(struct net_device *odev,
 		int frags = pkt_dev->nfrags;
 		int i;
 
-		pgh = (struct pktgen_hdr *)(((char *)(udph)) + 8);
+		pgh = (struct pktgen_hdr *)(((char *)(udph)) + sizeof(struct udphdr));
 
 		if (frags > MAX_SKB_FRAGS)
 			frags = MAX_SKB_FRAGS;
