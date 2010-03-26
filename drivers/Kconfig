@@ -113,4 +113,12 @@ source "drivers/xen/Kconfig"
 source "drivers/staging/Kconfig"
 
 source "drivers/platform/Kconfig"
+
+source "drivers/hwalloc/Kconfig"
+
+source "drivers/hwqueue/Kconfig"
+
+source "drivers/match/Kconfig"
+
+source "drivers/net/dpa/NetCommSw/Kconfig"
 endmenu
