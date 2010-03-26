@@ -1,0 +1,924 @@
+/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * Neither the name of Freescale Semiconductor nor the
+ *       names of its contributors may be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
+ *
+ *
+ * ALTERNATIVELY, this software may be distributed under the terms of the
+ * GNU General Public License ("GPL") as published by the Free Software
+ * Foundation, either version 2 of that License or (at your option) any
+ * later version.
+ *
+ * THIS SOFTWARE IS PROVIDED BY Freescale Semiconductor ``AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL Freescale Semiconductor BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/**************************************************************************//**
+ @File          xx_linux.c
+
+ @Description   XX routines implementation for Linux.
+*//***************************************************************************/
+#include <linux/version.h>
+
+#if defined(CONFIG_MODVERSIONS) && !defined(MODVERSIONS)
+#define MODVERSIONS
+#endif
+#ifdef MODVERSIONS
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+#include <linux/modversions.h>
+#else
+#include <config/modversions.h>
+#endif    /* LINUX_VERSION_CODE */
+#endif /* MODVERSIONS */
+
+#include <linux/module.h>
+#include <linux/kernel.h>
+#include <linux/sched.h>
+#include <linux/string.h>
+#include <linux/ptrace.h>
+#include <linux/errno.h>
+#include <linux/ioport.h>
+#include <linux/slab.h>
+#include <linux/interrupt.h>
+#include <linux/fs.h>
+#include <linux/vmalloc.h>
+#include <linux/init.h>
+#include <linux/timer.h>
+#include <linux/spinlock.h>
+#include <linux/delay.h>
+#include <linux/proc_fs.h>
+#include <linux/smp.h>
+#include <linux/smp_lock.h>
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+#include <linux/tqueue.h>
+#else
+#include <linux/workqueue.h>
+#endif    /* LINUX_VERSION_CODE */
+
+#ifdef BIGPHYSAREA_ENABLE
+#include <linux/bigphysarea.h>
+#endif /* BIGPHYSAREA_ENABLE */
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,18)
+#include <asm/of_device.h>
+#include <sysdev/fsl_soc.h>
+#endif    /* LINUX_VERSION_CODE */
+#include <asm/pgtable.h>
+#include <asm/irq.h>
+#include <asm/bitops.h>
+#include <asm/uaccess.h>
+#include <asm/system.h>
+#include <asm/io.h>
+#include <asm/atomic.h>
+#include <asm/string.h>
+#include <asm/byteorder.h>
+#include <asm/page.h>
+
+#include "error_ext.h"
+#include "std_ext.h"
+#include "mem_ext.h"
+#include "list_ext.h"
+#include "mm_ext.h"
+#include "platform_ext.h"
+
+#include "xx.h"
+
+
+#define __ERR_MODULE__      MODULE_UNKNOWN
+
+#ifdef BIGPHYSAREA_ENABLE
+#define MAX_ALLOCATION_SIZE     128 * 1024 /* Maximum size allocated with kmalloc is 128K */
+
+
+/* FIXME: large allocations => use big phys area */
+/******************************************************************************
+ * routine:     get_nr_pages
+ *
+ * description:
+ *     calculates the number of memory pages for a given size (in bytes)
+ *
+ * arguments:
+ *     size       - the number of bytes
+ *
+ * return code:
+ *     The number of pages
+ *
+ *****************************************************************************/
+static __inline__ uint32_t get_nr_pages (uint32_t size)
+{
+    return (uint32_t)((size >> PAGE_SHIFT) + (size & PAGE_SHIFT ? 1 : 0));
+}
+
+static bool in_big_phys_area (uint32_t addr)
+{
+    uint32_t base, size;
+
+    bigphysarea_get_details (&base, &size);
+    return ((addr >= base) && (addr < base + size));
+}
+#endif /* BIGPHYSAREA_ENABLE */
+
+static void * xx_Malloc(uint32_t n)
+{
+    void        *a;
+    uint32_t    flags;
+
+    flags = XX_DisableAllIntr();
+#ifdef BIGPHYSAREA_ENABLE
+    if (n >= MAX_ALLOCATION_SIZE)
+        a = (void*)bigphysarea_alloc_pages(get_nr_pages(n), 0, GFP_ATOMIC);
+    else
+#endif /* BIGPHYSAREA_ENABLE */
+    a = (void *)kmalloc((uint32_t)n, GFP_ATOMIC);
+    if (!a)
+        XX_Print("No memory for XX_Malloc\n");
+    XX_RestoreAllIntr(flags);
+
+    return a;
+}
+
+static void xx_Free(void *p)
+{
+#ifdef BIGPHYSAREA_ENABLE
+    if (in_big_phys_area ((uint32_t)p))
+        bigphysarea_free_pages(p);
+    else
+#endif /* BIGPHYSAREA_ENABLE */
+    kfree(p);
+}
+
+static void * xx_MallocSmart(uint32_t size, int memPartitionId, uint32_t alignment)
+{
+    void        *returnCode;
+    uint32_t    tmp;
+
+    switch(memPartitionId) {
+       case(0):
+       case(e_MEM_1ST_DDR_CACHEABLE):
+            if (alignment < 4)
+                alignment = 4;
+            tmp = (uint32_t)(xx_Malloc((uint32_t)(size + alignment)));
+            if (tmp == 0)
+                return NULL;
+            returnCode = (void*)((tmp + alignment) & ~(alignment - 1));
+            *(uint32_t*)((uint32_t)returnCode - 4) = tmp;
+            break;
+        default:
+            XX_Print("XX_MallocSmart:Mem type not supported\r\n");
+            return NULL;
+    }
+    return returnCode;
+}
+
+static void xx_FreeSmart(void *p)
+{
+    xx_Free((void *)(*(uint32_t *)((uint32_t)(p)-4)));
+}
+
+
+void XX_Exit(int status)
+{
+    XX_Print("NetCommSw driver can't go on!!!\r\n");
+    BUG();
+}
+
+#define BUF_SIZE    512
+void XX_Print(char *str, ...)
+{
+    va_list args;
+#ifdef CONFIG_SMP
+    char buf[BUF_SIZE];
+#endif /* CONFIG_SMP */
+
+    va_start(args, str);
+#ifdef CONFIG_SMP
+    if (vsnprintf (buf, BUF_SIZE, str, args) >= BUF_SIZE)
+        printk(KERN_WARNING "Illegal string to print!\n    more than %d characters.\n\tString was not printed completelly.\n", BUF_SIZE);
+    printk (KERN_CRIT "cpu%d/%d: %s",hard_smp_processor_id(), smp_processor_id(), buf);
+#else
+    vprintk(str, args);
+#endif /* CONFIG_SMP */
+    va_end(args);
+}
+
+void XX_Fprint(void *file, char *str, ...)
+{
+    va_list args;
+#ifdef CONFIG_SMP
+    char buf[BUF_SIZE];
+#endif /* CONFIG_SMP */
+
+    va_start(args, str);
+#ifdef CONFIG_SMP
+    if (vsnprintf (buf, BUF_SIZE, str, args) >= BUF_SIZE)
+        printk(KERN_WARNING "Illegal string to print!\n    more than %d characters.\n\tString was not printed completelly.\n", BUF_SIZE);
+    printk (KERN_CRIT "cpu%d/%d: %s",hard_smp_processor_id(), smp_processor_id(), buf);
+#else
+    vprintk(str, args);
+#endif /* CONFIG_SMP */
+    va_end(args);
+}
+
+#ifdef DEBUG_XX_MALLOC
+typedef void (*t_ffn)(void *);
+typedef struct {
+    t_ffn       f_free;
+    void        *mem;
+    char        *fname;
+    int         fline;
+    uint32_t    size;
+    t_List      node;
+} t_MemDebug;
+#define MEMDBG_OBJECT(p_List) LIST_OBJECT(p_List, t_MemDebug, node)
+
+LIST(memDbgLst);
+
+
+void * XX_MallocDebug(uint32_t size, char *fname, int line)
+{
+    void       *mem;
+    t_MemDebug *p_MemDbg;
+
+    p_MemDbg = (t_MemDebug *)xx_Malloc(sizeof(t_MemDebug));
+    if (p_MemDbg == NULL)
+        return NULL;
+
+    mem = xx_Malloc(size);
+    if (mem == NULL)
+    {
+        XX_Free(p_MemDbg);
+        return NULL;
+    }
+
+    INIT_LIST(&p_MemDbg->node);
+    p_MemDbg->f_free = xx_Free;
+    p_MemDbg->mem    = mem;
+    p_MemDbg->fname  = fname;
+    p_MemDbg->fline  = line;
+    p_MemDbg->size   = size+sizeof(t_MemDebug);
+    LIST_AddToTail(&p_MemDbg->node, &memDbgLst);
+
+    return mem;
+}
+
+void * XX_MallocSmartDebug(uint32_t size,
+                           int      memPartitionId,
+                           uint32_t align,
+                           char     *fname,
+                           int      line)
+{
+    void       *mem;
+    t_MemDebug *p_MemDbg;
+
+    p_MemDbg = (t_MemDebug *)XX_Malloc(sizeof(t_MemDebug));
+    if (p_MemDbg == NULL)
+        return NULL;
+
+    mem = xx_MallocSmart((uint32_t)size, memPartitionId, align);
+    if (mem == NULL)
+    {
+        XX_Free(p_MemDbg);
+        return NULL;
+    }
+
+    INIT_LIST(&p_MemDbg->node);
+    p_MemDbg->f_free = xx_FreeSmart;
+    p_MemDbg->mem    = mem;
+    p_MemDbg->fname  = fname;
+    p_MemDbg->fline  = line;
+    p_MemDbg->size   = size+sizeof(t_MemDebug);
+    LIST_AddToTail(&p_MemDbg->node, &memDbgLst);
+
+    return mem;
+}
+
+static void debug_free(void *mem)
+{
+    t_List      *p_MemDbgLh = NULL;
+    t_MemDebug  *p_MemDbg;
+    bool        found = FALSE;
+
+    if (LIST_IsEmpty(&memDbgLst))
+    {
+        REPORT_ERROR(MAJOR, E_ALREADY_FREE, ("Unbalanced free (0x%08x)", mem));
+        return;
+    }
+
+    LIST_FOR_EACH(p_MemDbgLh, &memDbgLst)
+    {
+        p_MemDbg = MEMDBG_OBJECT(p_MemDbgLh);
+        if (p_MemDbg->mem == mem)
+        {
+            found = TRUE;
+            break;
+        }
+    }
+
+    if (!found)
+    {
+        REPORT_ERROR(MAJOR, E_NOT_FOUND,
+                     ("Attempt to free unallocated address (0x%08x)",mem));
+        return;
+    }
+
+    LIST_Del(p_MemDbgLh);
+    XX_Free(mem);
+    XX_Free(p_MemDbg);
+}
+
+void XX_FreeSmart(void *p)
+{
+    debug_free(p);
+}
+
+
+void XX_Free(void *p)
+{
+    debug_free(p);
+}
+
+#else /* not DEBUG_XX_MALLOC */
+void * XX_Malloc(uint32_t size)
+{
+    return xx_Malloc(size);
+}
+
+void * XX_MallocSmart(uint32_t size, int memPartitionId, uint32_t alignment)
+{
+    return xx_MallocSmart(size,memPartitionId, alignment);
+}
+
+void XX_FreeSmart(void *p)
+{
+    xx_FreeSmart(p);
+}
+
+
+void XX_Free(void *p)
+{
+    xx_Free(p);
+}
+#endif /* not DEBUG_XX_MALLOC */
+
+
+#if (defined(REPORT_EVENTS) && (REPORT_EVENTS > 0))
+void XX_EventById(uint32_t event, t_Handle appId, uint16_t flags, char *msg)
+{
+    e_Event eventCode = (e_Event)event;
+
+    UNUSED(eventCode);
+    UNUSED(appId);
+    UNUSED(flags);
+    UNUSED(msg);
+}
+#endif /* (defined(REPORT_EVENTS) && ... */
+
+
+uint32_t XX_DisableAllIntr(void)
+{
+    unsigned long flags;
+
+    local_irq_save(flags);
+
+    return (uint32_t)flags;
+}
+
+void XX_RestoreAllIntr(uint32_t flags)
+{
+    local_irq_restore(flags);
+}
+
+t_Error XX_Call( uint32_t qid, t_Error (* f)(t_Handle), t_Handle id, t_Handle appId, uint16_t flags )
+{
+    UNUSED(qid);
+    UNUSED(appId);
+    UNUSED(flags);
+
+    return f(id);
+}
+
+int XX_IsICacheEnable(void)
+{
+    return TRUE;
+}
+
+int XX_IsDCacheEnable(void)
+{
+    return TRUE;
+}
+
+
+typedef struct {
+    t_Isr       *f_Isr;
+    t_Handle    handle;
+} t_InterruptHandler;
+
+
+t_Handle interruptHandlers[0x00010000];
+
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+static void LinuxInterruptHandler(int irq, void * dev_id, struct pt_regs * regs)
+{
+    t_InterruptHandler *p_IntrHndl = (t_InterruptHandler *)dev_id;
+    p_IntrHndl->f_Isr(p_IntrHndl->handle);
+}
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,19)
+static int LinuxInterruptHandler(int irq, void * dev_id, struct pt_regs * regs)
+{
+    t_InterruptHandler *p_IntrHndl = (t_InterruptHandler *)dev_id;
+    p_IntrHndl->f_Isr(p_IntrHndl->handle);
+    return IRQ_HANDLED;
+}
+#else
+static irqreturn_t LinuxInterruptHandler (int irq, void *dev_id)
+{
+    t_InterruptHandler *p_IntrHndl = (t_InterruptHandler *)dev_id;
+    p_IntrHndl->f_Isr(p_IntrHndl->handle);
+    return IRQ_HANDLED;
+}
+#endif    /* LINUX_VERSION_CODE */
+
+t_Error XX_SetIntr(int irq, t_Isr *f_Isr, t_Handle handle)
+{
+    const char *device;
+    t_InterruptHandler *p_IntrHndl;
+
+    device = GetDeviceName(irq);
+    if (device == NULL)
+        RETURN_ERROR(MAJOR, E_INVALID_VALUE, ("Interrupt source - %d", irq));
+
+    p_IntrHndl = (t_InterruptHandler *)XX_Malloc(sizeof(t_InterruptHandler));
+    if (p_IntrHndl == NULL)
+        RETURN_ERROR(MAJOR, E_NO_MEMORY, NO_MSG);
+    p_IntrHndl->f_Isr = f_Isr;
+    p_IntrHndl->handle = handle;
+    interruptHandlers[irq] = p_IntrHndl;
+
+    if (request_irq(GetDeviceIrqNum(irq), LinuxInterruptHandler, 0, device, p_IntrHndl) < 0)
+        RETURN_ERROR(MAJOR, E_BUSY, ("Can't get IRQ %s\n", device));
+    disable_irq(GetDeviceIrqNum(irq));
+
+    return E_OK;
+}
+
+t_Error XX_FreeIntr(int irq)
+{
+    t_InterruptHandler *p_IntrHndl = interruptHandlers[irq];
+    free_irq(GetDeviceIrqNum(irq), p_IntrHndl);
+    XX_Free(p_IntrHndl);
+    interruptHandlers[irq] = 0;
+    return E_OK;
+}
+
+t_Error XX_EnableIntr(int irq)
+{
+    enable_irq(GetDeviceIrqNum(irq));
+    return E_OK;
+}
+
+t_Error XX_DisableIntr(int irq)
+{
+    disable_irq(GetDeviceIrqNum(irq));
+    return E_OK;
+}
+
+
+/*****************************************************************************/
+/*                       Tasklet Service Routines                            */
+/*****************************************************************************/
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,20)
+typedef struct
+{
+    t_Handle            h_Data;
+    void                (*f_Callback) (void *);
+    struct delayed_work dwork;
+} t_Tasklet;
+
+static void GenericTaskletCallback(struct work_struct *p_Work)
+{
+    t_Tasklet *p_Task = container_of(p_Work, t_Tasklet, dwork.work);
+
+    p_Task->f_Callback(p_Task->h_Data);
+}
+#endif    /* LINUX_VERSION_CODE */
+
+
+t_TaskletHandle XX_InitTasklet (void (*routine)(void *), void *data)
+{
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+    struct tq_struct *p_Task;
+    p_Task = (struct tq_struct *)XX_Malloc(sizeof(struct tq_struct));
+    INIT_TQUEUE(p_Task, routine, data);
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,20)
+    struct work_struct *p_Task;
+    p_Task = (struct work_struct *)XX_Malloc(sizeof(struct work_struct));
+    INIT_WORK(p_Task, routine, data);
+#else
+    t_Tasklet *p_Task = (t_Tasklet *)XX_Malloc(sizeof(t_Tasklet));
+    INIT_DELAYED_WORK(&p_Task->dwork, GenericTaskletCallback);
+    p_Task->h_Data = data;
+    p_Task->f_Callback = routine;
+#endif    /* LINUX_VERSION_CODE */
+
+    return (t_TaskletHandle)p_Task;
+}
+
+
+void XX_FreeTasklet (t_TaskletHandle h_Tasklet)
+{
+    if (h_Tasklet)
+        XX_Free(h_Tasklet);
+}
+
+int XX_ScheduleTask(t_TaskletHandle h_Tasklet, int immediate)
+{
+    int ans;
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+    UNUSED(immediate);
+    ans = queue_task(h_Tasklet, &tq_immediate);
+    mark_bh(IMMEDIATE_BH);
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,20)
+    if (immediate)
+        ans = schedule_work(h_Tasklet);
+    else
+        ans = schedule_delayed_work(h_Tasklet, 1);
+#else
+    if (immediate)
+        ans = schedule_delayed_work(&((t_Tasklet *)h_Tasklet)->dwork, 0);
+    else
+        ans = schedule_delayed_work(&((t_Tasklet *)h_Tasklet)->dwork, HZ);
+#endif /* LINUX_VERSION_CODE */
+
+    return ans;
+}
+
+void XX_FlushScheduledTasks(void)
+{
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+    flush_scheduled_tasks();
+#else
+    flush_scheduled_work();
+#endif    /* LINUX_VERSION_CODE */
+}
+
+int XX_TaskletIsQueued(t_TaskletHandle h_Tasklet)
+{
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+    return (int)(((struct tq_struct *)h_Tasklet)->sync);
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,20)
+    return (int)(((struct work_struct *)h_Tasklet)->pending);
+#else
+    return (int)delayed_work_pending(&((t_Tasklet *)h_Tasklet)->dwork);
+#endif    /* LINUX_VERSION_CODE */
+}
+
+void XX_SetTaskletData(t_TaskletHandle h_Tasklet, t_Handle data)
+{
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+    ((struct tq_struct *)h_Tasklet)->data = data;
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,20)
+    ((struct work_struct *)h_Tasklet)->data = data;
+#else
+    ((t_Tasklet *)h_Tasklet)->h_Data = data;
+#endif    /* LINUX_VERSION_CODE */
+}
+
+t_Handle XX_GetTaskletData(t_TaskletHandle h_Tasklet)
+{
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+    return (t_Handle)(((struct tq_struct *)h_Tasklet)->data);
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,20)
+    return (t_Handle)(((struct work_struct *)h_Tasklet)->data);
+#else
+    return ((t_Tasklet *)h_Tasklet)->h_Data;
+#endif    /* LINUX_VERSION_CODE */
+}
+
+
+/*****************************************************************************/
+/*                       Semaphore Service Routines                          */
+/*****************************************************************************/
+t_SemaphoreHandle XX_InitSemaphore(int val)
+{
+    struct semaphore *p_Semaphore = (struct semaphore *)XX_Malloc(sizeof(struct semaphore));
+    if (p_Semaphore)
+        sema_init (p_Semaphore, val);
+    return (t_SemaphoreHandle)p_Semaphore;
+}
+
+void XX_FreeSemaphore(t_SemaphoreHandle h_Semaphore)
+{
+    if (h_Semaphore)
+        XX_Free(h_Semaphore);
+}
+
+t_MutexHandle XX_InitMutex(void)
+{
+    return (t_MutexHandle)XX_InitSemaphore(1);
+}
+
+
+t_MutexHandle XX_InitMutexLocked(void)
+{
+    return (t_MutexHandle)XX_InitSemaphore(0);
+}
+
+void XX_FreeMutex(t_MutexHandle h_Mutex)
+{
+    XX_FreeSemaphore(h_Mutex);
+}
+
+void XX_Lock(t_MutexHandle h_Mutex)
+{
+    down((struct semaphore *)h_Mutex);
+}
+
+void XX_Unlock(t_MutexHandle h_Mutex)
+{
+    up((struct semaphore *)h_Mutex);
+}
+
+
+/*****************************************************************************/
+/*                         Spinlock Service Routines                         */
+/*****************************************************************************/
+typedef struct {
+    unsigned long   flags;
+    spinlock_t      *p_Lock;
+} t_Spinlock;
+
+t_SpinlockHandle XX_InitSpinlock(void)
+{
+    t_Spinlock *p_Spinlock = (t_Spinlock *)XX_Malloc(sizeof(t_Spinlock));
+    if (!p_Spinlock)
+        return NULL;
+    memset(p_Spinlock, 0 , sizeof(t_Spinlock));
+    p_Spinlock->p_Lock = (spinlock_t *)XX_Malloc(sizeof(spinlock_t));
+    if (!p_Spinlock->p_Lock)
+    {
+        XX_Free(p_Spinlock);
+        return NULL;
+    }
+
+    spin_lock_init (p_Spinlock->p_Lock);
+    return (t_SpinlockHandle)p_Spinlock;
+}
+
+void XX_FreeSpinlock(t_SpinlockHandle h_Spinlock)
+{
+    if (h_Spinlock)
+    {
+        if (((t_Spinlock *)h_Spinlock)->p_Lock)
+            XX_Free(((t_Spinlock *)h_Spinlock)->p_Lock);
+        XX_Free(h_Spinlock);
+    }
+}
+
+void XX_Spinlock(t_SpinlockHandle h_Spinlock)
+{
+    spin_lock(((t_Spinlock *)h_Spinlock)->p_Lock);
+}
+
+void XX_Spinunlock(t_SpinlockHandle h_Spinlock)
+{
+    spin_unlock(((t_Spinlock *)h_Spinlock)->p_Lock);
+}
+
+void XX_IntrSpinlock(t_SpinlockHandle h_Spinlock)
+{
+    spin_lock_irqsave(((t_Spinlock *)h_Spinlock)->p_Lock, ((t_Spinlock *)h_Spinlock)->flags);
+}
+
+void XX_IntrSpinunlock(t_SpinlockHandle h_Spinlock)
+{
+    spin_unlock_irqrestore(((t_Spinlock *)h_Spinlock)->p_Lock, ((t_Spinlock *)h_Spinlock)->flags);
+}
+
+
+/*****************************************************************************/
+/*                        Timers Service Routines                            */
+/*****************************************************************************/
+/* The time now is in mili sec. resolution */
+uint32_t XX_CurrentTime(void)
+{
+    return (jiffies*1000)/HZ;
+}
+
+
+t_TimerHandle XX_CreateTimer(void)
+{
+    struct timer_list *p_Timer = (struct timer_list *)XX_Malloc(sizeof(struct timer_list));
+    if (p_Timer)
+    {
+        memset(p_Timer, 0, sizeof(struct timer_list));
+        init_timer(p_Timer);
+    }
+    return (t_TimerHandle)p_Timer;
+}
+
+void XX_FreeTimer(t_TimerHandle h_Timer)
+{
+    if (h_Timer)
+        XX_Free(h_Timer);
+}
+
+void XX_StartTimer(t_TimerHandle    h_Timer,
+                   uint32_t         msecs,
+                   bool             periodic,
+                   void             (*f_TimerExpired)(t_Handle),
+                   t_Handle         h_Arg)
+{
+    int                 tmp_jiffies = (msecs*HZ)/1000;
+    struct timer_list   *p_Timer = (struct timer_list *)h_Timer;
+
+    SANITY_CHECK_RETURN((periodic == FALSE), E_NOT_SUPPORTED);
+
+    p_Timer->function = (void (*)(unsigned long))f_TimerExpired;
+    p_Timer->data = (unsigned long)h_Arg;
+    if ((msecs*HZ)%1000)
+        tmp_jiffies++;
+    p_Timer->expires = (jiffies + tmp_jiffies);
+
+    add_timer((struct timer_list *)h_Timer);
+}
+
+void XX_SetTimerData(t_TimerHandle h_Timer, t_Handle data)
+{
+    struct timer_list   *p_Timer = (struct timer_list *)h_Timer;
+
+    p_Timer->data = (unsigned long)data;
+}
+
+t_Handle XX_GetTimerData(t_TimerHandle h_Timer)
+{
+    struct timer_list   *p_Timer = (struct timer_list *)h_Timer;
+
+    return (t_Handle)p_Timer->data;
+}
+
+uint32_t   XX_GetExpirationTime(t_TimerHandle h_Timer)
+{
+    struct timer_list   *p_Timer = (struct timer_list *)h_Timer;
+
+    return (uint32_t)p_Timer->expires;
+}
+
+void XX_StopTimer(t_TimerHandle h_Timer)
+{
+    del_timer((struct timer_list *)h_Timer);
+}
+
+void XX_ModTimer(t_TimerHandle h_Timer, uint32_t msecs)
+{
+    int tmp_jiffies = (msecs*HZ)/1000;
+
+    if ((msecs*HZ)%1000)
+        tmp_jiffies++;
+    mod_timer((struct timer_list *)h_Timer, jiffies + tmp_jiffies);
+}
+
+int XX_TimerIsActive(t_TimerHandle h_Timer)
+{
+  return timer_pending((struct timer_list *)h_Timer);
+}
+
+uint32_t XX_Sleep(uint32_t msecs)
+{
+    int tmp_jiffies = (msecs*HZ)/1000;
+
+    if ((msecs*HZ)%1000)
+        tmp_jiffies++;
+    return schedule_timeout(tmp_jiffies);
+}
+
+/*BEWARE!!!!! UDelay routine is BUSY WAITTING!!!!!*/
+void XX_UDelay(uint32_t usecs)
+{
+    udelay(usecs);
+}
+
+#ifdef CONFIG_MULTI_PARTITION_SUPPORT
+typedef struct {
+    char            *p_Addr;
+    t_MsgHandler    *f_MsgHandlerCB;
+    t_Handle        h_Mod;
+    t_List          node;
+} t_MsgHndlr;
+#define MSG_HNDLR_OBJECT(ptr)  LIST_OBJECT(ptr, t_MsgHndlr, node)
+
+LIST(msgHndlrList);
+
+static void EnqueueMsgHndlr(t_MsgHndlr *p_MsgHndlr)
+{
+    uint32_t   intFlags;
+
+    intFlags = XX_DisableAllIntr();
+    LIST_AddToTail(&p_MsgHndlr->node, &msgHndlrList);
+    XX_RestoreAllIntr(intFlags);
+}
+
+static t_MsgHndlr * DequeueMsgHndlr(void)
+{
+    t_MsgHndlr *p_MsgHndlr = NULL;
+    uint32_t   intFlags;
+
+    intFlags = XX_DisableAllIntr();
+    if (!LIST_IsEmpty(&msgHndlrList))
+    {
+        p_MsgHndlr = MSG_HNDLR_OBJECT(msgHndlrList.p_Next);
+        LIST_DelAndInit(&p_MsgHndlr->node);
+    }
+    XX_RestoreAllIntr(intFlags);
+
+    return p_MsgHndlr;
+}
+
+static t_MsgHndlr * FindMsgHndlr(char *p_Addr)
+{
+    t_MsgHndlr  *p_MsgHndlr;
+    t_List      *p_Pos;
+
+    LIST_FOR_EACH(p_Pos, &msgHndlrList)
+    {
+        p_MsgHndlr = MSG_HNDLR_OBJECT(p_Pos);
+        if (strstr(p_MsgHndlr->p_Addr, p_Addr))
+            return p_MsgHndlr;
+    }
+
+    return NULL;
+}
+
+t_Error XX_RegisterMessageHandler   (char *p_Addr, t_MsgHandler *f_MsgHandlerCB, t_Handle h_Mod)
+{
+    t_MsgHndlr  *p_MsgHndlr;
+    uint32_t    len;
+
+    p_MsgHndlr = (t_MsgHndlr*)XX_Malloc(sizeof(t_MsgHndlr));
+    if (!p_MsgHndlr)
+        RETURN_ERROR(MINOR, E_NO_MEMORY, ("message handler object!!!"));
+    memset(p_MsgHndlr, 0, sizeof(t_MsgHndlr));
+
+    len = strlen(p_Addr);
+    p_MsgHndlr->p_Addr = (char*)XX_Malloc(len+1);
+    strncpy(p_MsgHndlr->p_Addr,p_Addr, (uint32_t)(len+1));
+
+    p_MsgHndlr->f_MsgHandlerCB = f_MsgHandlerCB;
+    p_MsgHndlr->h_Mod = h_Mod;
+    INIT_LIST(&p_MsgHndlr->node);
+    EnqueueMsgHndlr(p_MsgHndlr);
+
+    return E_OK;
+}
+
+t_Error XX_UnregisterMessageHandler (char *p_Addr)
+{
+    t_MsgHndlr *p_MsgHndlr = FindMsgHndlr(p_Addr);
+    if (!p_MsgHndlr)
+        RETURN_ERROR(MINOR, E_NO_DEVICE, ("message handler not found in list!!!"));
+
+    LIST_Del(&p_MsgHndlr->node);
+    XX_Free(p_MsgHndlr->p_Addr);
+    XX_Free(p_MsgHndlr);
+
+    return E_OK;
+}
+
+t_Error XX_SendMessage(char                 *p_DestAddr,
+                       uint32_t             msgId,
+                       uint8_t              msgBody[MSG_BODY_SIZE],
+                       t_MsgCompletionCB    *f_CompletionCB,
+                       t_Handle             h_CBArg)
+{
+    t_Error     ans;
+    t_MsgHndlr  *p_MsgHndlr = FindMsgHndlr(p_DestAddr);
+    if (!p_MsgHndlr)
+        RETURN_ERROR(MINOR, E_NO_DEVICE, ("message handler not found in list!!!"));
+
+    ans = p_MsgHndlr->f_MsgHandlerCB(p_MsgHndlr->h_Mod, msgId, msgBody);
+
+    if (f_CompletionCB)
+        f_CompletionCB(h_CBArg, msgBody);
+
+    return ans;
+}
+#endif /* CONFIG_MULTI_PARTITION_SUPPORT */
