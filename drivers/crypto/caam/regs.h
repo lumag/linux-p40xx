@@ -229,6 +229,10 @@ struct rngtst {
  * starts base + 0x0000 padded out to 0x1000
  */
 
+#define KEK_KEY_SIZE		8
+#define TKEK_KEY_SIZE		8
+#define TDSK_KEY_SIZE		8
+
 struct caam_ctrl {
 	/* Basic Configuration Section                          000-02f */
 	/* Read/Writable                                                */
@@ -248,9 +252,9 @@ struct caam_ctrl {
 
 	/* Key Encryption/Decryption Configuration              400-47f */
 	/* Read/Writable only while in Non-secure mode                  */
-	__be32 kek[8];		/* KEK - Key Encryption Key */
-	__be32 tkek[8];		/* TKEK - Trusted Key Encryption Key */
-	__be32 tdsk[8];		/* TDSK - Trusted Desc Signing Key */
+	__be32 kek[KEK_KEY_SIZE];	/* KEK - Key Encryption Key */
+	__be32 tkek[TKEK_KEY_SIZE];	/* TKEK - Trusted Key Encryption Key */
+	__be32 tdsk[TDSK_KEY_SIZE];	/* TDSK - Trusted Desc Signing Key */
 	__be32 rsvd6[104];
 
 	/* RNG Test/Verification/Debug Access                   600-6b7 */
@@ -264,6 +268,30 @@ struct caam_ctrl {
 	/* Performance Monitor                                  f00-fff */
 	struct caam_perfmon perfmon;
 };
+
+/*
+ * Controller master config register defs
+ */
+#define MCFGR_SWRESET		0x80000000 /* software reset */
+#define MCFGR_WDENABLE		0x40000000 /* DECO watchdog enable */
+#define MCFGR_WDFAIL		0x20000000 /* DECO watchdog force-fail */
+#define MCFGR_DMA_RESET		0x10000000
+#define MCFGR_LONG_PTR		0x00010000 /* Use >32-bit desc addressing */
+
+/* AXI read cache control */
+#define MCFGR_ARCACHE_SHIFT	12
+#define MCFGR_ARCACHE_MASK	(0xf << MCFGR_ARCACHE_SHIFT)
+
+/* AXI write cache control */
+#define MCFGR_AWCACHE_SHIFT	8
+#define MCFGR_AWCACHE_MASK	(0xf << MCFGR_AWCACHE_SHIFT)
+
+/* AXI pipeline depth */
+#define MCFGR_AXIPIPE_SHIFT	4
+#define MCFGR_AXIPIPE_MASK	(0xf << MCFGR_AXIPIPE_SHIFT)
+
+#define MCFGR_AXIPRI		0x00000008 /* Assert AXI priority sideband */
+#define MCFGR_BURST_64		0x00000001 /* Max burst size */
 
 /*
  * caam_job_queue - direct job queue setup
@@ -326,6 +354,7 @@ struct caam_job_queue {
  * Also note, same values written out as status through QI
  * in the command/status field of a frame descriptor
  */
+#define JQSTA_SSRC_SHIFT            28
 #define JQSTA_SSRC_MASK             0xf0000000
 
 #define JQSTA_SSRC_NONE             0x00000000
@@ -336,6 +365,7 @@ struct caam_job_queue {
 #define JQSTA_SSRC_JUMP_HALT_CC     0x70000000
 
 #define JQSTA_DECOERR_JUMP          0x08000000
+#define JQSTA_DECOERR_INDEX_SHIFT   8
 #define JQSTA_DECOERR_INDEX_MASK    0xff00
 #define JQSTA_DECOERR_ERROR_MASK    0x00ff
 
@@ -424,9 +454,11 @@ struct caam_job_queue {
 #define JQINT_ERR_TYPE_REMOVE_OFL   8
 #define JQINT_ERR_TYPE_ADD_OFL      9
 
-#define JQCFG_SOE                   0x04
-#define JQCFG_ICEN                  0x02
-#define JQCFG_IMSK                  0x01
+#define JQCFG_SOE		0x04
+#define JQCFG_ICEN		0x02
+#define JQCFG_IMSK		0x01
+#define JQCFG_ICDCT_SHIFT	8
+#define JQCFG_ICTT_SHIFT	16
 
 #define JQCR_RESET                  0x01
 

@@ -1,6 +1,6 @@
 /*
  * CAAM Descriptor Construction Library
- * Descriptor Command Generator
+ * Descriptor Instruction Generator
  *
  * Copyright (c) 2008, 2009, Freescale Semiconductor, Inc.
  * All Rights Reserved
@@ -50,7 +50,7 @@
  * Returns: Pointer to next incremental descriptor word past the header
  * just constructed. If an error occurred, returns 0.
  *
- * @descwd   = pointer to target descriptor word to hold this command.
+ * @descwd   = pointer to target descriptor word to hold this instruction.
  *             Note that this should always be the first word of a
  *             descriptor.
  * @startidx = index to continuation of descriptor data, normally the
@@ -284,7 +284,7 @@ u_int32_t *cmd_insert_key(u_int32_t *descwd, u_int8_t *key, u_int32_t keylen,
 
 /**
  * cmd_insert_seq_key()
- * Insert a sequence key command into a descriptor
+ * Insert a key command into a descriptor using a sequence
  *
  * Returns: If successful, returns a pointer to the target word
  * incremented past the newly-inserted command (including item pointer
@@ -389,8 +389,9 @@ u_int32_t *cmd_insert_seq_key(u_int32_t *descwd, u_int32_t keylen,
  * just constructed. If an error occurred, returns 0;
  *
  * @descwd    = pointer to target descriptor word intended to hold
- *              this command. For an OPERATION command, this is normally
- *              the final word of a single descriptor.
+ *              this command. For an OPERATION instruction within the
+ *              scope of a protocol descriptor, this is normally
+ *              the final word of that descriptor.
  *
  * @cipheralg = blockcipher selection for this protocol descriptor.
  *              This should be one of CIPHER_TYPE_IPSEC_.
@@ -515,8 +516,9 @@ u_int32_t *cmd_insert_proto_op_ipsec(u_int32_t *descwd, u_int8_t cipheralg,
  * AES-CCM
  *
  * @descwd    = pointer to target descriptor word intended to hold
- *              this command. For an OPERATION command, this is normally
- *              the final word of a single descriptor.
+ *              this command. For an OPERATION instruction within the
+ *              scope of a protocol descriptor, this is normally
+ *              the final word of that descriptor.
  *
  * @mode      = nonzero is OFDMa, else assume OFDM
  *
@@ -527,7 +529,8 @@ u_int32_t *cmd_insert_proto_op_wimax(u_int32_t *descwd, u_int8_t mode,
 				     enum protdir dir)
 {
 	*descwd = CMD_OPERATION | OP_PCLID_WIMAX |
-		  (mode ? OP_PCL_WIMAX_OFDMA : OP_PCL_WIMAX_OFDM);
+		  (mode ? OP_PCL_WIMAX_OFDMA : OP_PCL_WIMAX_OFDM) |
+		  (dir ? OP_TYPE_DECAP_PROTOCOL : OP_TYPE_ENCAP_PROTOCOL);
 
 	return descwd++;
 }
@@ -536,15 +539,17 @@ u_int32_t *cmd_insert_proto_op_wimax(u_int32_t *descwd, u_int8_t mode,
  * Insert a 802.11 WiFi protocol OP instruction
  *
  * @descwd    = pointer to target descriptor word intended to hold
- *              this command. For an OPERATION command, this is normally
- *              the final word of a single descriptor.
+ *              this command. For an OPERATION instruction within the
+ *              scope of a protocol descriptor, this is normally
+ *              the final word of that descriptor.
  *
  * @dir       = Select DIR_ENCAP for encapsulation, or DIR_DECAP for
  *              decapsulation operations.
  **/
 u_int32_t *cmd_insert_proto_op_wifi(u_int32_t *descwd, enum protdir dir)
 {
-	*descwd = CMD_OPERATION | OP_PCLID_WIFI | OP_PCL_WIFI;
+	*descwd = CMD_OPERATION | OP_PCLID_WIFI | OP_PCL_WIFI |
+		  (dir ? OP_TYPE_DECAP_PROTOCOL : OP_TYPE_ENCAP_PROTOCOL);
 
 	return descwd++;
 }
@@ -553,7 +558,8 @@ u_int32_t *cmd_insert_proto_op_wifi(u_int32_t *descwd, enum protdir dir)
  * Insert a MacSec protocol OP instruction
  *
  * @descwd    = pointer to target descriptor word intended to hold
- *              this command. For an OPERATION command, this is normally
+ *              this instruction. For an OPERATION instruction within
+ *              the scope of a protocol descriptor, this is normally
  *              the final word of a single descriptor.
  *
  * @dir       = Select DIR_ENCAP for encapsulation, or DIR_DECAP for
@@ -561,7 +567,8 @@ u_int32_t *cmd_insert_proto_op_wifi(u_int32_t *descwd, enum protdir dir)
  **/
 u_int32_t *cmd_insert_proto_op_macsec(u_int32_t *descwd, enum protdir dir)
 {
-	*descwd = CMD_OPERATION | OP_PCLID_MACSEC | OP_PCL_MACSEC;
+	*descwd = CMD_OPERATION | OP_PCLID_MACSEC | OP_PCL_MACSEC |
+		  (dir ? OP_TYPE_DECAP_PROTOCOL : OP_TYPE_ENCAP_PROTOCOL);
 
 	return descwd++;
 }
@@ -572,7 +579,8 @@ u_int32_t *cmd_insert_proto_op_macsec(u_int32_t *descwd, enum protdir dir)
  * cmd_insert_proto_op_unidir()
  *
  * @descwd    = pointer to target descriptor word intended to hold
- *              this command. For an OPERATION command, this is normally
+ *              this instruction. For an OPERATION instruction within
+ *              the scope of a protocol descriptor, this is normally
  *              the final word of a single descriptor.
  *
  * @protid    = Select any PROTID field for a unidirectional protocol
@@ -590,13 +598,13 @@ u_int32_t *cmd_insert_proto_op_unidir(u_int32_t *descwd, u_int32_t protid,
 
 /**
  * cmd_insert_alg_op()
- * Insert a simple algorithm operation command into a descriptor
+ * Insert a simple algorithm operation instruction into a descriptor
  *
- * Returns: Pointer to next incremental descriptor word past the command
- * just constructed. If an error occurred, returns 0;
+ * Returns: Pointer to next incremental descriptor word past the instruction
+ * just inserted. If an error occurred, returns 0;
  *
  * @descwd    = pointer to target descriptor word intended to hold
- *              this command.
+ *              this instruction.
  *
  * @optype = use as class 1 or 2 with OP_TYPE_CLASSx_ALG
  *
@@ -643,7 +651,7 @@ u_int32_t *cmd_insert_alg_op(u_int32_t *descwd, u_int32_t optype,
  **/
 u_int32_t *cmd_insert_pkha_op(u_int32_t *descwd, u_int32_t pkmode)
 {
-	*descwd = CMD_OPERATION | OP_TYPE_CLASS1_ALG | OP_ALG_PK | pkmode;
+	*descwd = CMD_OPERATION | OP_TYPE_PK | OP_ALG_PK | pkmode;
 
 	return ++descwd;
 }
@@ -655,14 +663,13 @@ u_int32_t *cmd_insert_pkha_op(u_int32_t *descwd, u_int32_t pkmode)
  */
 /**
  * cmd_insert_seq_in_ptr()
- * Insert an SEQ IN PTR command into a descriptor
+ * Insert an SEQ IN PTR instruction into a descriptor
  *
- * Returns: Pointer to next incremental descriptor word past the command
- * just constructed. If an error occurred, returns 0;
+ * Returns: Pointer to next incremental descriptor word past the instruction
+ * just inserted. If an error occurred, returns 0;
  *
  * @descwd    = pointer to target descriptor word intended to hold
- *              this command. For an OPERATION command, this is normally
- *              the final word of a single descriptor.
+ *              this instruction.
  * @ptr       = bus address pointing to the input data buffer
  * @len       = input length
  * @sgref     = pointer is actual data, or a scatter-gather list
@@ -689,14 +696,13 @@ u_int32_t *cmd_insert_seq_in_ptr(u_int32_t *descwd, void *ptr, u_int32_t len,
 
 /**
  * cmd_insert_seq_out_ptr()
- * Insert an SEQ OUT PTR command into a descriptor
+ * Insert an SEQ OUT PTR instruction into a descriptor
  *
- * Returns: Pointer to next incremental descriptor word past the command
- * just constructed. If an error occurred, returns 0;
+ * Returns: Pointer to next incremental descriptor word past the instruction
+ * just insertted. If an error occurred, returns 0;
  *
  * @descwd    = pointer to target descriptor word intended to hold
- *              this command. For an OPERATION command, this is normally
- *              the final word of a single descriptor.
+ *              this instruction.
  * @ptr       = bus address pointing to the output data buffer
  * @len       = output length
  * @sgref     = pointer is actual data, or a scatter-gather list
@@ -724,14 +730,13 @@ u_int32_t *cmd_insert_seq_out_ptr(u_int32_t *descwd, void *ptr, u_int32_t len,
 
 /**
  * cmd_insert_load()
- * Insert an LOAD command into a descriptor
+ * Insert an LOAD instruction into a descriptor
  *
- * Returns: Pointer to next incremental descriptor word past the command
- * just constructed. If an error occurred, returns 0;
+ * Returns: Pointer to next incremental descriptor word past the instruction
+ * just inserted. If an error occurred, returns 0;
  *
  * @descwd       = pointer to target descriptor word intended to hold
- *                 this command. For an OPERATION command, this is normally
- *                 the final word of a single descriptor.
+ *                 this instruction.
  *
  * @data         = pointer to data to be loaded
  *
@@ -762,6 +767,19 @@ u_int32_t *cmd_insert_load(u_int32_t *descwd, void *data,
 		  (offset << LDST_OFFSET_SHIFT) | len |
 		  ((imm & LDST_IMM_MASK) << LDST_IMM_SHIFT);
 
+	/*
+	 * Special case for DECO control uses bits in
+	 * offset and length to control a DECO. If it's selected,
+	 * we'll also force an IMM, but no immediate data is
+	 * actually used
+	 */
+	if ((class_access == LDST_CLASS_DECO) &&
+	    (dest == LDST_SRCDST_WORD_DECOCTRL)) {
+		*descwd |= LDST_IMM;
+		descwd++;
+		return descwd;
+	}
+
 	descwd++;
 
 	if (imm == ITEM_INLINE) {
@@ -778,11 +796,44 @@ u_int32_t *cmd_insert_load(u_int32_t *descwd, void *data,
 }
 
 /**
- * cmd_insert_fifo_load()
- * Insert a FIFO_LOAD command into a descriptor
+ * cmd_insert_seq_load()
+ * Insert an SEQ LOAD instruction into a descriptor
  *
  * Returns: Pointer to next incremental descriptor word past the command
  * just constructed. If an error occurred, returns 0;
+ *
+ * @descwd       = pointer to target descriptor word intended to hold
+ *                 this command. For an OPERATION command, this is normally
+ *                 the final word of a single descriptor.
+ * @class_access = LDST_CLASS_IND_CCB = access class-independent objects in CCB
+ *               = LDST_CLASS_1_CCB   = access class 1 objects in CCB
+ *               = LDST_CLASS_2_CCB   = access class 2 objects in CCB
+ *               = LDST_CLASS_DECO    = access DECO objects
+ * @variable_len_flag = use the variable input sequence length
+ * @dest         = destination
+ * @offset       = the start point for writing in the destination
+ * @len          = length of data in bytes
+ *
+ **/
+u_int32_t *cmd_insert_seq_load(u_int32_t *descwd, u_int32_t class_access,
+			       u_int32_t variable_len_flag, u_int32_t dest,
+			       u_int8_t offset, u_int8_t len)
+{
+	*descwd = CMD_SEQ_LOAD | (class_access & CLASS_MASK) |
+		  (variable_len_flag ? LDST_SGF : 0) |
+		  ((dest & LDST_SRCDST_MASK) << LDST_SRCDST_SHIFT) |
+		  ((offset & LDST_OFFSET_MASK) << LDST_OFFSET_SHIFT) |
+		  ((len & LDST_LEN_MASK) << LDST_LEN_SHIFT);
+
+	return descwd + 1;
+}
+
+/**
+ * cmd_insert_fifo_load()
+ * Insert a FIFO_LOAD instruction into a descriptor
+ *
+ * Returns: Pointer to next incremental descriptor word past the instruction
+ * just inserted. If an error occurred, returns 0;
  *
  * @descwd = pointer to target descriptor word intended to hold
  *           this command.
@@ -839,48 +890,14 @@ u_int32_t *cmd_insert_fifo_load(u_int32_t *descwd, void *data, u_int32_t len,
 }
 
 /**
- * cmd_insert_seq_load()
- * Insert an SEQ LOAD command into a descriptor
- *
- * Returns: Pointer to next incremental descriptor word past the command
- * just constructed. If an error occurred, returns 0;
- *
- * @descwd       = pointer to target descriptor word intended to hold
- *                 this command. For an OPERATION command, this is normally
- *                 the final word of a single descriptor.
- * @class_access = LDST_CLASS_IND_CCB = access class-independent objects in CCB
- *               = LDST_CLASS_1_CCB   = access class 1 objects in CCB
- *               = LDST_CLASS_2_CCB   = access class 2 objects in CCB
- *               = LDST_CLASS_DECO    = access DECO objects
- * @variable_len_flag = use the variable input sequence length
- * @dest         = destination
- * @offset       = the start point for writing in the destination
- * @len          = length of data in bytes
- *
- **/
-u_int32_t *cmd_insert_seq_load(u_int32_t *descwd, u_int32_t class_access,
-			       u_int32_t variable_len_flag, u_int32_t dest,
-			       u_int8_t offset, u_int8_t len)
-{
-	*descwd = CMD_SEQ_LOAD | (class_access & CLASS_MASK) |
-		  (variable_len_flag ? LDST_SGF : 0) |
-		  ((dest & LDST_SRCDST_MASK) << LDST_SRCDST_SHIFT) |
-		  ((offset & LDST_OFFSET_MASK) << LDST_OFFSET_SHIFT) |
-		  ((len & LDST_LEN_MASK) << LDST_LEN_SHIFT);
-
-	return descwd + 1;
-}
-
-/**
  * cmd_insert_seq_fifo_load()
  * Insert an SEQ FIFO LOAD command into a descriptor
  *
- * Returns: Pointer to next incremental descriptor word past the command
- * just constructed. If an error occurred, returns 0;
+ * Returns: Pointer to next incremental descriptor word past the instruction
+ * just inserted. If an error occurred, returns 0;
  *
  * @descwd       = pointer to target descriptor word intended to hold
- *                 this command. For an OPERATION command, this is normally
- *                 the final word of a single descriptor.
+ *                 this instruction.
  * @class_access = LDST_CLASS_IND_CCB = access class-independent objects in CCB
  *               = LDST_CLASS_1_CCB   = access class 1 objects in CCB
  *               = LDST_CLASS_2_CCB   = access class 2 objects in CCB
@@ -910,12 +927,11 @@ u_int32_t *cmd_insert_seq_fifo_load(u_int32_t *descwd, u_int32_t class_access,
  * cmd_insert_store()
  * Insert a STORE command into a descriptor
  *
- * Returns: Pointer to next incremental descriptor word past the command
- * just constructed. If an error occurred, returns 0;
+ * Returns: Pointer to next incremental descriptor word past the instruction
+ * just insertted. If an error occurred, returns 0;
  *
  * @descwd       = pointer to target descriptor word intended to hold
- *                 this command. For an OPERATION command, this is normally
- *                 the final word of a single descriptor.
+ *                 this instruction.
  *
  * @data         = pointer to data to be stored
  *
@@ -964,14 +980,13 @@ u_int32_t *cmd_insert_store(u_int32_t *descwd, void *data,
 
 /**
  * cmd_insert_seq_store()
- * Insert a SEQ STORE command into a descriptor
+ * Insert a SEQ STORE instruction into a descriptor
  *
- * Returns: Pointer to next incremental descriptor word past the command
- * just constructed. If an error occurred, returns 0;
+ * Returns: Pointer to next incremental descriptor word past the instruction
+ * just inserted. If an error occurred, returns 0;
  *
  * @descwd       = pointer to target descriptor word intended to hold
- *                 this command. For an OPERATION command, this is normally
- *                 the final word of a single descriptor.
+ *                 this instruction.
  *
  * @class_access = LDST_CLASS_IND_CCB = access class-independent objects in CCB
  *               = LDST_CLASS_1_CCB   = access class 1 objects in CCB
@@ -1000,17 +1015,17 @@ u_int32_t *cmd_insert_seq_store(u_int32_t *descwd, u_int32_t class_access,
 
 /**
  * cmd_insert_fifo_store()
- * Insert a FIFO_STORE command into a descriptor
+ * Insert a FIFO_STORE instruction into a descriptor
  *
- * Returns: Pointer to next incremental descriptor word past the command
- * just constructed. If an error occurred, returns 0;
+ * Returns: Pointer to next incremental descriptor word past the instruction
+ * just inserted. If an error occurred, returns 0;
  *
  * @descwd = pointer to target descriptor word intended to hold
- *           this command.
+ *           this instruction.
  *
  * @data   = pointer to data to be loaded
  *
- * @len    = length of data in bits (NOT bytes)
+ * @len    = length of data in bytes
  *
  * @class  = LDST_CLASS_IND_CCB = access class-independent objects in CCB
  *         = LDST_CLASS_1_CCB   = access class 1 objects in CCB
@@ -1019,14 +1034,14 @@ u_int32_t *cmd_insert_seq_store(u_int32_t *descwd, u_int32_t class_access,
  *
  * @sgflag = reference is a scatter/gather list if FIFOLDST_SGF
  *
- * @imm    = destination data is to be inlined into descriptor itself
+ * @imm    = store data is to be inlined into descriptor itself
  *           if FIFOLDST_IMM
  *
  * @ext    = use extended length field following the pointer if
  *           FIFOLDST_EXT
  *
- * @type   = FIFO input type, an OR combination of FIFOLD_TYPE_
- *           type and last/flush bits
+ * @type   = FIFO input type, an OR combination of FIFOST_TYPE_
+ *           type and last/flush bits for class1 and 2.
  **/
 u_int32_t *cmd_insert_fifo_store(u_int32_t *descwd, void *data, u_int32_t len,
 				 u_int32_t class_access, u_int32_t sgflag,
@@ -1035,7 +1050,7 @@ u_int32_t *cmd_insert_fifo_store(u_int32_t *descwd, void *data, u_int32_t len,
 	int words;
 	u_int32_t *nextin;
 
-	*descwd = CMD_FIFO_LOAD | (class_access & CLASS_MASK) | sgflag |
+	*descwd = CMD_FIFO_STORE | (class_access & CLASS_MASK) | sgflag |
 		  imm | ext | type;
 
 	if (!ext)
@@ -1061,14 +1076,13 @@ u_int32_t *cmd_insert_fifo_store(u_int32_t *descwd, void *data, u_int32_t len,
 
 /**
  * cmd_insert_seq_fifo_store()
- * Insert a SEQ FIFO STORE command into a descriptor
+ * Insert a SEQ FIFO STORE instruction into a descriptor
  *
- * Returns: Pointer to next incremental descriptor word past the command
- * just constructed. If an error occurred, returns 0;
+ * Returns: Pointer to next incremental instruction word past the instruction
+ * just inserted. If an error occurred, returns 0;
  *
  * @descwd       = pointer to target descriptor word intended to hold
- *                 this command. For an OPERATION command, this is normally
- *                 the final word of a single descriptor.
+ *                 this instruction.
  *
  * @class_access = LDST_CLASS_IND_CCB = access class-independent objects in CCB
  *               = LDST_CLASS_1_CCB   = access class 1 objects in CCB
@@ -1100,13 +1114,18 @@ u_int32_t *cmd_insert_seq_fifo_store(u_int32_t *descwd, u_int32_t class_access,
 
 /**
  * cmd_insert_jump()
- * Insert a JUMP command into a descriptor
+ * Insert a JUMP instruction into a descriptor
  *
- * Returns: pointer to next incremental descriptor word past the command
- * just constructed. No error is returned.
+ * Returns: pointer to next incremental descriptor word past the instruction
+ * just inserted. No error is returned.
  *
  * @descwd = pointer to target descriptor word intended to hold this
- *           command.
+ *           instruction.
+ *
+ * @class = CLASS_NONE - not a checkpoint
+ *        = CLASS_1 - done checkpoint on class 1
+ *        = CLASS_2 - done checkpoint on class 2
+ *        = CLASS_BOTH - done checkpoint on both
  *
  * @jtype = type of jump operation to perform, of JUMP_TYPE_
  *
@@ -1121,10 +1140,11 @@ u_int32_t *cmd_insert_seq_fifo_store(u_int32_t *descwd, u_int32_t class_access,
  *            if jtype = JUMP_NONLOCAL
  **/
 u_int32_t *cmd_insert_jump(u_int32_t *descwd, u_int32_t jtype,
-			   u_int32_t test, u_int32_t cond,
-			   u_int8_t offset, u_int32_t *jmpdesc)
+			   u_int32_t class, u_int32_t test, u_int32_t cond,
+			   int8_t offset, u_int32_t *jmpdesc)
 {
-	*descwd++ = CMD_JUMP | jtype | test | cond | offset;
+	*descwd++ = CMD_JUMP | class | jtype | test | cond |
+		    (offset & 0x000000ff);
 
 	if (jtype == JUMP_TYPE_NONLOCAL)
 		*descwd++ = (u_int32_t)jmpdesc;
@@ -1134,13 +1154,13 @@ u_int32_t *cmd_insert_jump(u_int32_t *descwd, u_int32_t jtype,
 
 /**
  * cmd_insert_math()
- * Insert a MATH command into a descriptor
+ * Insert a MATH instruction into a descriptor
  *
- * Returns: pointer to next incremental descriptor word past the command
- * just constructed. No error is returned.
+ * Returns: pointer to next incremental descriptor word past the instruction
+ * just inserted. No error is returned.
  *
  * @descwd = pointer to target descriptor word intended to hold this
- *           command.
+ *           instruction.
  *
  * @func = Function to perform. One of MATH_FUN_
  *
@@ -1158,41 +1178,49 @@ u_int32_t *cmd_insert_jump(u_int32_t *descwd, u_int32_t jtype,
  * @stall = if MATH_STALL, cause the instruction to require one extra
  *          clock cycle, else use MATH_NO_STALL.
  *
- * @immediate = if MATH_IMMEDIATE, will insert a 4 byte immediate
+ * @immediate = if MATH_IFB, will insert an immediate four byte
  *              value into the descriptor to use as 1 of the two
- *              sources, else if not needed, use MATH_NO_IMMEDIATE
+ *              sources.
  *
- * @data = inline data sized per len. If MATH_IMMEDIATE is used,
- *           must only be a 4-byte value to inline into the descriptor
+ * @data = inline data sized per len or MATH_IFB
+ *
  **/
 u_int32_t *cmd_insert_math(u_int32_t *descwd, u_int32_t func,
 			    u_int32_t src0, u_int32_t src1,
 			    u_int32_t dest, u_int32_t len,
 			    u_int32_t flagupd, u_int32_t stall,
 			    u_int32_t immediate, u_int32_t *data)
- {
+{
 
 	*descwd++ = CMD_MATH | func | src0 | src1 | dest |
 		    (len & MATH_LEN_MASK) | flagupd | stall | immediate;
 
-	if ((immediate) ||
-	   ((src0 & MATH_SRC0_MASK) == MATH_SRC0_IMM) ||
-	   ((src1 & MATH_SRC1_MASK) == MATH_SRC1_IMM))
-		*descwd++ = *data;
-
+	/*
+	 * If IFB, add 4 byte immediate, else if one of two sources
+	 * are immediate, add data by length
+	 */
+	if (immediate == MATH_IFB) {
+		memcpy(descwd, data, 4);
+		descwd++;
+	} else
+		if (((src0 & MATH_SRC0_MASK) == MATH_SRC0_IMM) ||
+		((src1 & MATH_SRC1_MASK) == MATH_SRC1_IMM)) {
+			memcpy(descwd, data, len);
+			descwd += len >> 2;
+		}
 
 	return descwd;
- }
+}
 
 /**
  * cmd_insert_move()
- * Insert a MOVE command into a descriptor
+ * Insert a MOVE instruction into a descriptor
  *
  * Returns: pointer to next incremental descriptor word past the
- * command just constructed. No error is returned.
+ * instruction just inserted. No error is returned.
  *
  * @descwd = pointer to target descriptor word intended to hold this
- *           command.
+ *           instruction.
  *
  * @waitcomp = if MOVE_WAITCOMPLETE specified, stall execution until
  *             the MOVE completes. This is only valid if it is using

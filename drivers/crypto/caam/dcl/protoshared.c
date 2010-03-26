@@ -309,7 +309,6 @@ int32_t cnstr_pcl_shdsc_ipsec_cbc_encap(u_int32_t           *descbuf,
 		}
 	}
 
-
 	/* Save current location for computing start index */
 	startidx = descbuf - start;
 
@@ -325,7 +324,6 @@ int32_t cnstr_pcl_shdsc_ipsec_cbc_encap(u_int32_t           *descbuf,
 	descbuf = cmd_insert_key(descbuf, cipherdata->key, cipherdata->keylen,
 				 PTR_DIRECT, KEYDST_KEYREG, KEY_CLEAR,
 				 ITEM_INLINE, ITEM_CLASS1);
-
 
 	/* Now insert the operation command */
 	descbuf = cmd_insert_proto_op_ipsec(descbuf,
@@ -348,17 +346,249 @@ int32_t cnstr_pcl_shdsc_ipsec_cbc_encap(u_int32_t           *descbuf,
 EXPORT_SYMBOL(cnstr_pcl_shdsc_ipsec_cbc_encap);
 
 /**
+ * Construct IPSec ESP encapsulation protocol-level sharedesc
+ * Requires a covered MDHA splitkey.
+ *
+ * Inputs:
+ * @descbuf - pointer to buffer used for descriptor construction
+ *
+ * @bufsize - pointer to size to be written back upon completion
+ *
+ * @pdb - pointer to the PDB to be used with this descriptor. This
+ *       structure will be copied inline to the descriptor under
+ *       construction. No error checking will be made. Refer to the
+ *       block guide for a detailed discussion of the decapsulation
+ *       PDB, and it's unioned sub structure that is cipher-dependent
+ *
+ * @opthdr - Optional header to be prepended to an encapsulated frame.
+ *           Size of the optional header is defined in pdb.opt_hdr_len
+ *
+ * @cipherdata - Pointer to blockcipher transform definitions.
+ *
+ * @authdata - Pointer to authentication transform definitions. Note
+ *             that since a split key is to be used, the size of the
+ *             split key itself is specified (even though the buffer
+ *             containing the key may have additional padding depending
+ *             on the size).
+ **/
+int32_t cnstr_shdsc_ipsec_encap(u_int32_t *descbuf, u_int16_t *bufsize,
+				    struct ipsec_encap_pdb *pdb,
+				    u_int8_t *opthdr,
+				    struct cipherparams *cipherdata,
+				    struct authparams *authdata)
+{
+	u_int32_t *start, *keyjump, opthdrsz;
+	u_int16_t startidx, endidx;
+
+	start = descbuf;
+
+	/* Compute optional header size, rounded up to descriptor word size */
+	opthdrsz = (pdb->ip_hdr_len + 3) & ~3;
+
+	/* copy in core of PDB */
+	memcpy(descbuf, pdb, sizeof(struct ipsec_encap_pdb));
+	descbuf += sizeof(struct ipsec_encap_pdb) >> 2;
+
+	/*
+	 * If optional header, compute optional header size
+	 * rounded up to descriptor word size, and copy in
+	 */
+	if (pdb->ip_hdr_len) {
+		opthdrsz = (pdb->ip_hdr_len + 3) & ~3;
+		memcpy(descbuf, opthdr, opthdrsz);
+		descbuf += opthdrsz >> 2;
+	}
+
+	startidx = descbuf - start;
+
+	/*
+	 * Insert an empty instruction for a shared-JUMP past the keys
+	 * Update later, once the size of the key block is known
+	 */
+	keyjump = descbuf++;
+
+	/* Insert keys */
+	descbuf = cmd_insert_key(descbuf, authdata->key, authdata->keylen,
+				 PTR_DIRECT, KEYDST_MD_SPLIT, KEY_COVERED,
+				 ITEM_REFERENCE, ITEM_CLASS2);
+
+	descbuf = cmd_insert_key(descbuf, cipherdata->key, cipherdata->keylen,
+				 PTR_DIRECT, KEYDST_KEYREG, KEY_CLEAR,
+				 ITEM_REFERENCE, ITEM_CLASS1);
+
+	/*
+	 * Key jump can now be written (now that we know the size of the
+	 * key block). This can now happen anytime before the final
+	 * sizes are computed.
+	 */
+	cmd_insert_jump(keyjump, JUMP_TYPE_LOCAL, CLASS_BOTH, JUMP_TEST_ALL,
+			JUMP_COND_SHRD | JUMP_COND_SELF, descbuf - keyjump,
+			NULL);
+
+	descbuf = cmd_insert_proto_op_ipsec(descbuf,
+					    cipherdata->algtype,
+					    authdata->algtype,
+					    DIR_ENCAP);
+
+	endidx = descbuf - start + 1;
+	cmd_insert_shared_hdr(start, startidx, endidx, CTX_SAVE, SHR_SERIAL);
+	*bufsize = endidx;
+	return 0;
+};
+EXPORT_SYMBOL(cnstr_shdsc_ipsec_encap);
+
+/**
+ * Construct IPSec ESP decapsulation protocol-level sharedesc
+ * Requires a covered MDHA splitkey.
+ *
+ * Inputs:
+ * @descbuf - pointer to buffer used for descriptor construction
+ *
+ * @bufsize - pointer to size to be written back upon completion
+ *
+ * @pdb - pointer to the PDB to be used with this descriptor. This
+ *       structure will be copied inline to the descriptor under
+ *       construction. No error checking will be made. Refer to the
+ *       block guide for a detailed discussion of the decapsulation
+ *       PDB, and it's unioned sub structure that is cipher-dependent
+ *
+ * @cipherdata - Pointer to blockcipher transform definitions.
+ *
+ * @authdata - Pointer to authentication transform definitions. Note
+ *             that since a split key is to be used, the size of the
+ *             split key itself is specified (even though the buffer
+ *             containing the key may have additional padding depending
+ *             on the size).
+ **/
+int32_t cnstr_shdsc_ipsec_decap(u_int32_t *descbuf, u_int16_t *bufsize,
+				struct ipsec_decap_pdb *pdb,
+				struct cipherparams *cipherdata,
+				struct authparams *authdata)
+{
+	u_int32_t *start, *keyjump;
+	u_int16_t startidx, endidx;
+
+	start = descbuf;
+
+	/* copy in PDB */
+	memcpy(descbuf, pdb, sizeof(struct ipsec_decap_pdb));
+	descbuf += sizeof(struct ipsec_decap_pdb) >> 2;
+
+	startidx = descbuf - start;
+
+	/*
+	 * Insert an empty instruction for a shared-JUMP past the keys
+	 * Update later, once the size of the key block is known
+	 */
+	keyjump = descbuf++;
+
+	/* Insert keys */
+	descbuf = cmd_insert_key(descbuf, authdata->key, authdata->keylen,
+				 PTR_DIRECT, KEYDST_MD_SPLIT, KEY_COVERED,
+				 ITEM_REFERENCE, ITEM_CLASS2);
+
+	descbuf = cmd_insert_key(descbuf, cipherdata->key, cipherdata->keylen,
+				 PTR_DIRECT, KEYDST_KEYREG, KEY_CLEAR,
+				 ITEM_REFERENCE, ITEM_CLASS1);
+
+	/*
+	 * Key jump comes here (now that we know the size of the key block.
+	 * Update before we insert the OP
+	 */
+	cmd_insert_jump(keyjump, JUMP_TYPE_LOCAL, CLASS_BOTH, JUMP_TEST_ALL,
+			JUMP_COND_SHRD | JUMP_COND_SELF, descbuf - keyjump,
+			NULL);
+
+	descbuf = cmd_insert_proto_op_ipsec(descbuf,
+					    cipherdata->algtype,
+					    authdata->algtype,
+					    DIR_DECAP);
+
+	endidx = descbuf - start + 1;
+	cmd_insert_shared_hdr(start, startidx, endidx, CTX_SAVE, SHR_SERIAL);
+	*bufsize = endidx;
+	return 0;
+};
+EXPORT_SYMBOL(cnstr_shdsc_ipsec_decap);
+
+/**
+ * IEEE 802.11i WiFi encapsulation
+ **/
+int32_t cnstr_shdsc_wifi_encap(u_int32_t *descbuf, u_int16_t *bufsize,
+				struct wifi_encap_pdb *pdb,
+				struct cipherparams *cipherdata)
+{
+	u_int32_t *start, *keyjump;
+	u_int16_t startidx, endidx;
+
+	start = descbuf;
+
+	memcpy(descbuf, pdb, sizeof(struct wifi_encap_pdb));
+	descbuf += sizeof(struct wifi_encap_pdb) >> 2;
+
+	startidx = descbuf - start;
+	keyjump = descbuf++;
+	descbuf = cmd_insert_key(descbuf, cipherdata->key, cipherdata->keylen,
+				 PTR_DIRECT, KEYDST_KEYREG, KEY_CLEAR,
+				 ITEM_INLINE, ITEM_CLASS1);
+
+	cmd_insert_jump(keyjump, JUMP_TYPE_LOCAL, CLASS_BOTH, JUMP_TEST_ALL,
+			JUMP_COND_SHRD | JUMP_COND_SELF, descbuf - keyjump,
+			NULL);
+
+	descbuf = cmd_insert_proto_op_wifi(descbuf, DIR_ENCAP);
+
+	endidx = descbuf - start + 1;
+	cmd_insert_shared_hdr(start, startidx, endidx, CTX_SAVE, SHR_SERIAL);
+	*bufsize = endidx;
+
+	return 0;
+}
+EXPORT_SYMBOL(cnstr_shdsc_wifi_encap);
+
+/**
+ * IEEE 802.11 WiFi decapsulation
+ **/
+int32_t cnstr_shdsc_wifi_decap(u_int32_t *descbuf, u_int16_t *bufsize,
+				struct wifi_decap_pdb *pdb,
+				struct cipherparams *cipherdata)
+{
+	u_int32_t *start, *keyjump;
+	u_int16_t startidx, endidx;
+
+	start = descbuf;
+
+	memcpy(descbuf, pdb, sizeof(struct wifi_decap_pdb));
+	descbuf += sizeof(struct wifi_decap_pdb) >> 2;
+
+	startidx = descbuf - start;
+	keyjump = descbuf++;
+	descbuf = cmd_insert_key(descbuf, cipherdata->key, cipherdata->keylen,
+				 PTR_DIRECT, KEYDST_KEYREG, KEY_CLEAR,
+				 ITEM_INLINE, ITEM_CLASS1);
+
+	cmd_insert_jump(keyjump, JUMP_TYPE_LOCAL, CLASS_BOTH, JUMP_TEST_ALL,
+			JUMP_COND_SHRD | JUMP_COND_SELF, descbuf - keyjump,
+			NULL);
+
+	descbuf = cmd_insert_proto_op_wifi(descbuf, DIR_DECAP);
+
+	endidx = descbuf - start + 1;
+	cmd_insert_shared_hdr(start, startidx, endidx, CTX_SAVE, SHR_SERIAL);
+	*bufsize = endidx;
+
+	return 0;
+}
+EXPORT_SYMBOL(cnstr_shdsc_wifi_decap);
+
+/**
  * 802.16 WiMAX encapsulation
  *
  * @descbuf - Pointer to descriptor build buffer
  *
  * @bufsize - Pointer to value to write size of built descriptor to
  *
- * @pdb.framecheck - nonzero if frame check word to be included
- * @pdb.nonce - Nonce to use
- * @pdb.b0_flags - B0 flags
- * @pdb.ctr_flags - CTR flags
- * @pdb.PN - PN value
+ * @pdb - pointer to pre-initialized PDB
  *
  * @cipherdata.keylen - key size in bytes
  * @cipherdata.key - key data to inline
@@ -369,64 +599,33 @@ EXPORT_SYMBOL(cnstr_pcl_shdsc_ipsec_cbc_encap);
  *
  **/
 int32_t cnstr_shdsc_wimax_encap(u_int32_t *descbuf, u_int16_t *bufsize,
-				struct wimax_pdb *pdb,
+				struct wimax_encap_pdb *pdb,
 				struct cipherparams *cipherdata,
-				u_int8_t mode, u_int8_t clear)
+				u_int8_t mode)
 {
-	u_int32_t pdbopts;
-	u_int32_t *start;
+	u_int32_t *start, *keyjump;
 	u_int16_t startidx, endidx;
 
-	start = descbuf++;
+	start = descbuf;
 
-	if (!descbuf)
-		return -1;
+	memcpy(descbuf, pdb, sizeof(struct wimax_encap_pdb));
+	descbuf += sizeof(struct wimax_encap_pdb) >> 2;
 
-	if (clear)
-		memset(start, 0, (*bufsize * sizeof(u_int32_t)));
-
-	/*
-	 * Construct encap PDB
-	 * u24 - (reserved)
-	 * u8  - options
-	 * u32 - nonce
-	 * u8  - b0 flags
-	 * u8  - counter flags
-	 * u16 - counter init
-	 * u32 - PN
-	 */
-
-	/* options word */
-	if (pdb->framecheck)
-		pdbopts = 1;
-	*descbuf++ = pdbopts;
-
-	/* Nonce */
-	pdbopts = pdb->nonce;
-	*descbuf++ = pdbopts;
-
-	/* B0 flags / CTR flags / initial counter */
-	pdbopts = (pdb->b0_flags << 24) | (pdb->ctr_flags << 16) |
-		  pdb->ctr_initial_count;
-	*descbuf++ = pdbopts;
-
-	/* PN word */
-	pdbopts = pdb->PN;
-	*descbuf++ = pdbopts;
-
-	/* Done with PDB, build AES-CTR key block */
 	startidx = descbuf - start;
-
+	keyjump = descbuf++;
 	descbuf = cmd_insert_key(descbuf, cipherdata->key, cipherdata->keylen,
 				 PTR_DIRECT, KEYDST_KEYREG, KEY_CLEAR,
 				 ITEM_INLINE, ITEM_CLASS1);
 
-	/* end with OPERATION */
+	cmd_insert_jump(keyjump, JUMP_TYPE_LOCAL, CLASS_BOTH, JUMP_TEST_ALL,
+			JUMP_COND_SHRD | JUMP_COND_SELF, descbuf - keyjump,
+			NULL);
+
 	descbuf = cmd_insert_proto_op_wimax(descbuf, mode, DIR_ENCAP);
 
 	/* Now compute shared header */
 	endidx = descbuf - start + 1;
-	cmd_insert_shared_hdr(start, startidx, endidx, CTX_ERASE, SHR_SERIAL);
+	cmd_insert_shared_hdr(start, startidx, endidx, CTX_SAVE, SHR_SERIAL);
 	*bufsize = endidx;
 
 	return 0;
@@ -440,13 +639,7 @@ EXPORT_SYMBOL(cnstr_shdsc_wimax_encap);
  *
  * @bufsize - Pointer to value to write size of built descriptor to
  *
- * @pdb.framecheck - nonzero if frame check word to be included
- * @pdb.nonce - Nonce to use
- * @pdb.iv_flags - IV flags
- * @pdb.ctr_flags - counter flags
- * @pdb.ctr_initial_count - counter value
- * @pdb.PN - PN value
- * @pdb.antireplay_len - length of antireplay window
+ * @pdb - pointer to pre-initialized PDB
  *
  * @cipherdata.keylen - key size in bytes
  * @cipherdata.key - key data to inline
@@ -455,77 +648,34 @@ EXPORT_SYMBOL(cnstr_shdsc_wimax_encap);
  *
  * @clear - nonzero clears descriptor buffer
  **/
-
 int32_t cnstr_shdsc_wimax_decap(u_int32_t *descbuf, u_int16_t *bufsize,
-				struct wimax_pdb *pdb,
+				struct wimax_decap_pdb *pdb,
 				struct cipherparams *cipherdata,
-				u_int8_t mode, u_int8_t clear)
+				u_int8_t mode)
 {
-	u_int32_t pdbopts;
-	u_int32_t *start;
+	u_int32_t *start, *keyjump;
 	u_int16_t startidx, endidx;
 
-	start = descbuf++;
+	start = descbuf;
 
-	if (!descbuf)
-		return -1;
+	memcpy(descbuf, pdb, sizeof(struct wimax_decap_pdb));
+	descbuf += sizeof(struct wimax_decap_pdb) >> 2;
 
-	if (clear)
-		memset(start, 0, (*bufsize * sizeof(u_int32_t)));
-
-	/*
-	 * Construct decap PDB
-	 * u24 - (reserved)
-	 * u8  - options
-	 * u32 - nonce
-	 * u8  - IV flags
-	 * u8  - counter flags
-	 * u16 - counter init
-	 * u32 - PN
-	 * u16 - (reserved)
-	 * u16 - antireplay length
-	 * u64 - antireplay scorecard
-	 */
-
-	/* options word */
-	if (pdb->framecheck)
-		pdbopts = 1;
-	if (pdb->antireplay_len)
-		pdbopts |= 0x40;
-	*descbuf++ = pdbopts;
-
-	/* Nonce */
-	pdbopts = pdb->nonce;
-	*descbuf++ = pdbopts;
-
-	/* IV flags / CTR flags / initial counter */
-	pdbopts = (pdb->iv_flags << 24) | (pdb->ctr_flags << 16) |
-		  pdb->ctr_initial_count;
-	*descbuf++ = pdbopts;
-
-	/* PN word */
-	pdbopts = pdb->PN;
-	*descbuf++ = pdbopts;
-
-	/* Antireplay */
-	pdbopts = pdb->antireplay_len;
-	*descbuf++ = pdbopts; /* write length */
-	memset(descbuf, 0, 8);
-	descbuf += 2;
-
-	/* Done with PDB, build key block */
 	startidx = descbuf - start;
-
+	keyjump = descbuf++;
 	descbuf = cmd_insert_key(descbuf, cipherdata->key, cipherdata->keylen,
 				 PTR_DIRECT, KEYDST_KEYREG, KEY_CLEAR,
 				 ITEM_INLINE, ITEM_CLASS1);
 
-	/* end with OPERATION */
+	cmd_insert_jump(keyjump, JUMP_TYPE_LOCAL, CLASS_BOTH, JUMP_TEST_ALL,
+			JUMP_COND_SHRD | JUMP_COND_SELF, descbuf - keyjump,
+			NULL);
+
 	descbuf = cmd_insert_proto_op_wimax(descbuf, mode, DIR_DECAP);
 
 	/* Now compute shared header */
 	endidx = descbuf - start + 1;
-	cmd_insert_shared_hdr(start, startidx, endidx, CTX_ERASE, SHR_SERIAL);
+	cmd_insert_shared_hdr(start, startidx, endidx, CTX_SAVE, SHR_SERIAL);
 	*bufsize = endidx;
 
 	return 0;
@@ -533,19 +683,13 @@ int32_t cnstr_shdsc_wimax_decap(u_int32_t *descbuf, u_int16_t *bufsize,
 EXPORT_SYMBOL(cnstr_shdsc_wimax_decap);
 
 /**
- * MacSec encapsulation
+ * 802.1AE MacSec encapsulation
  *
  * @descbuf - Pointer to descriptor build buffer
  *
  * @bufsize - Pointer to value to write size of built descriptor to
  *
- * pdb.framecheck - nonzero if frame-check-sequence is to be
- *                  included in the output
- * pdb.aad_len - length of AAD to include
- * pdb.sci - SCI, if to be included
- * pdb.PN - packet number
- * pdb.ethertype - 16 bit ethertype to include
- * pdb.tci_an - TCI/AN byte
+ * @pdb - pointer to pre-initialized PDB
  *
  * @cipherdata.keylen - key size in bytes
  * @cipherdata.key - key data to inline
@@ -554,52 +698,31 @@ EXPORT_SYMBOL(cnstr_shdsc_wimax_decap);
  **/
 
 int32_t cnstr_shdsc_macsec_encap(u_int32_t *descbuf, u_int16_t *bufsize,
-				 struct macsec_pdb *pdb,
-				 struct cipherparams *cipherdata,
-				 u_int8_t clear)
+				 struct macsec_encap_pdb *pdb,
+				 struct cipherparams *cipherdata)
 {
-	u_int32_t pdbopts;
-	u_int32_t *start;
+	u_int32_t *start, *keyjump;
 	u_int16_t startidx, endidx;
 
-	start = descbuf++;
+	start = descbuf;
 
-	if (!descbuf)
-		return -1;
+	memcpy(descbuf, pdb, sizeof(struct macsec_encap_pdb));
+	descbuf += sizeof(struct macsec_encap_pdb) >> 2;
 
-	if (clear)
-		memset(start, 0, (*bufsize * sizeof(u_int32_t)));
-
-	/* options word */
-	pdbopts = pdb->aad_len >> 16;
-	if (pdb->framecheck)
-		pdbopts |= 1;
-	*descbuf++ = pdbopts;
-
-	/* SCI */
-	memcpy(descbuf, &pdb->sci, 8);
-	descbuf += 2;
-
-	pdbopts = (pdb->ethertype << 16) | (pdb->tci_an << 8);
-	*descbuf++ = pdbopts;
-
-	/* PN word */
-	pdbopts = pdb->PN;
-	*descbuf++ = pdbopts;
-
-	/* Done with PDB, build key block */
 	startidx = descbuf - start;
-
+	keyjump = descbuf++;
 	descbuf = cmd_insert_key(descbuf, cipherdata->key, cipherdata->keylen,
 				 PTR_DIRECT, KEYDST_KEYREG, KEY_CLEAR,
 				 ITEM_INLINE, ITEM_CLASS1);
 
-	/* end with OPERATION */
+	cmd_insert_jump(keyjump, JUMP_TYPE_LOCAL, CLASS_BOTH, JUMP_TEST_ALL,
+			JUMP_COND_SHRD | JUMP_COND_SELF, descbuf - keyjump,
+			NULL);
+
 	descbuf = cmd_insert_proto_op_macsec(descbuf, DIR_ENCAP);
 
-	/* Now compute shared header */
 	endidx = descbuf - start + 1;
-	cmd_insert_shared_hdr(start, startidx, endidx, CTX_ERASE, SHR_SERIAL);
+	cmd_insert_shared_hdr(start, startidx, endidx, CTX_SAVE, SHR_SERIAL);
 	*bufsize = endidx;
 
 	return 0;
@@ -607,19 +730,13 @@ int32_t cnstr_shdsc_macsec_encap(u_int32_t *descbuf, u_int16_t *bufsize,
 EXPORT_SYMBOL(cnstr_shdsc_macsec_encap);
 
 /**
- * MacSec decapsulation
+ * 802.1AE MacSec decapsulation
  *
  * @descbuf - Pointer to descriptor build buffer
  *
  * @bufsize - Pointer to value to write size of built descriptor to
  *
- * pdb.framecheck - nonzero if frame-check-sequence is on
- * pdb.aad_len - length of AAD used
- * pdb.sci - SCI, if to be used
- * pdb.PN - packet number
- * pdb.ethertype - 16 bit ethertype
- * pdb.tci_an - TCI/AN byte
- * pdb.antireplay_len - antireplay length
+ * @pdb - pointer to pre-initialized PDB
  *
  * @cipherdata.keylen - key size in bytes
  * @cipherdata.key - key data to inline
@@ -627,59 +744,31 @@ EXPORT_SYMBOL(cnstr_shdsc_macsec_encap);
  * @clear - nonzero clears descriptor buffer
  **/
 int32_t cnstr_shdsc_macsec_decap(u_int32_t *descbuf, u_int16_t *bufsize,
-				 struct macsec_pdb *pdb,
-				 struct cipherparams *cipherdata,
-				 u_int8_t clear)
+				 struct macsec_decap_pdb *pdb,
+				 struct cipherparams *cipherdata)
 {
-	u_int32_t pdbopts;
-	u_int32_t *start;
+	u_int32_t *start, *keyjump;
 	u_int16_t startidx, endidx;
 
-	start = descbuf++;
+	start = descbuf;
 
-	if (!descbuf)
-		return -1;
+	memcpy(descbuf, pdb, sizeof(struct macsec_decap_pdb));
+	descbuf += sizeof(struct macsec_decap_pdb) >> 2;
 
-	if (clear)
-		memset(start, 0, (*bufsize * sizeof(u_int32_t)));
-
-	/* options word */
-	pdbopts = pdb->aad_len >> 16;
-	if (pdb->framecheck)
-		pdbopts |= 1;
-	if (pdb->antireplay_len)
-		pdbopts |= 0x40;
-	*descbuf++ = pdbopts;
-
-	/* SCI */
-	memcpy(descbuf, &pdb->sci, 8);
-	descbuf += 2;
-
-	/* antireplay length */
-	pdbopts = pdb->antireplay_len;
-	*descbuf++ = pdbopts;
-
-	/* PN word */
-	pdbopts = pdb->PN;
-	*descbuf++ = pdbopts;
-
-	/* antireplay scorecard */
-	memset(descbuf, 0, 8);
-	descbuf += 2;
-
-	/* Done with PDB, build key block */
 	startidx = descbuf - start;
-
+	keyjump = descbuf++;
 	descbuf = cmd_insert_key(descbuf, cipherdata->key, cipherdata->keylen,
 				 PTR_DIRECT, KEYDST_KEYREG, KEY_CLEAR,
 				 ITEM_INLINE, ITEM_CLASS1);
 
-	/* end with OPERATION */
+	cmd_insert_jump(keyjump, JUMP_TYPE_LOCAL, CLASS_BOTH, JUMP_TEST_ALL,
+			JUMP_COND_SHRD | JUMP_COND_SELF, descbuf - keyjump,
+			NULL);
+
 	descbuf = cmd_insert_proto_op_macsec(descbuf, DIR_DECAP);
 
-	/* Now compute shared header */
 	endidx = descbuf - start + 1;
-	cmd_insert_shared_hdr(start, startidx, endidx, CTX_ERASE, SHR_SERIAL);
+	cmd_insert_shared_hdr(start, startidx, endidx, CTX_SAVE, SHR_SERIAL);
 	*bufsize = endidx;
 
 	return 0;
@@ -699,7 +788,6 @@ EXPORT_SYMBOL(cnstr_shdsc_macsec_decap);
  * @direction - UEA2 direction (1 bit)
  * @clear - nonzero if descriptor buffer clear requested
  **/
-
 int32_t cnstr_shdsc_snow_f8(u_int32_t *descbuf, u_int16_t *bufsize,
 			    u_int8_t *key, u_int32_t keylen,
 			    enum algdir dir, u_int32_t count,
@@ -762,7 +850,7 @@ int32_t cnstr_shdsc_snow_f8(u_int32_t *descbuf, u_int16_t *bufsize,
 	/* Now update the header with size/offsets */
 	endidx = descbuf - start;
 
-	cmd_insert_shared_hdr(start, startidx, endidx, CTX_ERASE, SHR_ALWAYS);
+	cmd_insert_shared_hdr(start, startidx, endidx, CTX_SAVE, SHR_ALWAYS);
 
 	*bufsize = endidx;
 
@@ -783,7 +871,6 @@ EXPORT_SYMBOL(cnstr_shdsc_snow_f8);
  * @direction - UEA2 direction (1 bit)
  * @clear - nonzero if descriptor buffer clear requested
  **/
-
 int32_t cnstr_shdsc_snow_f9(u_int32_t *descbuf, u_int16_t *bufsize,
 			    u_int8_t *key, u_int32_t keylen,
 			    enum algdir dir, u_int32_t count,
@@ -843,15 +930,13 @@ int32_t cnstr_shdsc_snow_f9(u_int32_t *descbuf, u_int16_t *bufsize,
 
 	endidx = descbuf - start;
 
-	cmd_insert_shared_hdr(start, startidx, endidx, CTX_ERASE, SHR_ALWAYS);
+	cmd_insert_shared_hdr(start, startidx, endidx, CTX_SAVE, SHR_ALWAYS);
 
 	*bufsize = endidx;
 
 	return 0;
 }
 EXPORT_SYMBOL(cnstr_shdsc_snow_f9);
-
-
 
 /**
  * CBC blockcipher
@@ -865,7 +950,6 @@ EXPORT_SYMBOL(cnstr_shdsc_snow_f9);
  * @cipher  - OP_ALG_ALGSEL_AES/DES/3DES
  * @clear   - clear buffer before writing
  **/
-
 int32_t cnstr_shdsc_cbc_blkcipher(u_int32_t *descbuf, u_int16_t *bufsize,
 				  u_int8_t *key, u_int32_t keylen,
 				  u_int8_t *iv, u_int32_t ivlen,
@@ -923,7 +1007,7 @@ int32_t cnstr_shdsc_cbc_blkcipher(u_int32_t *descbuf, u_int16_t *bufsize,
 
 	/* Now update the header with size/offsets */
 	endidx = descbuf - start;
-	cmd_insert_shared_hdr(start, startidx, endidx, CTX_ERASE, SHR_ALWAYS);
+	cmd_insert_shared_hdr(start, startidx, endidx, CTX_SAVE, SHR_ALWAYS);
 
 	*bufsize = endidx;
 
@@ -940,7 +1024,6 @@ EXPORT_SYMBOL(cnstr_shdsc_cbc_blkcipher);
  * @icv     - HMAC comparison for ICV, NULL if no check desired
  * @clear   - clear buffer before writing
  **/
-
 int32_t cnstr_shdsc_hmac(u_int32_t *descbuf, u_int16_t *bufsize,
 			 u_int8_t *key, u_int32_t cipher, u_int8_t *icv,
 			 u_int8_t clear)
@@ -992,7 +1075,6 @@ int32_t cnstr_shdsc_hmac(u_int32_t *descbuf, u_int16_t *bufsize,
 	else
 		opicv = ICV_CHECK_OFF;
 
-
 	startidx = descbuf - start;
 
 	descbuf = cmd_insert_key(descbuf, key, storelen * 8, PTR_DIRECT,
@@ -1025,7 +1107,7 @@ int32_t cnstr_shdsc_hmac(u_int32_t *descbuf, u_int16_t *bufsize,
 
 	endidx = descbuf - start;
 
-	cmd_insert_shared_hdr(start, startidx, endidx, CTX_ERASE, SHR_ALWAYS);
+	cmd_insert_shared_hdr(start, startidx, endidx, CTX_SAVE, SHR_ALWAYS);
 
 	*bufsize = endidx;
 
@@ -1046,46 +1128,23 @@ EXPORT_SYMBOL(cnstr_shdsc_hmac);
  * @payload_sz - size of payload (this is not using VLF)
  * @clear - clear descriptor buffer before construction
  **/
-
-/* FIXME: these should be built from bit defs not yet present in desc.h */
-static const u_int32_t rlc_fifo_cmd[] = {
-	/* IFIFO dest=skip,flush,stype=DFIFO,dtype=msg,len=3 */
-	0x04F00003u,
-	 /* IFIFO dest=skip,flush,stype=DFIFO,dtype=msg,len=80 */
-	0x04F00050u,
-	/* IFIFO dest=class1,last1,flush1,stype=DFIFO,dtype=msg,len=80 */
-	0x54F00050u
-};
-
-static const u_int32_t rlc_segnum_mask[] = {
-	0x00000fff,
-	0x00000000
-};
-
-/* misc values for adding immediates to math/move/load/etc. */
-static const u_int32_t cmd_imm_src[] = {
-	0, 1, 19, 16, 4, 60, 8
-};
-
-static const u_int8_t jump_imm_src[] = {
-	-10
-};
-
 int32_t cnstr_pcl_shdsc_3gpp_rlc_decap(u_int32_t *descbuf, u_int16_t *bufsize,
 				       u_int8_t *key, u_int32_t keysz,
 				       u_int32_t count, u_int32_t bearer,
 				       u_int32_t direction,
-				       u_int32_t payload_sz, u_int8_t clear)
+				       u_int16_t payload_sz, u_int8_t clear)
 {
 	u_int32_t *start;
 	u_int16_t startidx, endidx;
 	u_int32_t kctx[2];
+	u_int32_t ififo_cmd;
+	u_int32_t tmp_imm;
+	u_int64_t rlc_segnum_mask = 0x00000fff00000000ull;
 
 	start = descbuf++;
 
 	if (!descbuf)
 		return -1;
-
 
 	/* build count/bearer/direction as register-loadable words */
 	kctx[0] = count;
@@ -1093,167 +1152,314 @@ int32_t cnstr_pcl_shdsc_3gpp_rlc_decap(u_int32_t *descbuf, u_int16_t *bufsize,
 
 	startidx = descbuf - start;
 
-	/* Key */
-	descbuf = cmd_insert_key(descbuf, key, keysz, PTR_DIRECT, KEYDST_KEYREG,
-				 KEY_CLEAR, ITEM_REFERENCE, ITEM_CLASS1);
+	/* Load the cipher key */
+	descbuf = cmd_insert_key(descbuf, key, keysz, PTR_DIRECT,
+				 KEYDST_KEYREG, KEY_CLEAR, ITEM_REFERENCE,
+				 ITEM_CLASS1);
 
-	/* load DCTRL - disable auto Info FIFO entries */
+	/* Shut off automatic Info FIFO entries */
 	descbuf = cmd_insert_load(descbuf, NULL, LDST_CLASS_DECO, 0,
 				  LDST_SRCDST_WORD_DECOCTRL, 0x08, 0x00,
 				  ITEM_INLINE);
 
-	/* get encrypted RLC PDU w/header */
+	/* Read encrypted 83-byte RLC PDU w/header */
 	descbuf = cmd_insert_seq_fifo_load(descbuf, LDST_CLASS_1_CCB, 0,
 					   FIFOLD_TYPE_MSG | FIFOLD_TYPE_LAST1,
 					   83);
 
-	/* load imm Info FIFO */
-	descbuf = cmd_insert_load(descbuf, (u_int32_t *)&rlc_fifo_cmd[1],
-				  LDST_CLASS_DECO, 0,
-				  LDST_SRCDST_WORD_INFO_FIFO, 0, 8,
+	/* Stuff info-fifo with 3-byte then payload-size flush */
+	ififo_cmd = 0x04F00003; /* FIXME: bitdefs in desc.h would be better */
+	descbuf = cmd_insert_load(descbuf, &ififo_cmd,
+				  LDST_CLASS_IND_CCB, 0,
+				  LDST_SRCDST_WORD_INFO_FIFO, 0, 4,
 				  ITEM_INLINE);
 
-	/* load imm Info FIFO */
-	descbuf = cmd_insert_load(descbuf, (u_int32_t *)&rlc_fifo_cmd[2],
-				  LDST_CLASS_DECO, 0,
-				  LDST_SRCDST_WORD_INFO_FIFO, 0, 8,
+	ififo_cmd = 0x04f00000 | payload_sz;
+	descbuf = cmd_insert_load(descbuf, &ififo_cmd,
+				  LDST_CLASS_IND_CCB, 0,
+				  LDST_SRCDST_WORD_INFO_FIFO, 0, 4,
 				  ITEM_INLINE);
 
-	/* load imm MATH0 */
+	/* Now load prebuilt cipher context for KFHA */
 	descbuf = cmd_insert_load(descbuf, kctx, LDST_CLASS_DECO, 0,
 				  LDST_SRCDST_WORD_DECO_MATH0, 0, 8,
 				  ITEM_INLINE);
 
-	/* add imm: IFIFO + 0 -> MATH1 (3B from InfoFIFO) */
+	/* Get PDU header, left align, and store */
+	tmp_imm = 0;
 	descbuf = cmd_insert_math(descbuf, MATH_FUN_ADD, MATH_SRC0_IMM,
-				  MATH_SRC1_INFIFO, MATH_DEST_REG0, 8, 0, 0,
-				  MATH_IFB, (u_int32_t *)&cmd_imm_src[0]);
+				  MATH_SRC1_INFIFO, MATH_DEST_REG1, 8, 0, 0,
+				  MATH_IFB, &tmp_imm);
 
-	/* shl imm: MATH1 << 4 -> MATH1 (left-align RLC PDU header) */
-	descbuf = cmd_insert_math(descbuf, MATH_FUN_ADD, MATH_SRC0_REG0,
+	tmp_imm = 4;
+	descbuf = cmd_insert_math(descbuf, MATH_FUN_LSHIFT, MATH_SRC0_REG1,
 				  MATH_SRC1_IMM, MATH_DEST_REG1, 8, 0, 0,
-				  MATH_IFB, (u_int32_t *)&cmd_imm_src[1]);
+				  MATH_IFB, &tmp_imm);
 
-	/* MATH1 (2B PDU) -> OFIFO (8 bytes get moved) */
 	descbuf = cmd_insert_move(descbuf, 0, MOVE_SRC_MATH1,
 				  MOVE_DEST_OUTFIFO, 0, 2);
 
-	/* Store 2-byte PDU header */
 	descbuf = cmd_insert_seq_fifo_store(descbuf, LDST_CLASS_IND_CCB, 0,
 					    FIFOST_TYPE_MESSAGE_DATA, 2);
 
-	/* wait for DMA CALM */
-	descbuf = cmd_insert_jump(descbuf, JUMP_TYPE_LOCAL, JUMP_TEST_ALL,
-				  JUMP_COND_CALM, 1, NULL);
+	/* wait for DMA CALM before proceeding */
+	descbuf = cmd_insert_jump(descbuf, CLASS_NONE, JUMP_TYPE_LOCAL,
+				  JUMP_TEST_ALL, JUMP_COND_CALM, 1, NULL);
 
-	/* DCTRL - reset OFIFO to flush extra 6 bytes */
+	/* reset output FIFO */
 	descbuf = cmd_insert_load(descbuf, NULL, LDST_CLASS_DECO, 0,
 				  LDST_SRCDST_WORD_DECOCTRL, 0, 32,
 				  ITEM_INLINE);
 
-	/* shr imm MATH1 -> MATH2 (align seqnum with PPDB data) */
+	/* Align sequence number with PPDB, add it, then use as c1 context */
+	tmp_imm = 19;
 	descbuf = cmd_insert_math(descbuf, MATH_FUN_RSHIFT, MATH_SRC0_REG1,
 				  MATH_SRC1_IMM, MATH_DEST_REG2, 8, 0, 0,
-				  MATH_IFB, (u_int32_t *)&cmd_imm_src[2]);
+				  MATH_IFB, &tmp_imm);
 
-	/* mask Math2 to isolate seqnum */
 	descbuf = cmd_insert_math(descbuf, MATH_FUN_AND, MATH_SRC0_REG2,
 				  MATH_SRC1_IMM, MATH_DEST_REG2, 8, 0, 0, 0,
-				  (u_int32_t *)rlc_segnum_mask);
+				  (u_int32_t *)&rlc_segnum_mask);
 
-	/* add seqnum to PPDB data */
 	descbuf = cmd_insert_math(descbuf, MATH_FUN_ADD, MATH_SRC0_REG0,
-				  MATH_SRC1_REG2, MATH_DEST_REG1, 8, 0, 0,
+				  MATH_SRC1_REG2, MATH_DEST_REG0, 8, 0, 0,
 				  0, NULL);
 
-	/* MATH0 (PPDB data) -> CTX1 */
 	descbuf = cmd_insert_move(descbuf, 0, MOVE_SRC_MATH0,
 				  MOVE_DEST_CLASS1CTX, 0, 8);
 
-	/* shl imm: MATH1 << 16 -> MATH1 (4 bits left) */
+	/* shift sequence number left 4 */
+	tmp_imm = 16;
 	descbuf = cmd_insert_math(descbuf, MATH_FUN_LSHIFT, MATH_SRC0_REG1,
 				  MATH_SRC1_IMM, MATH_DEST_REG1, 8, 0, 0,
-				  0, (u_int32_t *)&cmd_imm_src[3]);
+				  MATH_IFB, &tmp_imm);
 
-	/* load imm MATH3 */
-	descbuf = cmd_insert_load(descbuf, &payload_sz, LDST_CLASS_DECO,
+	tmp_imm = payload_sz; /* convert to 32-bit immediate */
+	descbuf = cmd_insert_load(descbuf, &tmp_imm, LDST_CLASS_DECO,
 				  0, LDST_SRCDST_WORD_DECO_MATH3, 0, 4,
 				  ITEM_INLINE);
 
-	/* add imm: IFIFO (next 8B of payload) + 0 -> MATH2 */
+	/*
+	 * Top of payload loop. Process 8 bytes of payload,
+	 * shift right to M0
+	 */
+	tmp_imm = 0;
 	descbuf = cmd_insert_math(descbuf, MATH_FUN_ADD, MATH_SRC0_IMM,
 				  MATH_SRC1_INFIFO, MATH_DEST_REG2,
-				  8, 0, 0, 0, (u_int32_t *)&cmd_imm_src[0]);
+				  8, 0, 0, MATH_IFB, &tmp_imm);
 
-	/* shr imm: Math2 >> 4 -> MATH0 */
+	tmp_imm = 4;
 	descbuf = cmd_insert_math(descbuf, MATH_FUN_RSHIFT, MATH_SRC0_REG2,
 				  MATH_SRC1_IMM, MATH_DEST_REG0,
-				  8, 0, 0, 0, (u_int32_t *)&cmd_imm_src[4]);
+				  8, 0, 0, MATH_IFB, &tmp_imm);
 
-	/* or: MATH0 (60 lsbs) | MATH1 (4 msbs) -> MATH1 */
+	/* 64 bits to in fifo */
 	descbuf = cmd_insert_math(descbuf, MATH_FUN_OR, MATH_SRC0_REG0,
 				  MATH_SRC1_REG1, MATH_DEST_REG1, 8, 0, 0, 0,
 				  NULL);
 
-	/* MATH1 -> IFIFO */
 	descbuf = cmd_insert_move(descbuf, 0, MOVE_SRC_MATH1,
 				  MOVE_DEST_CLASS1INFIFO, 0, 8);
 
-	/* shl imm: MATH2 << 60 -> MATH1 */
+	tmp_imm = 60;
 	descbuf = cmd_insert_math(descbuf, MATH_FUN_LSHIFT, MATH_SRC0_REG2,
-				  MATH_SRC1_IMM, MATH_DEST_REG1, 8, 0, 0, 0,
-				  (u_int32_t *)&cmd_imm_src[5]);
+				  MATH_SRC1_IMM, MATH_DEST_REG1, 8, 0, 0,
+				  MATH_IFB, &tmp_imm);
 
-	/* dec MATH3 by 8 (number of bytes loaded) */
+	/* M3 = data processed */
+	tmp_imm = 8;
 	descbuf = cmd_insert_math(descbuf, MATH_FUN_SUB, MATH_SRC0_REG3,
 				  MATH_SRC1_IMM, MATH_DEST_REG3, 8, 0, 0,
-				  MATH_IFB, (u_int32_t *)&cmd_imm_src[6]);
+				  MATH_IFB, &tmp_imm);
 
-	/* jump back to L1 if MATH3 counter indicates more data */
-	descbuf = cmd_insert_jump(descbuf, JUMP_TYPE_LOCAL, JUMP_TEST_ALL,
+	/* end of 8 byte processing loop, go back to top if more  */
+	descbuf = cmd_insert_jump(descbuf, CLASS_NONE, JUMP_TYPE_LOCAL,
+				  JUMP_TEST_INVALL,
 				  JUMP_COND_MATH_NV | JUMP_COND_MATH_Z,
-				  jump_imm_src[0], NULL);
+				  -11, NULL);
 
-	/* load Class1 Data Size (exec before InfoFIFO entry made w/last1) */
-	descbuf = cmd_insert_load(descbuf, &payload_sz, LDST_CLASS_1_CCB,
+	/* Get c1 data size */
+	tmp_imm = payload_sz; /* convert to 32-bit imm value */
+	descbuf = cmd_insert_load(descbuf, &tmp_imm, LDST_CLASS_1_CCB,
 				  0, LDST_SRCDST_WORD_DATASZ_REG, 0, 4,
 				  ITEM_INLINE);
 
-	/* load Info FIFO */
-	descbuf = cmd_insert_load(descbuf, (u_int32_t *)&rlc_fifo_cmd[3],
-				  LDST_CLASS_DECO, 0,
+	/* Set up info-fifo for OP, store, wait for done */
+	ififo_cmd = 0x54f00000 | payload_sz;
+	descbuf = cmd_insert_load(descbuf, &ififo_cmd, LDST_CLASS_IND_CCB, 0,
 				  LDST_SRCDST_WORD_INFO_FIFO, 0, 4,
 				  ITEM_INLINE);
 
-	/* operation KFHA f8 initfinal */
 	descbuf = cmd_insert_alg_op(descbuf, OP_TYPE_CLASS1_ALG,
 				    OP_ALG_ALGSEL_KASUMI, OP_ALG_AAI_F8,
 				    OP_ALG_AS_INITFINAL, ICV_CHECK_OFF,
-				    DIR_ENCRYPT);
+				    DIR_DECRYPT);
 
-	/* store msg */
-	descbuf = cmd_insert_seq_fifo_store(descbuf, LDST_CLASS_1_CCB, 0,
+	descbuf = cmd_insert_seq_fifo_store(descbuf, LDST_CLASS_IND_CCB, 0,
 					    FIFOST_TYPE_MESSAGE_DATA,
 					    payload_sz);
 
-	/* wait for CLASS1 CHA done */
-	descbuf = cmd_insert_jump(descbuf, JUMP_TYPE_LOCAL,
+	descbuf = cmd_insert_jump(descbuf, CLASS_1, JUMP_TYPE_LOCAL,
 				  JUMP_TEST_ALL, 0, 1, NULL);
 
-	/* load imm to cha ClrWrittenReg to clear mode */
-	descbuf = cmd_insert_load(descbuf, (u_int32_t *)&cmd_imm_src[1],
-				  LDST_CLASS_IND_CCB, 0,
+	/*
+	 * Cleanup. Clear mode, and release CHA
+	 */
+	tmp_imm = 1;
+	descbuf = cmd_insert_load(descbuf, &tmp_imm, LDST_CLASS_IND_CCB, 0,
 				  LDST_SRCDST_WORD_CLRW, 0, 4, ITEM_INLINE);
 
-	/* load imm to cha CTL to release KFHA */
-	descbuf = cmd_insert_load(descbuf, (u_int32_t *)&cmd_imm_src[3],
-				  LDST_CLASS_IND_CCB, 0,
+	tmp_imm = 0x10;
+	descbuf = cmd_insert_load(descbuf, &tmp_imm, LDST_CLASS_IND_CCB, 0,
 				  LDST_SRCDST_WORD_CHACTRL, 0, 4, ITEM_INLINE);
 
-	endidx = descbuf - start + 1; /* add 1 to include header */
+	/* Finally, header update once length known */
+	endidx = descbuf - start;
 	cmd_insert_shared_hdr(start, startidx, endidx, CTX_ERASE, SHR_ALWAYS);
 
 	*bufsize = endidx;
 
 	return 0;
 }
+EXPORT_SYMBOL(cnstr_pcl_shdsc_3gpp_rlc_decap);
+
+int32_t cnstr_pcl_shdsc_3gpp_rlc_encap(u_int32_t *descbuf, u_int16_t *bufsize,
+				       u_int8_t *key, u_int32_t keysz,
+				       u_int32_t count, u_int32_t bearer,
+				       u_int32_t direction,
+				       u_int16_t payload_sz)
+{
+	u_int32_t *start;
+	u_int16_t startidx, endidx;
+	u_int32_t kctx[2];
+	u_int32_t tmp_imm;
+
+	start = descbuf++;
+
+	if (!descbuf)
+		return -1;
+
+	/* build count/bearer/direction as register-loadable words */
+	kctx[0] = count;
+	kctx[1] = ((bearer & 0x1f) << 27) | ((direction & 0x01) << 26);
+
+	startidx = descbuf - start;
+
+	descbuf = cmd_insert_seq_load(descbuf, LDST_CLASS_DECO, 0,
+				      LDST_SRCDST_WORD_DECO_MATH1, 0, 2);
+
+	descbuf = cmd_insert_load(descbuf, kctx, LDST_CLASS_DECO, 0,
+				  LDST_SRCDST_WORD_DECO_MATH0, 0, 8,
+				  ITEM_INLINE);
+
+	descbuf = cmd_insert_key(descbuf, key, keysz, PTR_DIRECT,
+				 KEYDST_KEYREG, KEY_CLEAR, ITEM_REFERENCE,
+				 ITEM_CLASS1);
+
+	descbuf = cmd_insert_seq_fifo_load(descbuf, CLASS_1, 0,
+					   FIFOLD_TYPE_LAST1, payload_sz);
+
+	descbuf = cmd_insert_jump(descbuf, JUMP_TYPE_LOCAL, CLASS_NONE,
+				  JUMP_TEST_ALL, JUMP_COND_CALM, 1, NULL);
+
+	tmp_imm = 4;
+	descbuf = cmd_insert_math(descbuf, MATH_FUN_RSHIFT, MATH_SRC0_REG1,
+				  MATH_SRC1_IMM, MATH_DEST_REG1, 8, 0, 0,
+				  MATH_IFB, &tmp_imm);
+
+	tmp_imm = 15;
+	descbuf = cmd_insert_math(descbuf, MATH_FUN_RSHIFT, MATH_SRC0_REG1,
+				  MATH_SRC1_IMM, MATH_DEST_REG2, 8, 0, 0,
+				  MATH_IFB, &tmp_imm);
+
+	tmp_imm = 0x0fff0000;
+	descbuf = cmd_insert_math(descbuf, MATH_FUN_AND, MATH_SRC0_REG2,
+				  MATH_SRC1_IMM, MATH_DEST_REG2, 8, 0, 0,
+				  0, &tmp_imm);
+
+	descbuf = cmd_insert_math(descbuf, MATH_FUN_ADD, MATH_SRC0_REG0,
+				  MATH_SRC1_REG2, MATH_DEST_REG0, 8, 0, 0, 0,
+				  NULL);
+
+	descbuf = cmd_insert_move(descbuf, 0, MOVE_SRC_MATH0,
+				  MOVE_DEST_CLASS1CTX, 0, 8);
+
+	descbuf = cmd_insert_alg_op(descbuf, OP_TYPE_CLASS1_ALG,
+				    OP_ALG_ALGSEL_KASUMI, OP_ALG_AAI_F8,
+				    OP_ALG_AS_INITFINAL, ICV_CHECK_OFF,
+				    DIR_ENCRYPT);
+
+	tmp_imm = payload_sz + 3;
+	descbuf = cmd_insert_load(descbuf, &tmp_imm, LDST_CLASS_DECO, 0,
+				  LDST_SRCDST_WORD_DECO_MATH3, 0, 4,
+				  ITEM_INLINE);
+
+	descbuf = cmd_insert_jump(descbuf, JUMP_TYPE_LOCAL, CLASS_1,
+				  JUMP_TEST_ALL, 0, 1, NULL);
+
+	tmp_imm = 1;
+	descbuf = cmd_insert_load(descbuf, &tmp_imm, LDST_CLASS_IND_CCB,
+				  0, LDST_SRCDST_WORD_CLRW, 0, 4,
+				  ITEM_INLINE);
+
+	tmp_imm = 0x10;
+	descbuf = cmd_insert_load(descbuf, &tmp_imm, LDST_CLASS_IND_CCB,
+				  0, LDST_SRCDST_WORD_CHACTRL, 0, 4,
+				  ITEM_INLINE);
+
+	tmp_imm = 0;
+	descbuf = cmd_insert_math(descbuf, MATH_FUN_AND, MATH_SRC0_ZERO,
+				  MATH_SRC1_REG2, MATH_DEST_REG2, 8, MATH_NFU,
+				  0, MATH_IFB, &tmp_imm);
+
+	descbuf = cmd_insert_jump(descbuf, JUMP_TYPE_LOCAL, CLASS_NONE,
+				  JUMP_TEST_ANY, JUMP_COND_MATH_Z, 2, NULL);
+
+	descbuf = cmd_insert_move(descbuf, MOVE_WAITCOMP, MOVE_SRC_OUTFIFO,
+				  MOVE_DEST_MATH2, 0, 8);
+
+	tmp_imm = 20;
+	descbuf = cmd_insert_math(descbuf, MATH_FUN_RSHIFT, MATH_SRC0_REG2,
+				  MATH_SRC1_IMM, MATH_DEST_REG0, 8, 0, 0,
+				  MATH_IFB, &tmp_imm);
+
+	descbuf = cmd_insert_math(descbuf, MATH_FUN_OR, MATH_SRC0_REG0,
+				  MATH_SRC1_REG1, MATH_DEST_REG1, 8, 0, 0, 0,
+				  NULL);
+
+	descbuf = cmd_insert_move(descbuf, 0, MOVE_SRC_MATH1, MOVE_DEST_OUTFIFO,
+				  0, 8);
+
+	tmp_imm = 8;
+	descbuf = cmd_insert_math(descbuf, MATH_FUN_SUB, MATH_SRC0_REG3,
+				  MATH_SRC1_IMM, MATH_DEST_REG3, 8, 0, 0,
+				  MATH_IFB, &tmp_imm);
+
+	tmp_imm = 44;
+	descbuf = cmd_insert_math(descbuf, MATH_FUN_LSHIFT, MATH_SRC0_REG2,
+				  MATH_SRC1_IMM, MATH_DEST_REG1, 8, 0, 0,
+				  MATH_IFB, &tmp_imm);
+
+	descbuf = cmd_insert_jump(descbuf, JUMP_TYPE_LOCAL, CLASS_NONE,
+				  JUMP_TEST_ANY, JUMP_COND_MATH_NV, 4, NULL);
+
+	tmp_imm = 0xfffc;
+	descbuf = cmd_insert_math(descbuf, MATH_FUN_AND, MATH_SRC0_REG3,
+				  MATH_SRC1_IMM, MATH_DEST_NONE, 4, 0, 0,
+				  MATH_IFB, &tmp_imm);
+
+	descbuf = cmd_insert_jump(descbuf, JUMP_TYPE_LOCAL, CLASS_NONE,
+				  JUMP_TEST_ALL, 0, -14, NULL);
+
+	descbuf = cmd_insert_seq_store(descbuf, FIFOLD_CLASS_SKIP, 0,
+				       FIFOST_TYPE_MESSAGE_DATA, 0,
+				       payload_sz + 3);
+
+	endidx = descbuf - start;
+	cmd_insert_shared_hdr(start, startidx, endidx, CTX_ERASE, SHR_ALWAYS);
+
+	*bufsize = endidx;
+
+	return 0;
+}
+EXPORT_SYMBOL(cnstr_pcl_shdsc_3gpp_rlc_encap);

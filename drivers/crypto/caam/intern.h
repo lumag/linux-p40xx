@@ -42,6 +42,17 @@
 /* Currently comes from Kconfig param as a ^2 (driver-required) */
 #define JOBQ_DEPTH (1 << CONFIG_CRYPTO_DEV_FSL_CAAM_RINGSIZE)
 
+/* Kconfig params for interrupt coalescing if selected (else zero) */
+#ifdef CONFIG_CRYPTO_DEV_FSL_CAAM_INTC
+#define JOBQ_INTC JQCFG_ICEN
+#define JOBQ_INTC_TIME_THLD CONFIG_CRYPTO_DEV_FSL_CAAM_INTC_TIME_THLD
+#define JOBQ_INTC_COUNT_THLD CONFIG_CRYPTO_DEV_FSL_CAAM_INTC_COUNT_THLD
+#else
+#define JOBQ_INTC 0
+#define JOBQ_INTC_TIME_THLD 0
+#define JOBQ_INTC_COUNT_THLD 0
+#endif
+
 /*
  * Storage for tracking each in-process entry moving across a queue
  * Each entry on an output ring needs one of these
@@ -64,14 +75,13 @@ struct caam_drv_private_jq {
 
 	/* Job ring info */
 	int ringsize;	/* Size of rings (assume input = output) */
-	int inp_ring_write_index;	/* Input index "tail" */
-	int out_ring_read_index;	/* Output index "tail" */
-	int *inpring;	/* Base of input ring, alloc DMA-safe */
-	struct jq_outentry *outring;	/* Base of output ring, DMA-safe */
 	struct caam_jqentry_info *entinfo; 	/* Alloc'ed 1 per ring entry */
-	spinlock_t inplock;	/* Input ring index lock */
-	spinlock_t outlock;	/* Output ring index lock */
-
+	spinlock_t inplock ____cacheline_aligned; /* Input ring index lock */
+	int inp_ring_write_index;	/* Input index "tail" */
+	int *inpring;	/* Base of input ring, alloc DMA-safe */
+	spinlock_t outlock ____cacheline_aligned; /* Output ring index lock */
+	int out_ring_read_index;	/* Output index "tail" */
+	struct jq_outentry *outring;	/* Base of output ring, DMA-safe */
 };
 
 /*
@@ -107,6 +117,22 @@ struct caam_drv_private {
 	struct device *algapi_jq;
 	/* list of registered crypto algorithms (mk generic context handle?) */
 	struct list_head alg_list;
+
+	/*
+	 * debugfs entries for developer view into driver/device
+	 * variables at runtime.
+	 */
+#ifdef CONFIG_DEBUG_FS
+	struct dentry *dfs_root;
+	struct dentry *ctl; /* controller dir */
+	struct dentry *ctl_rq_dequeued, *ctl_ob_enc_req, *ctl_ib_dec_req;
+	struct dentry *ctl_ob_enc_bytes, *ctl_ob_prot_bytes;
+	struct dentry *ctl_ib_dec_bytes, *ctl_ib_valid_bytes;
+	struct dentry *ctl_faultaddr, *ctl_faultdetail, *ctl_faultstatus;
+
+	struct debugfs_blob_wrapper ctl_kek_wrap, ctl_tkek_wrap, ctl_tdsk_wrap;
+	struct dentry *ctl_kek, *ctl_tkek, *ctl_tdsk;
+#endif
 };
 
 void caam_jq_algapi_init(struct device *dev);

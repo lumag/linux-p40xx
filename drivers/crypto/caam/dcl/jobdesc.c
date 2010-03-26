@@ -36,6 +36,8 @@
 #include "../compat.h"
 #include "dcl.h"
 
+/* Sizes for MDHA pads (*not* keys): MD5, SHA1, 224, 256, 384, 512 */
+static const u_int8_t mdpadlen[] = { 16, 20, 32, 32, 64, 64 };
 
 /**
  * cnstr_seq_jobdesc() - Construct simple sequence job descriptor
@@ -94,10 +96,7 @@ int cnstr_seq_jobdesc(u_int32_t *jobdesc, u_int16_t *jobdescsz,
 
 	return 0;
 }
-
-
-
-
+EXPORT_SYMBOL(cnstr_seq_jobdesc);
 
 /**
  * Construct a blockcipher request as a single job
@@ -115,7 +114,6 @@ int cnstr_seq_jobdesc(u_int32_t *jobdesc, u_int16_t *jobdescsz,
  * @cipher - algorithm from OP_ALG_ALGSEL_
  * @clear - clear descriptor buffer before construction
  **/
-
 int cnstr_jobdesc_blkcipher_cbc(u_int32_t *descbuf, u_int16_t *bufsz,
 				u_int8_t *data_in, u_int8_t *data_out,
 				u_int32_t datasz,
@@ -173,18 +171,16 @@ int cnstr_jobdesc_blkcipher_cbc(u_int32_t *descbuf, u_int16_t *bufsz,
 					    FIFOLDST_VLF,
 					    FIFOST_TYPE_MESSAGE_DATA, 0);
 
-
 	/* Now update the header with size/offsets */
 	endidx = descbuf - start;
-	cmd_insert_hdr(start, 0, endidx, SHR_NEVER, SHRNXT_LENGTH,
+	cmd_insert_hdr(start, 1, endidx, SHR_NEVER, SHRNXT_LENGTH,
 		       ORDER_FORWARD, DESC_STD);
 
 	*bufsz = endidx;
 
 	return 0;
 }
-
-
+EXPORT_SYMBOL(cnstr_jobdesc_blkcipher_cbc);
 
 /**
  * HMAC as a single job
@@ -198,7 +194,6 @@ int cnstr_jobdesc_blkcipher_cbc(u_int32_t *descbuf, u_int16_t *bufsz,
  * @icv     - HMAC comparison for ICV, NULL if no check desired
  * @clear   - clear buffer before writing
  **/
-
 int32_t cnstr_jobdesc_hmac(u_int32_t *descbuf, u_int16_t *bufsize,
 			   u_int8_t *msg, u_int32_t msgsz, u_int8_t *digest,
 			   u_int8_t *key, u_int32_t cipher, u_int8_t *icv,
@@ -246,7 +241,6 @@ int32_t cnstr_jobdesc_hmac(u_int32_t *descbuf, u_int16_t *bufsize,
 	else
 		opicv = ICV_CHECK_OFF;
 
-
 	startidx = descbuf - start;
 
 	descbuf = cmd_insert_key(descbuf, key, storelen * 8, PTR_DIRECT,
@@ -267,7 +261,7 @@ int32_t cnstr_jobdesc_hmac(u_int32_t *descbuf, u_int16_t *bufsize,
 				   ITEM_REFERENCE);
 
 	endidx = descbuf - start;
-	cmd_insert_hdr(start, 0, endidx, SHR_NEVER, SHRNXT_LENGTH,
+	cmd_insert_hdr(start, 1, endidx, SHR_NEVER, SHRNXT_LENGTH,
 		       ORDER_FORWARD, DESC_STD);
 
 	*bufsize = endidx;
@@ -275,6 +269,273 @@ int32_t cnstr_jobdesc_hmac(u_int32_t *descbuf, u_int16_t *bufsize,
 	return 0;
 }
 EXPORT_SYMBOL(cnstr_jobdesc_hmac);
+
+/**
+ * Generate an MDHA split key - cnstr_jobdesc_mdsplitkey()
+ *
+ * @descbuf - pointer to buffer to hold constructed descriptor
+ *
+ * @bufsiz - pointer to size of descriptor once constructed
+ *
+ * @key - HMAC key to generate ipad/opad from. Size is determined
+ *        by cipher. Note that SHA224/384 pads are not truncated.
+ *
+ *                              keysize  splitsize  buffersize
+ *        ----------------------------------------------------
+ *	  - OP_ALG_ALGSEL_MD5    = 16        32         32
+ *	  - OP_ALG_ALGSEL_SHA1   = 20        40         48
+ *	  - OP_ALG_ALGSEL_SHA224 = 28        64         64
+ *	  - OP_ALG_ALGSEL_SHA256 = 32        64         64
+ *	  - OP_ALG_ALGSEL_SHA384 = 48       128        128
+ *	  - OP_ALG_ALGSEL_SHA512 = 64       128        128
+ *
+ * @cipher - HMAC algorithm selection, one of OP_ALG_ALGSEL_
+ *
+ * @padbuf - buffer to store generated ipad/opad. Should be 2x
+ *           the (untruncated) HMAC keysize for chosen cipher
+ *           rounded up to the nearest 16-byte boundary
+ *           (16 bytes = AES blocksize). See the table under "key"
+ *           above.
+ **/
+int cnstr_jobdesc_mdsplitkey(u_int32_t *descbuf, u_int16_t *bufsize,
+			     u_int8_t *key, u_int32_t cipher,
+			     u_int8_t *padbuf)
+{
+	u_int32_t *start;
+	u_int16_t startidx, endidx;
+	u_int8_t keylen, storelen;
+
+	start = descbuf++;
+	startidx = descbuf - start;
+
+	/* Pick key length from cipher submask as an enum */
+	keylen = mdpadlen[(cipher & OP_ALG_ALGSEL_SUBMASK) >>
+			  OP_ALG_ALGSEL_SHIFT];
+
+	storelen = keylen * 2;
+
+	/* Load the HMAC key */
+	descbuf = cmd_insert_key(descbuf, key, keylen * 8, PTR_DIRECT,
+				 KEYDST_KEYREG, KEY_CLEAR, ITEM_REFERENCE,
+				 ITEM_CLASS2);
+
+	/*
+	 * Select HMAC op with init only, this sets up key unroll
+	 * Have DECRYPT selected here, although MDHA doesn't care
+	 */
+	descbuf = cmd_insert_alg_op(descbuf, OP_TYPE_CLASS2_ALG, cipher,
+				    OP_ALG_AAI_HMAC, MDSTATE_INIT,
+				    ICV_CHECK_OFF, DIR_DECRYPT);
+
+	/* FIFO load of 0 to kickstart MDHA (this will generate pads) */
+	descbuf = cmd_insert_fifo_load(descbuf, NULL, 0, LDST_CLASS_2_CCB,
+				       0, FIFOLD_IMM, 0,
+				       (FIFOLD_TYPE_MSG | FIFOLD_TYPE_LAST2));
+
+	/* Wait for store to complete before proceeding */
+	/* This is a tapeout1 dependency */
+	descbuf = cmd_insert_jump(descbuf, JUMP_TYPE_LOCAL, CLASS_2,
+				  JUMP_TEST_ALL, 0,
+				  1, NULL);
+
+	/* Now store the split key pair with that specific type */
+	descbuf = cmd_insert_fifo_store(descbuf, padbuf, storelen,
+					LDST_CLASS_2_CCB, 0, 0, 0,
+					FIFOST_TYPE_SPLIT_KEK);
+
+	endidx = descbuf - start;
+	cmd_insert_hdr(start, 1, endidx, SHR_NEVER, SHRNXT_LENGTH,
+		       ORDER_FORWARD, DESC_STD);
+
+	*bufsize = endidx;
+
+	return 0;
+}
+EXPORT_SYMBOL(cnstr_jobdesc_mdsplitkey);
+
+/**
+ * Constructs an AES-GCM job descriptor - cnstr_jobdesc_aes_gcm()
+ *
+ * @descbuf - pointer to buffer that will hold constructed descriptor
+ * @bufsize - pointer to size of descriptor once constructed
+ * @key - pointer to AES key
+ * @keylen - AES key size
+ * @ctx - pointer to GCM context. This is a concatenation of:
+ *        - MAC (128 bits)
+ *        - Yi (128 bits)
+ *        - Y0 (128 bits)
+ *        - IV (64 bits)
+ *        - Text bitsize (64 bits)
+ *        See the AESA section of the blockguide for more information
+ * @mdstate - select MDSTATE_UPDATE, MDSTATE_INIT, or MDSTATE_FINAL if a
+ *            partial MAC operation is desired, else select MDSTATE_COMPLETE
+ * @icv - select ICV_CHECK_ON if an ICV mac compare is requested
+ * @dir - select DIR_ENCRYPT or DIR_DECRYPT as needed for the cipher operation
+ * @in - pointer to input text buffer
+ * @out - pointer to output text buffer
+ * @size - size of data to be processed
+ * @mac - pointer to output MAC. This can point to the head of CTX if an
+ *        updated MAC is required for subsequent operations
+ **/
+int cnstr_jobdesc_aes_gcm(u_int32_t *descbuf, u_int16_t *bufsize,
+			  u_int8_t *key, u_int32_t keylen, u_int8_t *ctx,
+			  enum mdstatesel mdstate, enum icvsel icv,
+			  enum algdir dir, u_int8_t *in, u_int8_t *out,
+			  u_int16_t size, u_int8_t *mac)
+{
+	u_int32_t *start;
+	u_int16_t startidx, endidx;
+
+	start = descbuf++;
+	startidx = descbuf - start;
+
+	descbuf = cmd_insert_key(descbuf, key, keylen * 8, PTR_DIRECT,
+				 KEYDST_KEYREG, KEY_CLEAR, ITEM_REFERENCE,
+				 ITEM_CLASS1);
+
+	descbuf = cmd_insert_alg_op(descbuf, OP_TYPE_CLASS1_ALG,
+			     OP_ALG_ALGSEL_AES, OP_ALG_AAI_GCM,
+			     mdstate, icv, dir);
+
+	descbuf = cmd_insert_load(descbuf, ctx, LDST_CLASS_1_CCB, 0,
+				  LDST_SRCDST_BYTE_CONTEXT, 0, 64,
+				  ITEM_REFERENCE);
+
+	descbuf = cmd_insert_fifo_load(descbuf, in, size, LDST_CLASS_1_CCB,
+				       0, 0, 0,
+				       FIFOLD_TYPE_MSG | FIFOLD_TYPE_LAST1);
+
+	descbuf = cmd_insert_fifo_store(descbuf, out, size, FIFOLD_CLASS_SKIP,
+					0, 0, 0, FIFOST_TYPE_MESSAGE_DATA);
+
+	descbuf = cmd_insert_store(descbuf, mac, LDST_CLASS_1_CCB, 0,
+				   LDST_SRCDST_BYTE_CONTEXT, 0, 64,
+				   ITEM_REFERENCE);
+
+	endidx = descbuf - start;
+	cmd_insert_hdr(start, 1, endidx, SHR_NEVER, SHRNXT_LENGTH,
+		       ORDER_FORWARD, DESC_STD);
+
+	*bufsize = endidx;
+
+	return 0;
+}
+EXPORT_SYMBOL(cnstr_jobdesc_aes_gcm);
+
+/**
+ * Generate a Kasumi f8 job descriptor - cnstr_jobdesc_kasumi_f8()
+ *
+ * @descbuf - pointer to buffer that will hold constructed descriptor
+ * @bufsize - pointer to size of descriptor once constructed
+ * @key - pointer to KFHA cipher key
+ * @keylen - cipher key length
+ * @dir - select DIR_ENCRYPT or DIR_DECRYPT as needed
+ * @ctx - points to preformatted f8 context block, containing 32-bit count
+ *        (word 0), bearer (word 1 bits 0:5), direction (word 1 bit 6),
+ *        ca (word 1 bits 7:16), and cb (word 1 bits 17:31). Refer to the
+ *        KFHA section of the block guide for more detail.
+ * @in - pointer to input data text
+ * @out - pointer to output data text
+ * @size - size of data to be processed
+ **/
+int cnstr_jobdesc_kasumi_f8(u_int32_t *descbuf, u_int16_t *bufsize,
+			    u_int8_t *key, u_int32_t keylen,
+			    enum algdir dir, u_int32_t *ctx,
+			    u_int8_t *in, u_int8_t *out, u_int16_t size)
+{
+	u_int32_t *start;
+	u_int16_t startidx, endidx;
+
+	start = descbuf++;
+	startidx = descbuf - start;
+
+	descbuf = cmd_insert_key(descbuf, key, keylen, PTR_DIRECT,
+				 KEYDST_KEYREG, KEY_CLEAR, ITEM_REFERENCE,
+				 ITEM_CLASS1);
+
+	descbuf = cmd_insert_alg_op(descbuf, OP_TYPE_CLASS1_ALG,
+				    OP_ALG_ALGSEL_KASUMI, OP_ALG_AAI_F8,
+				    MDSTATE_COMPLETE, ICV_CHECK_OFF, dir);
+
+	descbuf = cmd_insert_load(descbuf, ctx, LDST_CLASS_1_CCB,
+				  0, LDST_SRCDST_BYTE_CONTEXT, 0, 8,
+				  ITEM_REFERENCE);
+
+	descbuf = cmd_insert_fifo_load(descbuf, in, size, LDST_CLASS_1_CCB,
+				       0, 0, 0,
+				       FIFOLD_TYPE_MSG | FIFOLD_TYPE_LAST1);
+
+	descbuf = cmd_insert_fifo_store(descbuf, out, size, FIFOLD_CLASS_SKIP,
+					0, 0, 0, FIFOST_TYPE_MESSAGE_DATA);
+
+	endidx = descbuf - start;
+	cmd_insert_hdr(start, 1, endidx, SHR_NEVER, SHRNXT_LENGTH,
+		       ORDER_FORWARD, DESC_STD);
+
+	*bufsize = endidx;
+
+	return 0;
+}
+EXPORT_SYMBOL(cnstr_jobdesc_kasumi_f8);
+
+/**
+ * Generate a Kasumi f9 (authentication) job descriptor -
+ * cnstr_jobdesc_kasumi_f9()
+ *
+ * @descbuf - pointer to buffer that will hold constructed descriptor
+ * @bufsize - pointer to size of descriptor once constructed
+ * @key - pointer to cipher key
+ * @keylen - size of cipher key
+ * @dir - select DIR_DECRYPT and DIR_ENCRYPT
+ * @ctx - points to preformatted f8 context block, containzing 32-bit count
+ *        (word 0), bearer (word 1 bits 0:5), direction (word 1 bit 6),
+ *        ca (word 1 bits 7:16), cb (word 1 bits 17:31), fresh (word 2),
+ *        and the ICV input (word 3). Refer to the KFHA section of the
+ *        block guide for more detail.
+ * @in - pointer to input data
+ * @size - size of input data
+ * @mac - pointer to output MAC
+ **/
+int cnstr_jobdesc_kasumi_f9(u_int32_t *descbuf, u_int16_t *bufsize,
+			    u_int8_t *key, u_int32_t keylen,
+			    enum algdir dir, u_int32_t *ctx,
+			    u_int8_t *in, u_int16_t size, u_int8_t *mac)
+{
+	u_int32_t *start;
+	u_int16_t startidx, endidx;
+
+	start = descbuf++;
+	startidx = descbuf - start;
+
+	descbuf = cmd_insert_key(descbuf, key, keylen, PTR_DIRECT,
+				 KEYDST_KEYREG, KEY_CLEAR, ITEM_REFERENCE,
+				 ITEM_CLASS1);
+
+	descbuf = cmd_insert_alg_op(descbuf, OP_TYPE_CLASS1_ALG,
+				    OP_ALG_ALGSEL_KASUMI, OP_ALG_AAI_F9,
+				    MDSTATE_COMPLETE, ICV_CHECK_OFF, dir);
+
+	descbuf = cmd_insert_load(descbuf, ctx, LDST_CLASS_1_CCB,
+				  0, LDST_SRCDST_BYTE_CONTEXT, 0, 16,
+				  ITEM_REFERENCE);
+
+	descbuf = cmd_insert_fifo_load(descbuf, in, size, LDST_CLASS_1_CCB,
+				       0, 0, 0,
+				       FIFOLD_TYPE_MSG | FIFOLD_TYPE_LAST1);
+
+	descbuf = cmd_insert_store(descbuf, mac, LDST_CLASS_1_CCB, 0,
+				   LDST_SRCDST_BYTE_CONTEXT, 0, 4,
+				   ITEM_REFERENCE);
+
+	endidx = descbuf - start;
+	cmd_insert_hdr(start, 1, endidx, SHR_NEVER, SHRNXT_LENGTH,
+		       ORDER_FORWARD, DESC_STD);
+
+	*bufsize = endidx;
+
+	return 0;
+}
+EXPORT_SYMBOL(cnstr_jobdesc_kasumi_f9);
 
 /**
  * RSA exponentiation as a single job - cnstr_jobdesc_pkha_rsaexp()
@@ -287,7 +548,6 @@ EXPORT_SYMBOL(cnstr_jobdesc_hmac);
  * @clear - nonzero if descriptor buffer space is to be cleared
  *          before construction
  **/
-
 int cnstr_jobdesc_pkha_rsaexp(u_int32_t *descbuf, u_int16_t *bufsz,
 			      struct pk_in_params *pkin,
 			      u_int8_t *out, u_int32_t out_siz,
@@ -328,16 +588,16 @@ int cnstr_jobdesc_pkha_rsaexp(u_int32_t *descbuf, u_int16_t *bufsz,
 					FIFOST_TYPE_PKHA_B);
 
 	endidx = descbuf - start;
-	cmd_insert_hdr(start, 0, endidx, SHR_NEVER, SHRNXT_LENGTH,
+	cmd_insert_hdr(start, 1, endidx, SHR_NEVER, SHRNXT_LENGTH,
 		       ORDER_FORWARD, DESC_STD);
 
 	*bufsz = endidx;
 	return 0;
 }
+EXPORT_SYMBOL(cnstr_jobdesc_pkha_rsaexp);
 
 /* FIXME: clear-written reg content should perhaps be defined in desc.h */
 static const u_int32_t clrw_imm = 0x00210000;
-
 
 /**
  * Binary DSA-verify as a single job - cnstr_jobdesc_dsaverify()
@@ -349,20 +609,20 @@ static const u_int32_t clrw_imm = 0x00210000;
  * @msg_sz - size of message to verify
  * @clear - clear buffer before writing descriptor
  **/
-
 int cnstr_jobdesc_dsaverify(u_int32_t *descbuf, u_int16_t *bufsz,
-			    struct dsa_pdb *dsadata, u_int8_t *msg,
+			    struct dsa_verify_pdb *dsadata, u_int8_t *msg,
 			    u_int32_t msg_sz, u_int8_t clear)
 {
 	u_int32_t *start;
 	u_int16_t startidx, endidx;
 
-	start = descbuf++;
-	startidx = descbuf - start;
+	start = descbuf;
 
-	/* Build 9-word PDB with pointers to params */
-	memcpy(descbuf, dsadata, 9 * sizeof(u_int32_t));
-	descbuf += 9;
+	/* Build PDB with pointers to params */
+	memcpy(descbuf, dsadata, sizeof(struct dsa_verify_pdb));
+	descbuf += sizeof(struct dsa_verify_pdb) >> 2;
+
+	startidx = descbuf - start;
 
 	/* SHA1 hash command */
 	descbuf = cmd_insert_alg_op(descbuf, OP_TYPE_CLASS2_ALG,
@@ -380,8 +640,8 @@ int cnstr_jobdesc_dsaverify(u_int32_t *descbuf, u_int16_t *bufsz,
 			    LDST_SRCDST_BYTE_CONTEXT, 0, 20, ITEM_REFERENCE);
 
 	/* Wait for CALM */
-	descbuf = cmd_insert_jump(descbuf, JUMP_TYPE_LOCAL, JUMP_TEST_ALL,
-				  JUMP_COND_CALM, 1, NULL);
+	descbuf = cmd_insert_jump(descbuf, CLASS_2, JUMP_TYPE_LOCAL,
+				  JUMP_TEST_ALL, JUMP_COND_CALM, 1, NULL);
 
 	/* LOAD immediate to clear-written register */
 	descbuf = cmd_insert_load(descbuf, (u_int32_t *)&clrw_imm, CLASS_NONE,
@@ -395,10 +655,11 @@ int cnstr_jobdesc_dsaverify(u_int32_t *descbuf, u_int16_t *bufsz,
 					     OP_PCL_PKPROT_F2M);
 
 	/* Header, factor in PDB offset */
-	endidx = descbuf - start;
+	endidx = descbuf - start + 1;
 	cmd_insert_hdr(start, startidx, endidx, SHR_NEVER, SHRNXT_LENGTH,
 		       ORDER_FORWARD, DESC_STD);
 
 	*bufsz = endidx;
 	return 0;
 }
+EXPORT_SYMBOL(cnstr_jobdesc_dsaverify);

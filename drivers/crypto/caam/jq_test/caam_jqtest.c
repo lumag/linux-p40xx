@@ -35,10 +35,7 @@
 
 #include "caam_jqtest.h"
 
-#define JQTEST_CYCLES 100
-
-wait_queue_head_t jqtest_wq;
-wait_queue_t jqtest_wqentry;
+#define JQTEST_CYCLES 3
 
 static int __init caam_jqtest(void)
 {
@@ -46,7 +43,6 @@ static int __init caam_jqtest(void)
 	struct device *qdev[4], *ctrldev;
 	struct device_node *ctrlnode;
 	struct of_device *ofdev;
-
 
 	/* Find a CAAM instance via device tree */
 	ctrlnode = of_find_compatible_node(NULL, NULL, "fsl,sec4.0");
@@ -74,18 +70,13 @@ static int __init caam_jqtest(void)
 		return -1;
 	}
 
-	/* Have a device queue for us to use. Set up waitqueue */
-	init_waitqueue_head(&jqtest_wq);
-	init_waitqueue_entry(&jqtest_wqentry, current);
-	add_wait_queue(&jqtest_wq, &jqtest_wqentry);
-
 	/* Now run cases */
 	printk(KERN_INFO "caam_jqtest: running cases on %d available queues\n",
 	       owned_queues);
 	for (q = 0; q < owned_queues; q++) {
 		for (i = 0; i < JQTEST_CYCLES; i++) {
 
-			stat = jq_ipsec_esp_no_term(qdev[q], NO_SHOW_DESC);
+			stat = jq_ipsec_esp_split(qdev[q], NO_SHOW_DESC);
 			if (stat)
 				printk(KERN_INFO
 				"jq_ipsec_esp_noterm: fail on queue %d\n",
