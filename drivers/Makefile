@@ -107,3 +107,6 @@ obj-$(CONFIG_SSB)		+= ssb/
 obj-$(CONFIG_VIRTIO)		+= virtio/
 obj-$(CONFIG_STAGING)		+= staging/
 obj-y				+= platform/
+obj-y				+= hwalloc/
+obj-y				+= hwqueue/
+obj-$(CONFIG_PATTERN_MATCHING)	+= match/
