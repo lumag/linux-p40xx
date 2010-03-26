@@ -238,7 +238,8 @@ image-$(CONFIG_MPC85xx_CDS)		+= cuImage.mpc8541cds \
 					   cuImage.mpc8555cds
 image-$(CONFIG_MPC85xx_MDS)		+= cuImage.mpc8568mds
 image-$(CONFIG_MPC85xx_DS)		+= cuImage.mpc8544ds \
-					   cuImage.mpc8572ds
+					   cuImage.mpc8572ds \
+					   cuImage.p2020ds
 image-$(CONFIG_TQM8540)			+= cuImage.tqm8540
 image-$(CONFIG_TQM8541)			+= cuImage.tqm8541
 image-$(CONFIG_TQM8548)			+= cuImage.tqm8548

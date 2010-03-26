@@ -23,7 +23,11 @@
 #if defined (CONFIG_40x)
 #define MSR_KERNEL	(MSR_ME|MSR_RI|MSR_IR|MSR_DR|MSR_CE)
 #elif defined(CONFIG_BOOKE)
+#if defined(CONFIG_DEBUG_CW)
+#define MSR_KERNEL      (MSR_ME|MSR_RI|MSR_CE|MSR_DE)
+#else
 #define MSR_KERNEL	(MSR_ME|MSR_RI|MSR_CE)
+#endif
 #endif
 
 /* Special Purpose Registers (SPRNs)*/

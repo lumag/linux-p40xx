@@ -60,6 +60,10 @@ config IPIC
 	bool
 	default n
 
+config VMPIC
+	depends on FSL_HYPERVISOR
+	bool
+
 config MPIC
 	bool
 	default n

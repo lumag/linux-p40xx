@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2008 Freescale Semiconductor, Inc. All rights reserved.
+ * Copyright (C) 2007-2009 Freescale Semiconductor, Inc. All rights reserved.
  *
  * Author: Tony Li <tony.li@freescale.com>
  *	   Jason Jin <Jason.jin@freescale.com>
@@ -21,6 +21,7 @@
 #include <asm/prom.h>
 #include <asm/hw_irq.h>
 #include <asm/ppc-pci.h>
+#include <asm/fsl_hcalls.h>
 #include "fsl_msi.h"
 
 struct fsl_msi_feature {
@@ -109,17 +110,34 @@ static void fsl_teardown_msi_irqs(struct pci_dev *pdev)
 	return;
 }
 
-static void fsl_compose_msi_msg(struct pci_dev *pdev, int hwirq,
+static int fsl_compose_msi_msg(struct pci_dev *pdev, int hwirq,
 				  struct msi_msg *msg)
 {
 	struct fsl_msi *msi_data = fsl_msi;
 
-	msg->address_lo = msi_data->msi_addr_lo;
+	if ((msi_data->feature & FSL_PIC_IP_MASK) == FSL_PIC_IP_VMPIC) {
+		const u32* reg;
+		struct pci_controller *hose = pci_bus_to_host(pdev->bus);
+
+		reg = of_get_property(hose->dn, "msi-address-64", NULL);
+		if (!reg) {
+			dev_err(&pdev->dev, "%s no msi-address-64 property!\n",
+					hose->dn->full_name);
+			return -1;
+		}
+		msg->address_lo = *((u64 *)reg);
+	}
+	else {
+		msg->address_lo = msi_data->msi_addr_lo;
+	}
+
 	msg->address_hi = msi_data->msi_addr_hi;
 	msg->data = hwirq;
 
 	pr_debug("%s: allocated srs: %d, ibs: %d\n",
 		__func__, hwirq / IRQS_PER_MSI_REG, hwirq % IRQS_PER_MSI_REG);
+
+	return 0;
 }
 
 static int fsl_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
@@ -150,7 +168,9 @@ static int fsl_setup_msi_irqs(struct pci_dev *pdev, int nvec, int type)
 		}
 		set_irq_msi(virq, entry);
 
-		fsl_compose_msi_msg(pdev, hwirq, &msg);
+		rc = fsl_compose_msi_msg(pdev, hwirq, &msg);
+		if (rc < 0)
+			goto out_free;
 		write_msi_msg(virq, &msg);
 	}
 	return 0;
@@ -195,6 +215,9 @@ static void fsl_msi_cascade(unsigned int irq, struct irq_desc *desc)
 	case FSL_PIC_IP_IPIC:
 		msir_value = fsl_msi_read(msi_data->msi_regs, msir_index * 0x4);
 		break;
+	case FSL_PIC_IP_VMPIC:
+		fh_vmpic_get_msir(virq_to_hw(irq), &msir_value);
+		break;
 	}
 
 	while (msir_value) {
@@ -212,6 +235,7 @@ static void fsl_msi_cascade(unsigned int irq, struct irq_desc *desc)
 
 	switch (msi_data->feature & FSL_PIC_IP_MASK) {
 	case FSL_PIC_IP_MPIC:
+	case FSL_PIC_IP_VMPIC:
 		desc->chip->eoi(irq);
 		break;
 	case FSL_PIC_IP_IPIC:
@@ -253,17 +277,20 @@ static int __devinit fsl_of_msi_probe(struct of_device *dev,
 	}
 
 	/* Get the MSI reg base */
-	err = of_address_to_resource(dev->node, 0, &res);
-	if (err) {
-		dev_err(&dev->dev, "%s resource error!\n",
-				dev->node->full_name);
-		goto error_out;
-	}
+	if ((features->fsl_pic_ip & FSL_PIC_IP_MASK) != FSL_PIC_IP_VMPIC) {
+		err = of_address_to_resource(dev->node, 0, &res);
+		if (err) {
+			dev_err(&dev->dev, "%s resource error!\n",
+					dev->node->full_name);
+			goto error_out;
+		}
 
-	msi->msi_regs = ioremap(res.start, res.end - res.start + 1);
-	if (!msi->msi_regs) {
-		dev_err(&dev->dev, "ioremap problem failed\n");
-		goto error_out;
+		msi->msi_regs = ioremap(res.start, res.end - res.start + 1);
+		if (!msi->msi_regs) {
+			dev_err(&dev->dev, "ioremap problem failed\n");
+			goto error_out;
+		}
+		msi->msi_addr_lo = res.start + features->msiir_offset;
 	}
 
 	msi->feature = features->fsl_pic_ip;
@@ -271,7 +298,6 @@ static int __devinit fsl_of_msi_probe(struct of_device *dev,
 	msi->irqhost->host_data = msi;
 
 	msi->msi_addr_hi = 0x0;
-	msi->msi_addr_lo = res.start + features->msiir_offset;
 
 	rc = fsl_msi_init_allocator(msi);
 	if (rc) {
@@ -316,6 +342,10 @@ error_out:
 	return err;
 }
 
+static const struct fsl_msi_feature vmpic_msi_feature = {
+	.fsl_pic_ip = FSL_PIC_IP_VMPIC,
+};
+
 static const struct fsl_msi_feature mpic_msi_feature = {
 	.fsl_pic_ip = FSL_PIC_IP_MPIC,
 	.msiir_offset = 0x140,
@@ -327,6 +357,10 @@ static const struct fsl_msi_feature ipic_msi_feature = {
 };
 
 static const struct of_device_id fsl_of_msi_ids[] = {
+	{
+		.compatible = "fsl,vmpic-msi",
+		.data = (void *)&vmpic_msi_feature,
+	},
 	{
 		.compatible = "fsl,mpic-msi",
 		.data = (void *)&mpic_msi_feature,

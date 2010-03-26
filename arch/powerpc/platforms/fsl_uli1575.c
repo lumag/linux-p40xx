@@ -1,7 +1,7 @@
 /*
  * ULI M1575 setup code - specific to Freescale boards
  *
- * Copyright 2007 Freescale Semiconductor Inc.
+ * Copyright 2007-2009 Freescale Semiconductor Inc.
  *
  * This program is free software; you can redistribute  it and/or modify it
  * under  the terms of  the GNU General  Public License as published by the
@@ -57,7 +57,7 @@ static void __devinit early_uli5249(struct pci_dev *dev)
 	unsigned char temp;
 
 	if (!machine_is(mpc86xx_hpcn) && !machine_is(mpc8544_ds) &&
-			!machine_is(mpc8572_ds))
+			!machine_is(mpc8572_ds) && !machine_is(p2020_ds))
 		return;
 
 	pci_write_config_word(dev, PCI_COMMAND, PCI_COMMAND_IO |
@@ -81,7 +81,7 @@ static void __devinit quirk_uli1575(struct pci_dev *dev)
 	int i;
 
 	if (!machine_is(mpc86xx_hpcn) && !machine_is(mpc8544_ds) &&
-			!machine_is(mpc8572_ds))
+			!machine_is(mpc8572_ds) && !machine_is(p2020_ds))
 		return;
 
 	/*
@@ -150,7 +150,7 @@ static void __devinit quirk_final_uli1575(struct pci_dev *dev)
 	 * IRQ 15: Edge
 	 */
 	if (!machine_is(mpc86xx_hpcn) && !machine_is(mpc8544_ds) &&
-			!machine_is(mpc8572_ds))
+			!machine_is(mpc8572_ds) && !machine_is(p2020_ds))
 		return;
 
 	outb(0xfa, 0x4d0);
@@ -177,7 +177,7 @@ static void __devinit quirk_uli5288(struct pci_dev *dev)
 	unsigned int d;
 
 	if (!machine_is(mpc86xx_hpcn) && !machine_is(mpc8544_ds) &&
-			!machine_is(mpc8572_ds))
+			!machine_is(mpc8572_ds) && !machine_is(p2020_ds))
 		return;
 
 	/* read/write lock */
@@ -202,7 +202,7 @@ static void __devinit quirk_uli5229(struct pci_dev *dev)
 	unsigned short temp;
 
 	if (!machine_is(mpc86xx_hpcn) && !machine_is(mpc8544_ds) &&
-			!machine_is(mpc8572_ds))
+			!machine_is(mpc8572_ds) && !machine_is(p2020_ds))
 		return;
 
 	pci_write_config_word(dev, PCI_COMMAND, PCI_COMMAND_INTX_DISABLE |
