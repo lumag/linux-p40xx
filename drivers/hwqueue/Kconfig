@@ -1,0 +1,131 @@
+menu "Hardware queue support"
+
+menuconfig FSL_QMAN
+	bool "Freescale Queue Manager (datapath) support"
+	depends on PPC_E500MC
+	default y
+	---help---
+	  If unsure, say Y.
+
+if FSL_QMAN
+
+config FSL_QMAN_CHECKING
+	bool "additional driver checking"
+	default y
+	---help---
+	  Compiles in additional checks to sanity-check the Qman driver and any
+	  use of it by other code. Not recommended for performance.
+
+config FSL_QMAN_PORTAL
+	bool "Qman portal support"
+	default y
+	---help---
+	  Compiles support to detect and support Qman software corenet portals
+	  (as provided by the device-tree).
+
+config FSL_QMAN_PORTAL_DISABLEAUTO
+	bool "disable auto-initialisation of cpu-affine portals"
+	depends on FSL_QMAN_PORTAL
+	default n
+	---help---
+	  The high-level portal API, in its normal usage, requires that each cpu
+	  have a portal assigned to it that is auto-initialised. If an
+	  application is manually initialising portals in a non-cpu-affine
+	  manner (or you are using the low-level portal API), this may need to
+	  be disabled. If in doubt, say N.
+
+config FSL_QMAN_PORTAL_DISABLEAUTO_DCA
+	bool "disable discrete-consumption support on cpu-affine portals"
+	depends on !FSL_QMAN_PORTAL_DISABLEAUTO
+	default n
+	---help---
+	  By default, auto-initialised cpu-affine portals support
+	  discrete-consumption acknowledgements, but this may be unimplemented
+	  in the simulation model.
+
+config FSL_QMAN_FQALLOCATOR
+	bool "use Bman buffer pool 0 as a Qman FQ allocator"
+	depends on FSL_QMAN_PORTAL && !FSL_BMAN_PORTAL_DISABLEAUTO
+	default y
+	---help---
+	  If enabled, the Qman driver will assume that Bman buffer pool 0 has
+	  been preseeded with frame queue IDs available for dynamic allocation.
+
+config FSL_QMAN_FQRANGE
+	bool "Implement a control-plane only allocator supporting ranges"
+	default y
+	---help---
+	  This allocator does not use Bman or any other h/w resource, it
+	  provides a s/w allocator implementation that supports allocating
+	  and deallocating FQID ranges, with control over alignment.
+
+config FSL_QMAN_CONFIG
+	bool "Qman device management"
+	default y
+	---help---
+	  If this linux image is running natively, you need this option. If this
+	  linux image is running as a guest OS under the hypervisor, only one
+	  guest OS ("the control plane") needs this option.
+
+config FSL_QMAN_BUG_CGR_INIT
+	bool "workaround early-silicon h/w bug"
+	depends on FSL_QMAN_CONFIG && !FSL_QMAN_PORTAL_DISABLEAUTO
+	default y
+	---help---
+	  Only an early revision of Qman h/w, s/w must explicitly initialise all
+	  CGR memories to avoid a possible ECC error. This workaround will
+	  perform the required initialisation on boot, and has no side-effects
+	  thereafter. If in doubt, select Yes.
+
+config FSL_QMAN_TEST
+	tristate "Qman self-tests"
+	depends on FSL_QMAN_PORTAL
+	default n
+	---help---
+	  This option compiles self-test code for Qman.
+
+config FSL_QMAN_TEST_STASH_POTATO
+	bool "Qman 'hot potato' data-stashing self-test"
+	depends on FSL_QMAN_TEST && FSL_QMAN_FQALLOCATOR && !FSL_QMAN_PORTAL_DISABLEAUTO
+	default y
+	---help---
+	  This performs a "hot potato" style test enqueuing/dequeuing a frame
+	  across a series of FQs scheduled to different portals (and cpus), with
+	  DQRR, data and context stashing always on.
+
+config FSL_QMAN_TEST_LOW_BUG_INTERRUPTS
+	bool "ignore interrupts and interrupt registers"
+	depends on FSL_QMAN_TEST_LOW
+	default n
+	---help---
+	  Certain versions of the cycle-accurate model don't support portal
+	  interrupt lines or the associated registers.
+
+config FSL_QMAN_TEST_LOW_BUG_STASHING
+	bool "disable dequeue stashing (of DQRR and data/context)"
+	depends on FSL_QMAN_TEST_LOW
+	default n
+	---help---
+	  Support for DQRR stashing with the cycle-accurate model is still
+	  experimental.
+
+config FSL_QMAN_TEST_HIGH
+	bool "Qman high-level self-test"
+	depends on FSL_QMAN_TEST && !FSL_QMAN_PORTAL_DISABLEAUTO
+	default y
+	---help---
+	  This requires the presence of cpu-affine portals, and performs
+	  high-level API testing with them (whichever portal(s) are affine to
+	  the cpu(s) the test executes on).
+
+config FSL_QMAN_TEST_HIGH_BUG_VDQCR
+	bool "don't test VDQCR"
+	depends on FSL_QMAN_TEST_HIGH
+	default n
+	---help---
+	  Certain (current) versions of the cycle-accurate model don't support
+	  VDQCR.
+
+endif # FSL_QMAN
+
+endmenu
