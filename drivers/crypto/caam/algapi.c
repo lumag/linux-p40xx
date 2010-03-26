@@ -58,6 +58,8 @@
  */
 
 #include "compat.h"
+#include <linux/percpu.h>
+
 #include "regs.h"
 #include "intern.h"
 #include "desc.h"
@@ -118,6 +120,8 @@ struct ipsec_deco_dpovrd {
 	u8 nh_offset;
 	u8 next_header;	/* reserved if decap */
 } __packed;
+
+static DEFINE_PER_CPU(int, cpu_to_job_queue);
 
 static int aead_authenc_setauthsize(struct crypto_aead *authenc,
 				    unsigned int authsize)
@@ -396,9 +400,11 @@ Split key generation-----------------------------------------------
 static u32 gen_split_key(struct device *dev, struct caam_ctx *ctx,
 			 const u8 *key_in, u32 authkeylen)
 {
+	struct caam_drv_private *priv = dev_get_drvdata(dev);
 	u32 *desc, *desc_pos;
 	struct split_key_result result;
 	dma_addr_t dma_addr_in, dma_addr_out;
+	struct device *tgt_jq_dev;
 	int ret = 0;
 
 	desc = kzalloc(MAX_CAAM_DESCSIZE, GFP_KERNEL | GFP_DMA);
@@ -468,7 +474,9 @@ static u32 gen_split_key(struct device *dev, struct caam_ctx *ctx,
 	result.err = 0;
 	init_completion(&result.completion);
 
-	ret = caam_jq_enqueue(dev, desc, split_key_done, &result);
+	tgt_jq_dev = priv->algapi_jq[per_cpu(cpu_to_job_queue,
+				     smp_processor_id())];
+	ret = caam_jq_enqueue(tgt_jq_dev, desc, split_key_done, &result);
 	if (!ret) {
 		/* in progress */
 		wait_for_completion_interruptible(&result.completion);
@@ -735,6 +743,8 @@ static int ipsec_esp(struct ipsec_esp_edesc *edesc, struct aead_request *areq,
 	struct crypto_aead *aead = crypto_aead_reqtfm(areq);
 	struct caam_ctx *ctx = crypto_aead_ctx(aead);
 	struct device *dev = ctx->dev;
+	struct caam_drv_private *priv = dev_get_drvdata(dev);
+	struct device *tgt_jq_dev;
 	struct scatterlist *sg;
 	u32 *desc = edesc->hw_desc;
 	u32 *descptr = desc;
@@ -943,7 +953,9 @@ static int ipsec_esp(struct ipsec_esp_edesc *edesc, struct aead_request *areq,
 	caam_desc_disasm(desc, DISASM_SHOW_OFFSETS | DISASM_SHOW_RAW);
 #endif
 
-	ret = caam_jq_enqueue(dev, desc, callback, areq);
+	tgt_jq_dev = priv->algapi_jq[per_cpu(cpu_to_job_queue,
+					     smp_processor_id())];
+	ret = caam_jq_enqueue(tgt_jq_dev, desc, callback, areq);
 	if (!ret)
 		ret = -EINPROGRESS;
 	else {
@@ -1313,42 +1325,50 @@ static struct caam_crypto_alg *caam_alg_alloc(struct device *dev,
 void caam_jq_algapi_init(struct device *ctrldev)
 {
 	struct caam_drv_private *priv = dev_get_drvdata(ctrldev);
-	struct device *dev;
-	int i, err;
+	struct device **dev;
+	int i = 0, err = 0, cpu;
 
 	INIT_LIST_HEAD(&priv->alg_list);
 
-	err = caam_jq_register(ctrldev, &dev);
-	if (err) {
+	dev = kmalloc(sizeof(*dev) * priv->total_jobqs, GFP_KERNEL);
+	for (i = 0; i < priv->total_jobqs; i++) {
+		err = caam_jq_register(ctrldev, &dev[i]);
+		if (err < 0)
+			break;
+	}
+	if (err < 0 && i == 0) {
 		dev_err(ctrldev, "algapi error in job queue registration: %d\n",
 			err);
 		return;
 	}
+	priv->num_jqs_for_algapi = i;
 
 	/* register crypto algorithms the device supports */
 	for (i = 0; i < ARRAY_SIZE(driver_algs); i++) {
 		/* TODO: check if h/w supports alg */
 		struct caam_crypto_alg *t_alg;
 
-		t_alg = caam_alg_alloc(dev, &driver_algs[i]);
+		t_alg = caam_alg_alloc(ctrldev, &driver_algs[i]);
 		if (IS_ERR(t_alg)) {
 			err = PTR_ERR(t_alg);
-			dev_warn(dev, "%s alg registration failed\n",
+			dev_warn(ctrldev, "%s alg registration failed\n",
 				t_alg->crypto_alg.cra_driver_name);
 			continue;
 		}
 
 		err = crypto_register_alg(&t_alg->crypto_alg);
 		if (err) {
-			dev_warn(dev, "%s alg registration failed\n",
+			dev_warn(ctrldev, "%s alg registration failed\n",
 				t_alg->crypto_alg.cra_driver_name);
 			kfree(t_alg);
 		} else {
 			list_add_tail(&t_alg->entry, &priv->alg_list);
-			dev_info(dev, "%s\n",
+			dev_info(ctrldev, "%s\n",
 				 t_alg->crypto_alg.cra_driver_name);
 		}
 	}
 
 	priv->algapi_jq = dev;
+	for_each_online_cpu(cpu)
+		per_cpu(cpu_to_job_queue, cpu) = cpu % priv->num_jqs_for_algapi;
 }
