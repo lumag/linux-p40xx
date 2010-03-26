@@ -1,0 +1,20 @@
+menu "Frame Manager support"
+
+menuconfig FSL_FMAN
+	bool "Freescale Frame Manager (datapath) support"
+	depends on PPC_E500MC
+	default y
+	---help---
+	  If unsure, say Y.
+
+if FSL_FMAN
+
+config FSL_FMAN_TEST
+	bool "Fman test module"
+	default n
+	---help---
+	  This option compiles test code for Fman.
+
+endif # FSL_FMAN
+
+endmenu
