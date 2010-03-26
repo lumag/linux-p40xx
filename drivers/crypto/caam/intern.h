@@ -1,0 +1,109 @@
+/*
+ * CAAM/SEC 4.x driver backend
+ * Private/internal definitions between modules
+ *
+ * Copyright (c) 2008, 2009, Freescale Semiconductor, Inc.
+ * All Rights Reserved
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * Neither the name of Freescale Semiconductor nor the
+ *       names of its contributors may be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY Freescale Semiconductor ``AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL Freescale Semiconductor BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#ifndef INTERN_H
+#define INTERN_H
+
+#define JOBQ_UNASSIGNED 0
+#define JOBQ_ASSIGNED 1
+
+/* Currently comes from Kconfig param as a ^2 (driver-required) */
+#define JOBQ_DEPTH (1 << CONFIG_CRYPTO_DEV_FSL_CAAM_RINGSIZE)
+
+/*
+ * Storage for tracking each in-process entry moving across a queue
+ * Each entry on an output ring needs one of these
+ */
+struct caam_jqentry_info {
+	void (*callbk)(struct device *dev, u32 *desc, u32 status, void *arg);
+	void *cbkarg;	/* Argument per ring entry */
+	u32 *desc_addr_virt;	/* Stored virt addr for postprocessing */
+	u32 desc_size;	/* Stored size for postprocessing, header derived */
+};
+
+/* Private sub-storage for a single JobQ */
+struct caam_drv_private_jq {
+	struct device *parentdev;	/* points back to controller dev */
+	int qidx;
+	struct caam_job_queue *qregs;	/* points to JobQ's register space */
+	struct tasklet_struct irqtask;
+	int irq;			/* One per queue */
+	int assign;			/* busy/free */
+
+	/* Job ring info */
+	int ringsize;	/* Size of rings (assume input = output) */
+	int inp_ring_write_index;	/* Input index "tail" */
+	int out_ring_read_index;	/* Output index "tail" */
+	int *inpring;	/* Base of input ring, alloc DMA-safe */
+	struct jq_outentry *outring;	/* Base of output ring, DMA-safe */
+	struct caam_jqentry_info *entinfo; 	/* Alloc'ed 1 per ring entry */
+	spinlock_t inplock;	/* Input ring index lock */
+	spinlock_t outlock;	/* Output ring index lock */
+
+};
+
+/*
+ * Driver-private storage for a single CAAM block instance
+ */
+struct caam_drv_private {
+
+	struct device *dev;
+	struct device **jqdev; /* Alloc'ed array per sub-device */
+	spinlock_t jq_alloc_lock;
+#ifdef CONFIG_OF
+	struct of_device *ofdev;
+#else
+	/* Non-OF-specific defs */
+#endif
+
+	/* Physical-presence section */
+	struct caam_ctrl *ctrl; /* controller region */
+	struct caam_deco *deco[5]; /* DECO/CCB views */
+	struct caam_assurance *ac;
+	struct caam_queue_if *qi; /* QI control region */
+
+	/*
+	 * Detected geometry block. Filled in from device tree if powerpc,
+	 * or from register-based version detection code
+	 */
+	u8 total_jobqs;		/* Total Job Queues in device */
+	u8 qi_present;		/* Nonzero if QI present in device */
+	u8 qi_spids;		/* Number subportal IDs in use */
+	int secvio_irq;		/* Security violation interrupt number */
+
+	/* which jq allocated to scatterlist crypto */
+	struct device *algapi_jq;
+	/* list of registered crypto algorithms (mk generic context handle?) */
+	struct list_head alg_list;
+};
+
+void caam_jq_algapi_init(struct device *dev);
+void caam_jq_algapi_remove(struct device *dev);
+#endif /* INTERN_H */

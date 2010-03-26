@@ -1,0 +1,53 @@
+config CRYPTO_DEV_FSL_CAAM
+	tristate "Freescale CAAM-Multicore driver backend (EXPERIMENTAL)"
+	depends on FSL_SOC
+	help
+	  Enables the driver module for Freescale's Cryptographic Accelerator
+	  and Assurance Module (CAAM). This module adds support for scatterlist
+	  crypto API, and also configures CAAM to operate as a DPAA component.
+
+config CRYPTO_DEV_FSL_CAAM_RINGSIZE
+	int "Job Queue ring size"
+	depends on CRYPTO_DEV_FSL_CAAM
+	range 2 10
+	default "8"
+	help
+	  Select size of Job Queue rings as a power of 2, within the
+	  range 2-10 (ring size 4-1024).
+	  Examples:
+		2 => 4
+		3 => 8
+		4 => 16
+		5 => 32
+		6 => 64
+		7 => 128
+		8 => 256
+		9 => 512
+		10 => 1024
+
+config CRYPTO_DEV_FSL_CAAM_DC_LIB
+	tristate "Freescale CAAM Descriptor Library (EXPERIMENTAL)"
+	depends on CRYPTO_DEV_FSL_CAAM
+	help
+	  Enables the Descriptor Construction Library for use with
+	  Freescale's Cryptographic Accelerator and Assurance Module (CAAM).
+
+config CRYPTO_DEV_FSL_CAAM_CRYPTO_API
+	tristate "Linux Kernel Scatterlist Crypto API support"
+	depends on CRYPTO_DEV_FSL_CAAM_DC_LIB
+	select CRYPTO_ALGAPI
+	select CRYPTO_AUTHENC
+	help
+	  Selecting this will offload crypto for users of the
+	  scatterlist crypto API (such as the linux native IPSec
+	  stack NETKEY) to the SEC4 via a job queue.
+
+config CRYPTO_DEV_FSL_CAAM_JQ_TEST
+	tristate "Freescale CAAM-Multicore JobQ Test (EXPERIMENTAL)"
+	depends on CRYPTO_DEV_FSL_CAAM
+	depends on CRYPTO_DEV_FSL_CAAM_DC_LIB
+	help
+	  Enables a test module for to exercise CAAM through a
+	  native job queue.
+
+

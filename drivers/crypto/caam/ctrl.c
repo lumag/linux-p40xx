@@ -1,0 +1,239 @@
+/*
+ * CAAM control-plane driver backend
+ * Controller-level driver, kernel property detection, initialization
+ *
+ * Copyright (c) 2008, 2009, Freescale Semiconductor, Inc.
+ * All Rights Reserved
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * Neither the name of Freescale Semiconductor nor the
+ *       names of its contributors may be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
+ *
+ *
+ * ALTERNATIVELY, this software may be distributed under the terms of the
+ * GNU General Public License ("GPL") as published by the Free Software
+ * Foundation, either version 2 of that License or (at your option) any
+ * later version.
+ *
+ * THIS SOFTWARE IS PROVIDED BY Freescale Semiconductor ``AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL Freescale Semiconductor BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#include <linux/of_platform.h>
+#include <linux/interrupt.h>
+
+#include "regs.h"
+#include "intern.h"
+#include "jq.h"
+
+/*
+ * Use of CONFIG_PPC throughout is used to switch in code
+ * native to Power, which is all that's implemented or tested at
+ * this time. Of particular note, this turns on large proportion
+ * of Power-specific fdt probe and detection code.
+ *
+ * Future variants of this driver will also be ported to ARM
+ * architectures, which will lack the fdt-dependent constructs.
+ * Therefore, they will have their own probe/initialization code
+ * inserted at that time. For now, CONFIG_PPC will be used to
+ * switch in sections that are known fdt-dependent, although
+ * these may need to transition to CONFIG_OF if ARM architectures
+ * were to take up use of an fdt.
+ */
+
+#ifdef CONFIG_PPC
+
+int caam_jq_shutdown(struct device *dev);
+
+static int caam_remove(struct of_device *ofdev)
+{
+	struct device *ctrldev;
+	struct caam_drv_private *ctrlpriv;
+	struct caam_drv_private_jq *jqpriv;
+	int q;
+
+	ctrldev = &ofdev->dev;
+	ctrlpriv = dev_get_drvdata(ctrldev);
+
+	/* shut down JobQs */
+	for (q = 0; q < ctrlpriv->total_jobqs; q++) {
+		caam_jq_shutdown(ctrlpriv->jqdev[q]);
+		jqpriv = dev_get_drvdata(ctrlpriv->jqdev[q]);
+		irq_dispose_mapping(jqpriv->irq);
+	}
+
+	/* Disconnect QI */
+	if (ctrlpriv->qi_present)
+		wr_reg32(&ctrlpriv->qi->qi_control_lo, QICTL_STOP);
+
+	/* Unmap controller region */
+	iounmap(&ctrlpriv->ctrl);
+
+	kfree(ctrlpriv->jqdev);
+	kfree(ctrlpriv);
+
+	return 0;
+}
+
+
+int caam_jq_probe(struct of_device *ofdev,
+		  struct device_node *np,
+		  int q);
+
+/* Probe routine for CAAM top (controller) level */
+static int caam_probe(struct of_device *ofdev,
+		      const struct of_device_id *devmatch)
+{
+	int d, q, qspec;
+	const unsigned int *pty;
+	struct device *dev;
+	struct device_node *nprop, *np;
+	struct caam_full *topregs;
+	struct caam_drv_private *ctrlpriv;
+
+	ctrlpriv = kzalloc(sizeof(struct caam_drv_private), GFP_KERNEL);
+	if (!ctrlpriv)
+		return -ENOMEM;
+
+	dev = &ofdev->dev;
+	dev_set_drvdata(dev, ctrlpriv);
+	ctrlpriv->ofdev = ofdev;
+	nprop = ofdev->node;
+
+	/* Get configuration properties from device tree */
+	/* First, get register page */
+	ctrlpriv->ctrl = of_iomap(nprop, 0);
+	if (ctrlpriv->ctrl == NULL) {
+		dev_err(dev, "caam: of_iomap() failed\n");
+		return -ENOMEM;
+	}
+
+	/* topregs used to derive pointers to CAAM sub-blocks only */
+	topregs = (struct caam_full *)ctrlpriv->ctrl;
+
+	/* Get the IRQ of the controller (for security violations only) */
+	ctrlpriv->secvio_irq = of_irq_to_resource(nprop, 0, NULL);
+
+	/*
+	 * Device tree provides no information on the actual number
+	 * of DECOs instantiated in the device. Total available will
+	 * have to be version-register-derived.
+	 *
+	 * In practice, their only practical use is as a debug tool.
+	 * Since the controller iomaps all possible CAAM registers,
+	 * this just calculates handy pointers to deco registers in
+	 * pre-mapped space.
+	 */
+	for (d = 0; d < 5; d++)
+		ctrlpriv->deco[d] = &topregs->deco[d];
+
+	/*
+	 * Detect and enable JobQs
+	 * First, find out how many queues spec'ed, allocate references
+	 * for all, then go probe each one.
+	 */
+	qspec = 0;
+	for_each_compatible_node(np, NULL, "fsl,sec4.0-job-queue")
+		qspec++;
+	ctrlpriv->jqdev = kzalloc(sizeof(struct device *) * qspec, GFP_KERNEL);
+	if (ctrlpriv->jqdev == NULL) {
+		iounmap(&ctrlpriv->ctrl);
+		return -ENOMEM;
+	}
+
+	q = 0;
+	ctrlpriv->total_jobqs = 0;
+	for_each_compatible_node(np, NULL, "fsl,sec4.0-job-queue") {
+		caam_jq_probe(ofdev, np, q);
+		ctrlpriv->total_jobqs++;
+		q++;
+	}
+
+	/* Check to see if QI present. If so, enable */
+	pty = of_get_property(nprop, "fsl,qi-spids", NULL);
+	if (pty) {
+		ctrlpriv->qi_present = 1;
+		ctrlpriv->qi_spids = *pty;
+		ctrlpriv->qi = &topregs->qi;
+		/* This is all that's reqired to physically enable QI */
+		wr_reg32(&ctrlpriv->qi->qi_control_lo, QICTL_DQEN);
+	} else {
+		ctrlpriv->qi_present = 0;
+		ctrlpriv->qi_spids = 0;
+	}
+
+	/* If no QI and no queues specified, quit and go home */
+	if ((!ctrlpriv->qi_present) && (!ctrlpriv->total_jobqs)) {
+		dev_err(dev, "no queues configured, terminating\n");
+		caam_remove(ofdev);
+		return -ENOMEM;
+	}
+
+	/* NOTE: RTIC detection ought to go here, around Si time */
+
+	/* Initialize queue allocator lock */
+	spin_lock_init(&ctrlpriv->jq_alloc_lock);
+
+	/* Report "alive" for developer to see */
+	dev_info(dev, "device ID = 0x%016llx\n",
+		 rd_reg64(&ctrlpriv->ctrl->perfmon.caam_id));
+	dev_info(dev, "job queues = %d, qi = %d\n",
+		 ctrlpriv->total_jobqs, ctrlpriv->qi_present);
+
+#ifdef CONFIG_CRYPTO_DEV_FSL_CAAM_CRYPTO_API
+	/* register algorithms with scatterlist crypto API */
+	caam_jq_algapi_init(dev);
+#endif
+
+	return 0;
+}
+
+static struct of_device_id caam_match[] = {
+	{
+		.compatible = "fsl,sec4.0",
+	},
+	{},
+};
+MODULE_DEVICE_TABLE(of, caam_match);
+
+static struct of_platform_driver caam_driver = {
+	.name        = "caam",
+	.match_table = caam_match,
+	.probe       = caam_probe,
+	.remove      = __devexit_p(caam_remove),
+};
+
+static int __init caam_base_init(void)
+{
+	return of_register_platform_driver(&caam_driver);
+}
+
+static void __exit caam_base_exit(void)
+{
+	return of_unregister_platform_driver(&caam_driver);
+}
+#else /* not CONFIG_PPC */
+      /* need ARM-specific probe/detect/map/initialize/shutdown */
+#endif
+
+module_init(caam_base_init);
+module_exit(caam_base_exit);
+
+MODULE_LICENSE("Dual BSD/GPL");
+MODULE_DESCRIPTION("FSL CAAM request backend");
+MODULE_AUTHOR("Freescale Semiconductor - NMG/STC");
