@@ -898,8 +898,8 @@ static int ipsec_esp(struct ipsec_esp_edesc *edesc, struct aead_request *areq,
 	} else { /* DECAP */
 		len = areq->cryptlen + ctx->authsize;
 		if (!edesc->dma_len) {
-			ptr = sg_dma_address(areq->dst) - sizeof(struct iphdr) +
-			      areq->assoclen + ivsize;
+			ptr = sg_dma_address(areq->dst) - sizeof(struct iphdr) -
+			      areq->assoclen - ivsize;
 			len += sizeof(struct iphdr) + areq->assoclen + ivsize;
 		} else {
 			len += sizeof(struct iphdr) + areq->assoclen + ivsize +
