@@ -5,6 +5,8 @@
  * Copyright 2005 MontaVista Software, Inc.
  * Matt Porter <mporter@kernel.crashing.org>
  *
+ * Copyright (C) 2008-2009 Freescale Semiconductor, Inc.
+ *
  * This program is free software; you can redistribute  it and/or modify it
  * under  the terms of  the GNU General  Public License as published by the
  * Free Software Foundation;  either version 2 of the  License, or (at your
@@ -176,6 +178,7 @@ struct rio_mport {
 	struct rio_msg outb_msg[RIO_MAX_MBOX];
 	int host_deviceid;	/* Host device ID */
 	struct rio_ops *ops;	/* maintenance transaction functions */
+	struct rio_mem_ops *mops; /* Memory functions */
 	unsigned char id;	/* port ID, unique among all ports */
 	unsigned char index;	/* port index, unique among all port
 				   interfaces of the same type */
@@ -185,6 +188,7 @@ struct rio_mport {
 				 */
 	enum rio_phy_type phy_type;	/* RapidIO phy type */
 	unsigned char name[40];
+	struct device *dev;
 	void *priv;		/* Master port private data */
 };
 
@@ -317,6 +321,28 @@ struct rio_route_ops {
 			 u16 table, u16 route_destid, u8 route_port);
 	int (*get_hook) (struct rio_mport * mport, u16 destid, u8 hopcount,
 			 u16 table, u16 route_destid, u8 * route_port);
+};
+
+extern struct resource rio_resource;
+#define request_rio_region(start,n,name) __request_region(&rio_resource, (start), (n), (name))
+#define release_rio_region(start, n) __release_region(&rio_resource, (start), (n))
+
+/**
+ * Struct for RIO memory definition.
+ * @map_inb: The function for mapping inbound memory window.
+ * @map_outb: The function for mapping outbound memory window.
+ * @unmap_inb: The function for unmapping inbound memory window.
+ * @unmap_outb: The function for unmapping outbound memory window.
+ */
+struct rio_mem_ops {
+	int (*map_inb) (struct rio_mport *, dma_addr_t lstart,
+			resource_size_t rstart,
+			resource_size_t size, u32 flags);
+	int (*map_outb) (struct rio_mport *, phys_addr_t lstart,
+			resource_size_t rstart,
+			resource_size_t size, u16 tid, u32 flags);
+	void (*unmap_inb) (struct rio_mport *, dma_addr_t lstart);
+	void (*unmap_outb) (struct rio_mport *, phys_addr_t lstart);
 };
 
 /* Architecture and hardware-specific functions */

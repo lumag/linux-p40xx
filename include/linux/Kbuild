@@ -70,6 +70,7 @@ header-y += fib_rules.h
 header-y += fiemap.h
 header-y += firewire-cdev.h
 header-y += firewire-constants.h
+header-y += fsl_hypervisor.h
 header-y += fuse.h
 header-y += genetlink.h
 header-y += gen_stats.h
