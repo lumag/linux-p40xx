@@ -1,0 +1,451 @@
+/*
+ * CAAM/SEC 4.x transport/backend driver (prototype)
+ * JobQ backend functionality
+ *
+ * Copyright (c) 2008, 2009, Freescale Semiconductor, Inc.
+ * All Rights Reserved
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * Neither the name of Freescale Semiconductor nor the
+ *       names of its contributors may be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY Freescale Semiconductor ``AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL Freescale Semiconductor BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ */
+
+#include <linux/interrupt.h>
+#include <linux/dma-mapping.h>
+#include <linux/of_platform.h>
+
+#include "regs.h"
+#include "jq.h"
+#include "desc.h"
+#include "intern.h"
+
+/* Main per-queue interrupt handler */
+irqreturn_t caam_jq_interrupt(int irq, void *st_dev)
+{
+	struct device *dev = st_dev;
+	struct caam_drv_private_jq *jqp = dev_get_drvdata(dev);
+	u32 irqstate;
+
+	/*
+	 * Check the output ring for ready responses, kick
+	 * tasklet if jobs done.
+	 */
+	irqstate = rd_reg32(&jqp->qregs->jqintstatus);
+	if (!irqstate)
+		return IRQ_NONE;
+
+	/*
+	 * If JobQ error, we got more development work to do
+	 * Flag a bug now, but we really need to shut down and
+	 * restart the queue (and fix code).
+	 */
+	BUG_ON(irqstate & JQINT_JQ_ERROR);
+
+	/* Have valid interrupt at this point, just ACK and trigger */
+	wr_reg32(&jqp->qregs->jqintstatus, irqstate);
+	tasklet_schedule(&jqp->irqtask);
+
+	return IRQ_HANDLED;
+}
+
+/* Deferred service handler, run as interrupt-fired tasklet */
+void caam_jq_dequeue(unsigned long devarg)
+{
+	int idx;
+	struct device *dev = (struct device *)devarg;
+	struct caam_drv_private_jq *jqp = dev_get_drvdata(dev);
+	void (*usercall)(struct device *dev, u32 *desc, u32 status, void *arg);
+	u32 *userdesc, userstatus;
+	void *userarg;
+
+	/* Processing single output entries at this time */
+	while (rd_reg32(&jqp->qregs->outring_used)) {
+		spin_lock(&jqp->outlock);
+		idx = jqp->out_ring_read_index;
+		BUG_ON((idx > JOBQ_DEPTH) || (idx < 0));
+
+		/* Unmap just-run descriptor so we can post-process */
+		dma_unmap_single(dev, (u32)jqp->outring[idx].desc,
+				 jqp->entinfo[idx].desc_size,
+				 DMA_BIDIRECTIONAL);
+
+		/* Stash callback params for use outside of lock */
+		usercall = jqp->entinfo[idx].callbk;
+		userarg = jqp->entinfo[idx].cbkarg;
+		userdesc = jqp->entinfo[idx].desc_addr_virt;
+		userstatus = jqp->outring[idx].jqstatus;
+
+		/* Remove entry from ring */
+		jqp->out_ring_read_index++;
+		jqp->out_ring_read_index &= (JOBQ_DEPTH - 1);
+		wr_reg32(&jqp->qregs->outring_rmvd, 1);
+		spin_unlock(&jqp->outlock);
+
+		/* Finally, execute user's callback */
+		usercall(dev, userdesc, userstatus, userarg);
+	}
+}
+
+/**
+ * caam_jq_register() - Alloc a queue for someone to use as needed. Returns
+ * an ordinal of the queue allocated, else returns -ENODEV if no queues
+ * are available.
+ * @ctrldev: points to the controller level dev (parent) that
+ *           owns queues available for use.
+ * @dev:     points to where a pointer to the newly allocated queue's
+ *           dev can be written to if successful.
+ *
+ * NOTE: this scheme needs re-evaluated in the 1.2+ timeframe
+ **/
+int caam_jq_register(struct device *ctrldev, struct device **qdev)
+{
+	struct caam_drv_private *ctrlpriv;
+	struct caam_drv_private_jq *jqpriv;
+	int q;
+
+	jqpriv = NULL;
+	ctrlpriv = dev_get_drvdata(ctrldev);
+
+
+	/* Lock, if free queue - assign, unlock */
+	spin_lock(&ctrlpriv->jq_alloc_lock);
+	for (q = 0; q < ctrlpriv->total_jobqs; q++) {
+		jqpriv = dev_get_drvdata(ctrlpriv->jqdev[q]);
+		if (jqpriv->assign == JOBQ_UNASSIGNED) {
+			jqpriv->assign = JOBQ_ASSIGNED;
+			*qdev = ctrlpriv->jqdev[q];
+			spin_unlock(&ctrlpriv->jq_alloc_lock);
+			return q;
+		}
+	}
+
+	/* If assigned, write dev where caller needs it */
+	spin_unlock(&ctrlpriv->jq_alloc_lock);
+	*qdev = NULL;
+	return -ENODEV;
+}
+EXPORT_SYMBOL(caam_jq_register);
+
+/**
+ * caam_jq_deregister() - Deregister an API and release the queue.
+ * Returns 0 if OK, -EBUSY if queue still contains pending entries
+ * or unprocessed results at the time of the call
+ * @dev     - points to the dev that identifies the queue to
+ *            be released.
+ **/
+int caam_jq_deregister(struct device *qdev)
+{
+	struct caam_drv_private_jq *jqpriv = dev_get_drvdata(qdev);
+	struct caam_drv_private *ctrlpriv;
+
+	/* Get the owning controller's private space */
+	ctrlpriv = dev_get_drvdata(jqpriv->parentdev);
+
+	/*
+	 * Make sure queue empty before release
+	 */
+	if ((jqpriv->qregs->outring_used) ||
+	    (jqpriv->qregs->inpring_avail != JOBQ_DEPTH))
+		return -EBUSY;
+
+	/* Release queue */
+	spin_lock(&ctrlpriv->jq_alloc_lock);
+	jqpriv->assign = JOBQ_UNASSIGNED;
+	spin_unlock(&ctrlpriv->jq_alloc_lock);
+
+	return 0;
+}
+EXPORT_SYMBOL(caam_jq_deregister);
+
+/**
+ * caam_jq_enqueue() - Enqueue a job descriptor head. Returns 0 if OK,
+ * -EBUSY if the queue is full, -EIO if it cannot map the caller's
+ * descriptor.
+ * @dev:  device of the job queue to be used. This device should have
+ *        been assigned prior by caam_jq_register().
+ * @desc: points to a job descriptor that execute our request. All
+ *        descriptors (and all referenced data) must be in a DMAable
+ *        region, and all data references must be physical addresses
+ *        accessible to CAAM (i.e. within a PAMU window granted
+ *        to it).
+ * @cbk:  pointer to a callback function to be invoked upon completion
+ *        of this request. This has the form:
+ *        callback(struct device *dev, u32 *desc, u32 stat, void *arg)
+ *        where:
+ *        @dev:    contains the job queue device that processed this
+ *                 response.
+ *        @desc:   descriptor that initiated the request, same as
+ *                 "desc" being argued to caam_jq_enqueue().
+ *        @status: untranslated status received from CAAM. See the
+ *                 reference manual for a detailed description of
+ *                 error meaning, or see the JQSTA definitions in the
+ *                 register header file
+ *        @areq:   optional pointer to an argument passed with the
+ *                 original request
+ * @areq: optional pointer to a user argument for use at callback
+ *        time.
+ **/
+ int caam_jq_enqueue(struct device *dev, u32 *desc,
+		    void (*cbk)(struct device *dev, u32 *desc,
+				u32 status, void *areq),
+		    void *areq)
+{
+	struct caam_drv_private_jq *jqp;
+	int idx;
+
+	jqp = dev_get_drvdata(dev);
+
+	/*
+	 * Write the entry to the ring and update the index
+	 * Note that the index is hardware-calculated
+	 */
+
+	if (!rd_reg32(&jqp->qregs->inpring_avail))
+		return -EBUSY; /* No room */
+
+	/*
+	 * Write entry to the tail, and "start" it
+	 * TODO: should be able to walk a list, but maps only
+	 * one jobdesc at a time for now
+	 */
+	spin_lock(&jqp->inplock);
+	BUG_ON((jqp->inp_ring_write_index > JOBQ_DEPTH) ||
+	       (jqp->inp_ring_write_index < 0));
+	idx = jqp->inp_ring_write_index;
+
+	/* Store off info that the tasklet will need */
+	jqp->entinfo[idx].desc_addr_virt = desc;
+	jqp->entinfo[idx].desc_size = (*desc & HDR_JD_LENGTH_MASK) *
+				       sizeof(u32);
+	jqp->entinfo[idx].callbk = (void *)cbk;
+	jqp->entinfo[idx].cbkarg = areq;
+
+	/* Map and start descriptor */
+	jqp->inpring[idx] = dma_map_single(dev, desc,
+					   (*desc & HDR_JD_LENGTH_MASK) *
+					    sizeof(u32),
+					   DMA_BIDIRECTIONAL);
+	if (dma_mapping_error(dev, jqp->inpring[idx])) {
+		dev_err(dev,
+			"caam_jq_enqueue(): can't map jobdesc\n");
+		spin_unlock(&jqp->inplock);
+		return -EIO;
+	}
+	wr_reg32(&jqp->qregs->inpring_jobadd, 1);
+
+	/* Bump/wrap index and unlock */
+	jqp->inp_ring_write_index++;
+	jqp->inp_ring_write_index &= (JOBQ_DEPTH - 1);
+	spin_unlock(&jqp->inplock);
+
+	return 0;
+}
+EXPORT_SYMBOL(caam_jq_enqueue);
+
+/*
+ * Init JobQ independent of platform property detection
+ */
+int caam_jq_init(struct device *dev)
+{
+	struct caam_drv_private_jq *jqp;
+	u32 inpbusaddr, outbusaddr;
+	int error;
+
+	jqp = dev_get_drvdata(dev);
+
+	jqp->inpring = kzalloc(sizeof(u32 *) * JOBQ_DEPTH,
+			       GFP_KERNEL | GFP_DMA);
+	jqp->outring = kzalloc(sizeof(struct jq_outentry) *
+			       JOBQ_DEPTH, GFP_KERNEL | GFP_DMA);
+
+	jqp->entinfo = kzalloc(sizeof(struct caam_jqentry_info) * JOBQ_DEPTH,
+			       GFP_KERNEL);
+
+	if ((jqp->inpring == NULL) || (jqp->outring == NULL) ||
+	    (jqp->entinfo == NULL)) {
+		dev_err(dev, "can't allocate job rings for %d\n",
+			jqp->qidx);
+		return -ENOMEM;
+	}
+
+	/* Setup rings */
+	inpbusaddr = dma_map_single(dev, jqp->inpring,
+				    sizeof(u32 *) * JOBQ_DEPTH,
+				    DMA_BIDIRECTIONAL);
+	if (dma_mapping_error(dev, inpbusaddr)) {
+		dev_err(dev, "caam_jq_init(): can't map input ring\n");
+		kfree(jqp->inpring);
+		kfree(jqp->outring);
+		kfree(jqp->entinfo);
+		return -EIO;
+	}
+
+	outbusaddr = dma_map_single(dev, jqp->outring,
+				    sizeof(struct jq_outentry) * JOBQ_DEPTH,
+				    DMA_BIDIRECTIONAL);
+	if (dma_mapping_error(dev, outbusaddr)) {
+		dev_err(dev, "caam_jq_init(): can't map output ring\n");
+			dma_unmap_single(dev, inpbusaddr,
+					 sizeof(u32 *) * JOBQ_DEPTH,
+					 DMA_BIDIRECTIONAL);
+		kfree(jqp->inpring);
+		kfree(jqp->outring);
+		kfree(jqp->entinfo);
+		return -EIO;
+	}
+
+	jqp->inp_ring_write_index = 0;
+	jqp->out_ring_read_index = 0;
+
+	wr_reg64(&jqp->qregs->inpring_base, inpbusaddr);
+	wr_reg64(&jqp->qregs->outring_base, outbusaddr);
+	wr_reg32(&jqp->qregs->inpring_size, JOBQ_DEPTH);
+	wr_reg32(&jqp->qregs->outring_size, JOBQ_DEPTH);
+
+	jqp->ringsize = JOBQ_DEPTH;
+
+	spin_lock_init(&jqp->inplock);
+	spin_lock_init(&jqp->outlock);
+
+	/* Connect job queue interrupt handler. No coalescing yet */
+	tasklet_init(&jqp->irqtask, caam_jq_dequeue, (u32)dev);
+	error = request_irq(jqp->irq, caam_jq_interrupt, 0,
+			    "caam-jobq", dev);
+	if (error) {
+		dev_err(dev, "can't connect JobQ %d interrupt (%d)\n",
+			jqp->qidx, jqp->irq);
+			irq_dispose_mapping(jqp->irq);
+			jqp->irq = 0;
+			dma_unmap_single(dev, inpbusaddr,
+					 sizeof(u32 *) * JOBQ_DEPTH,
+					 DMA_BIDIRECTIONAL);
+			dma_unmap_single(dev, outbusaddr,
+					 sizeof(u32 *) * JOBQ_DEPTH,
+					 DMA_BIDIRECTIONAL);
+			kfree(jqp->inpring);
+			kfree(jqp->outring);
+			kfree(jqp->entinfo);
+			return -EINVAL;
+	}
+
+	jqp->assign = JOBQ_UNASSIGNED;
+	return 0;
+}
+
+/*
+ * Shutdown JobQ independent of platform property code
+ */
+int caam_jq_shutdown(struct device *dev)
+{
+	struct caam_drv_private_jq *jqp;
+	u32 used;
+
+	jqp = dev_get_drvdata(dev);
+
+	/* Stop ring. This just does a blunt flush of output entries */
+	wr_reg32(&jqp->qregs->qconfig_lo, JQCFG_IMSK);
+	wr_reg32(&jqp->qregs->jqcommand, JQCR_RESET); /* initiate flush */
+	used = rd_reg32(&jqp->qregs->outring_used);
+	wr_reg32(&jqp->qregs->outring_rmvd, used);
+	wr_reg32(&jqp->qregs->jqcommand, JQCR_RESET); /* complete flush */
+
+	/* Release interrupt */
+	free_irq(jqp->irq, dev);
+
+	/* Free rings */
+	dma_unmap_single(dev, (u32)jqp->outring,
+			 sizeof(struct jq_outentry) * JOBQ_DEPTH,
+			 DMA_BIDIRECTIONAL);
+	dma_unmap_single(dev, (u32)jqp->inpring, sizeof(u32 *) * JOBQ_DEPTH,
+			 DMA_BIDIRECTIONAL);
+	kfree(jqp->outring);
+	kfree(jqp->inpring);
+	kfree(jqp->entinfo);
+
+	return 0;
+}
+
+/*
+ * Probe routine for each detected JobQ subsystem. It assumes that
+ * property detection was picked up externally.
+ */
+int caam_jq_probe(struct of_device *ofdev,
+		  struct device_node *np,
+		  int q)
+{
+	struct device *ctrldev, *jqdev;
+	struct of_device *jq_ofdev;
+	struct caam_drv_private *ctrlpriv;
+	struct caam_drv_private_jq *jqpriv;
+	u32 *jqoffset;
+	int error;
+
+	ctrldev = &ofdev->dev;
+	ctrlpriv = dev_get_drvdata(ctrldev);
+
+	jqpriv = kmalloc(sizeof(struct caam_drv_private_jq),
+			 GFP_KERNEL);
+	if (jqpriv == NULL) {
+		dev_err(ctrldev, "can't alloc private mem for job queue %d\n",
+			q);
+		return -ENOMEM;
+	}
+	jqpriv->parentdev = ctrldev; /* point back to parent */
+	jqpriv->qidx = q; /* save queue identity relative to detection */
+
+	/*
+	 * Derive a pointer to the detected JobQs regs
+	 * Driver has already iomapped the entire space, we just
+	 * need to add in the offset to this JobQ. Don't know if I
+	 * like this long-term, but it'll run
+	 */
+	jqoffset = (u32 *)of_get_property(np, "reg", NULL);
+	jqpriv->qregs = (struct caam_job_queue *)((u32)ctrlpriv->ctrl +
+						  *jqoffset);
+
+	/* Build a local dev for each detected queue */
+	jq_ofdev = of_platform_device_create(np, NULL, ctrldev);
+	if (jq_ofdev == NULL) {
+		kfree(jqpriv);
+		return -EINVAL;
+	}
+	jqdev = &jq_ofdev->dev;
+	dev_set_drvdata(jqdev, jqpriv);
+	ctrlpriv->jqdev[q] = jqdev;
+
+	/* FIXME: temporary detective code */
+	dev_info(jqdev,
+		 "caam_jq_probe: dev[%d] %08x, priv %08x, reg %08x\n",
+		 q, (u32)jqdev, (u32)jqpriv, (u32)jqpriv->qregs);
+
+	/* Identify the interrupt */
+	jqpriv->irq = of_irq_to_resource(np, 0, NULL);
+
+	/* Now do the platform independent part */
+	error = caam_jq_init(jqdev); /* now turn on hardware */
+	if (error) {
+		kfree(jqpriv);
+		return error;
+	}
+
+	return error;
+}
