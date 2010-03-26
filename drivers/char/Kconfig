@@ -659,6 +659,13 @@ config HVC_UDBG
        select HVC_DRIVER
        default n
 
+config HVC_FREESCALE
+	bool "Freescale Hypervisor Console support"
+	depends on FSL_HYPERVISOR
+	select HVC_DRIVER
+	help
+	  Enable the Freescale Hypervisor console.
+
 config VIRTIO_CONSOLE
 	tristate "Virtio console"
 	depends on VIRTIO
@@ -1104,6 +1111,15 @@ config DEVPORT
 	default y
 
 source "drivers/s390/char/Kconfig"
+
+config FSL_HV_BYTECHAN
+	tristate "Freescale hypervisor byte channel driver"
+	depends on FSL_HYPERVISOR
+	default FSL_HYPERVISOR
+	help
+	  This driver creates /dev entries for each Freescale hypervisor byte
+	  channel, thereby allowing applications to communicate with byte
+	  channels as if they were serial ports.
 
 endmenu
 
