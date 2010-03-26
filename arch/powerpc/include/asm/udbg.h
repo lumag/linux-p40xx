@@ -32,6 +32,7 @@ extern void udbg_init_uart(void __iomem *comport, unsigned int speed,
 			   unsigned int clock);
 extern unsigned int udbg_probe_uart_speed(void __iomem *comport,
 					  unsigned int clock);
+extern void udbg_init_hvc_fsl(void);
 
 struct device_node;
 extern void udbg_scc_init(int force_scc);

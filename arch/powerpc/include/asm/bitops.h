@@ -1,6 +1,8 @@
 /*
  * PowerPC atomic bit operations.
  *
+ * Copyright (C) 2009 Freescale Semiconductor, Inc.
+ *
  * Merged version by David Gibson <david@gibson.dropbear.id.au>.
  * Based on ppc64 versions by: Dave Engebretsen, Todd Inglett, Don
  * Reed, Pat McCarthy, Peter Bergner, Anton Blanchard.  They

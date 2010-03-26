@@ -71,6 +71,27 @@ config SOCRATES
 	help
 	  This option enables support for the Socrates board.
 
+config P4080_SIM
+	bool "Freescale P4080 SIM"
+	select DEFAULT_UIMAGE
+	select HAS_RAPIDIO
+	help
+	  This option enables support for the P4080 SIM board
+
+config P4080_HV
+	bool "Freescale P4080 Hypervisor"
+	select DEFAULT_UIMAGE
+	select VMPIC
+	select FSL_HYPERVISOR
+	select HAS_RAPIDIO
+	help
+	  This option enables support for the P4080 Hypervisor Platform
+
+config FSL_HYPERVISOR
+	bool
+	help
+	  This options enables support for Freescale Hypervisor
+
 config KSI8560
         bool "Emerson KSI8560"
         select DEFAULT_UIMAGE

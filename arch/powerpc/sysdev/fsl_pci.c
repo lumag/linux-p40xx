@@ -362,8 +362,13 @@ int __init fsl_add_bridge(struct device_node *dev, int is_primary)
 	/* This also maps the I/O region and sets isa_io/mem_base */
 	pci_process_bridge_OF_ranges(hose, dev, is_primary);
 
-	/* Setup PEX window registers */
-	setup_pci_atmu(hose, &rsrc);
+	/* When under the hypervisor, Linux does not know the mapping of
+	 * true physical to PCI which is needed to set up the ATMUs.  Just
+	 * take the U-Boot setup values.
+	 */
+	if (!machine_is(p4080_hv))
+		/* Setup PEX window registers */
+		setup_pci_atmu(hose, &rsrc);
 
 	return 0;
 }

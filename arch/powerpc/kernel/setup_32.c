@@ -50,6 +50,7 @@ extern void bootx_init(unsigned long r4, unsigned long phys);
 int boot_cpuid;
 EXPORT_SYMBOL_GPL(boot_cpuid);
 int boot_cpuid_phys;
+EXPORT_SYMBOL(boot_cpuid_phys);
 
 int smp_hw_index[NR_CPUS];
 

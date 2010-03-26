@@ -21,7 +21,7 @@
  *		debbie_chu@mvista.com
  *    Copyright 2002-2004 MontaVista Software, Inc.
  *	PowerPC 44x support, Matt Porter <mporter@kernel.crashing.org>
- *    Copyright 2004 Freescale Semiconductor, Inc
+ *    Copyright 2004, 2008-2009 Freescale Semiconductor, Inc
  *	PowerPC e500 modifications, Kumar Gala <galak@kernel.crashing.org>
  *
  * This program is free software; you can redistribute  it and/or modify it
@@ -211,6 +211,9 @@ skpinv:	addi	r6,r6,1				/* Increment */
 
 	xori	r6,r4,1
 	slwi	r6,r6,5		/* setup new context with other address space */
+#if defined(CONFIG_DEBUG_CW)
+	ori	r6, r6, 0x200	/* enable DE bit for MSR */
+#endif
 	bl	1f		/* Find our address */
 1:	mflr	r9
 	rlwimi	r7,r9,0,20,31
@@ -237,11 +240,14 @@ skpinv:	addi	r6,r6,1				/* Increment */
 	lis	r7,0x1000	/* Set MAS0(TLBSEL) = 1 */
 	rlwimi	r7,r3,16,4,15	/* Setup MAS0 = TLBSEL | ESEL(r3) */
 	mtspr	SPRN_MAS0,r7
+#if !defined(CONFIG_DEBUG_CW)
+/* CW_patch: during debug the IPROT should not be cleared */
 	tlbre
 	mfspr	r6,SPRN_MAS1
 	rlwinm	r6,r6,0,2,0	/* clear IPROT */
 	mtspr	SPRN_MAS1,r6
 	tlbwe
+#endif
 	/* Invalidate TLB1 */
 	li	r9,0x0c
 	tlbivax 0,r9
@@ -329,7 +335,7 @@ skpinv:	addi	r6,r6,1				/* Increment */
 	mtspr	SPRN_HID0, r2
 #endif
 
-#if !defined(CONFIG_BDI_SWITCH)
+#if !defined(CONFIG_BDI_SWITCH) && !defined(CONFIG_DEBUG_CW)
 	/*
 	 * The Abatron BDI JTAG debugger does not tolerate others
 	 * mucking with the debug registers.
@@ -385,6 +391,13 @@ skpinv:	addi	r6,r6,1				/* Increment */
 /*
  * Decide what sort of machine this is and initialize the MMU.
  */
+#if defined(CONFIG_DEBUG_CW)
+	lis	r10, 0x1008 /* clear the V bit from the L2MMU_CAM8 register */
+	mtspr	SPRN_MAS0, r10
+	lis	r10, 0x0
+	mtspr	SPRN_MAS1, r10
+	tlbwe
+#endif
 	mr	r3,r31
 	mr	r4,r30
 	mr	r5,r29
@@ -1068,7 +1081,7 @@ _GLOBAL(flush_dcache_L1)
 1:	dcbf	0,r4		/* ...and flush. */
 	add	r4,r4,r5
 	bdnz	1b
-	
+
 	/* restore HID0 */
 	mtspr	SPRN_HID0,r8
 	isync
