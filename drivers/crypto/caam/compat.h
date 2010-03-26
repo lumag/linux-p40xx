@@ -51,6 +51,7 @@
 #include <linux/in.h>
 #include <linux/slab.h>
 #include <linux/types.h>
+#include <linux/debugfs.h>
 #include <net/xfrm.h>
 
 #include <crypto/algapi.h>
@@ -59,6 +60,7 @@
 #include <crypto/sha.h>
 #include <crypto/aead.h>
 #include <crypto/authenc.h>
+#include <crypto/scatterwalk.h>
 
 #define PRINT(format, arg...) printk(format, ##arg)
 

@@ -74,13 +74,13 @@ static const u_int32_t count = 0x398a59b4;
 static const u_int8_t bearer = 0x15;
 static const u_int8_t direction = 0x1;
 
-extern wait_queue_head_t jqtest_wq;
+static struct completion completion;
 
 void jq_snow_done(struct device *dev, u32 *head, u32 status, void *auxarg)
 {
-	/* Bump volatile completion test value and wake calling thread */
-	(*(int *)auxarg)++;
-	wake_up_interruptible(&jqtest_wq);
+	/* Write back returned status, and continue */
+	*(u32 *)auxarg = status;
+	complete(&completion);
 }
 
 int jq_snow_f8(struct device *dev, int show)
@@ -89,9 +89,11 @@ int jq_snow_f8(struct device *dev, int show)
 	u32 *sdesc, *jdesc, *sdmap;
 	u8 *inbuf, *outbuf, *inmap, *outmap;
 	u16 sdsz, jdsz, inbufsz, outbufsz;
-	int jqarg;
+	u32 rqstatus;
+	u8 err[256];
+	u8 testname[] = "jq_snow_f8";
 
-	jqarg = 0;
+	init_completion(&completion);
 
 	/* Allocate more than necessary for both descs */
 	sdsz = 64 * sizeof(u32);
@@ -107,7 +109,7 @@ int jq_snow_f8(struct device *dev, int show)
 
 	if ((sdesc == NULL) || (jdesc == NULL) ||
 	    (inbuf == NULL) || (outbuf == NULL)) {
-		printk(KERN_INFO "jq_snow_f8: can't get buffers\n");
+		printk(KERN_INFO "%s: can't get buffers\n", testname);
 		kfree(sdesc);
 		kfree(jdesc);
 		kfree(inbuf);
@@ -123,7 +125,7 @@ int jq_snow_f8(struct device *dev, int show)
 
 	if (stat) {
 		printk(KERN_INFO
-		       "jq_snow_f8: sharedesc construct failed\n");
+		       "%s: sharedesc construct failed\n", testname);
 		kfree(sdesc);
 		kfree(jdesc);
 		return -1;
@@ -141,26 +143,34 @@ int jq_snow_f8(struct device *dev, int show)
 
 	/* Show it before we run it */
 	if (show == SHOW_DESC) {
-		caam_desc_disasm(jdesc);
-		caam_desc_disasm(sdesc);
+		caam_desc_disasm(jdesc, DISASM_SHOW_OFFSETS);
+		caam_desc_disasm(sdesc, DISASM_SHOW_OFFSETS);
 	}
 
 	/* Enqueue and block*/
-	stat = caam_jq_enqueue(dev, jdesc, jq_snow_done, (void *)&jqarg);
+	stat = caam_jq_enqueue(dev, jdesc, jq_snow_done, (void *)&rqstatus);
 	if (stat) {
-		printk(KERN_INFO "jq_snow_f8: can't enqueue\n");
+		printk(KERN_INFO "%s: can't enqueue\n", testname);
 		rtnval = -1;
 	}
-	exit = wait_event_interruptible(jqtest_wq, (jqarg));
+	exit = wait_for_completion_interruptible(&completion);
 	if (exit)
-		printk(KERN_INFO "jq_snow_f8: interrupted\n");
+		printk(KERN_INFO "%s: interrupted\n", testname);
 
 	dma_unmap_single(dev, (u32)sdmap, sdsz, DMA_BIDIRECTIONAL);
 	dma_unmap_single(dev, (u32)inmap, inbufsz, DMA_TO_DEVICE);
 	dma_unmap_single(dev, (u32)outmap, outbufsz, DMA_FROM_DEVICE);
 
-	if (memcmp(output_msg_data, outbuf, outbufsz))
-		printk(KERN_INFO "jq_snow_f8: output mismatch\n");
+	if ((rtnval) || (rqstatus)) {
+		printk(KERN_INFO "%s: request status = 0x%08x\n", testname,
+		       rqstatus);
+		printk(KERN_INFO "%s\n", caam_jq_strstatus(err, rqstatus));
+	} else
+		if (memcmp(output_msg_data, outbuf, outbufsz)) {
+			printk(KERN_INFO "%s: output mismatch\n", testname);
+			printk(KERN_INFO "0x%02x 0x%02x 0x%02x 0x%02x\n",
+			       outbuf[0], outbuf[1], outbuf[2], outbuf[3]);
+		}
 
 	kfree(sdesc);
 	kfree(jdesc);
@@ -198,9 +208,11 @@ int jq_snow_f9(struct device *dev, int show)
 	u32 *sdesc, *jdesc, *sdmap;
 	u8 *inbuf, *outbuf, *inmap, *outmap;
 	u16 sdsz, jdsz, inbufsz, outbufsz;
-	int jqarg;
+	u32 rqstatus;
+	u8 err[256];
+	u8 testname[] = "jq_snow_f9";
 
-	jqarg = 0;
+	init_completion(&completion);
 
 	/* Allocate more than necessary for both descs */
 	sdsz = 64 * sizeof(u32);
@@ -216,7 +228,7 @@ int jq_snow_f9(struct device *dev, int show)
 
 	if ((sdesc == NULL) || (jdesc == NULL) ||
 	    (inbuf == NULL) || (outbuf == NULL)) {
-		printk(KERN_INFO "jq_snow_f9: can't get buffers\n");
+		printk(KERN_INFO "%s: can't get buffers\n", testname);
 		kfree(sdesc);
 		kfree(jdesc);
 		kfree(inbuf);
@@ -232,7 +244,7 @@ int jq_snow_f9(struct device *dev, int show)
 
 	if (stat) {
 		printk(KERN_INFO
-		       "jq_snow_f9: sharedesc construct failed\n");
+		       "%s: sharedesc construct failed\n", testname);
 		kfree(sdesc);
 		kfree(jdesc);
 		return -1;
@@ -249,26 +261,34 @@ int jq_snow_f9(struct device *dev, int show)
 
 	/* Show it before we run it */
 	if (show == SHOW_DESC) {
-		caam_desc_disasm(jdesc);
-		caam_desc_disasm(sdesc);
+		caam_desc_disasm(jdesc, DISASM_SHOW_OFFSETS);
+		caam_desc_disasm(sdesc, DISASM_SHOW_OFFSETS);
 	}
 
 	/* Enqueue and block*/
-	stat = caam_jq_enqueue(dev, jdesc, jq_snow_done, (void *)&jqarg);
+	stat = caam_jq_enqueue(dev, jdesc, jq_snow_done, (void *)&rqstatus);
 	if (stat) {
-		printk(KERN_INFO "jq_snow_f9: can't enqueue\n");
+		printk(KERN_INFO "%s: can't enqueue\n", testname);
 		rtnval = -1;
 	}
-	exit = wait_event_interruptible(jqtest_wq, (jqarg));
+	exit = wait_for_completion_interruptible(&completion);
 	if (exit)
-		printk(KERN_INFO "jq_snow_f9: interrupted\n");
+		printk(KERN_INFO "%s: interrupted\n", testname);
 
 	dma_unmap_single(dev, (u32)sdmap, sdsz, DMA_BIDIRECTIONAL);
 	dma_unmap_single(dev, (u32)inmap, inbufsz, DMA_TO_DEVICE);
 	dma_unmap_single(dev, (u32)outmap, outbufsz, DMA_FROM_DEVICE);
 
-	if (memcmp(uia2_out, outbuf, outbufsz))
-		printk(KERN_INFO "jq_snow_f9: output mismatch\n");
+	if ((rtnval) || (rqstatus)) {
+		printk(KERN_INFO "%s: request status = 0x%08x\n", testname,
+		       rqstatus);
+		printk(KERN_INFO "%s\n", caam_jq_strstatus(err, rqstatus));
+	} else
+		if (memcmp(uia2_out, outbuf, outbufsz)) {
+			printk(KERN_INFO "%s: output mismatch\n", testname);
+			printk(KERN_INFO "0x%02x 0x%02x 0x%02x 0x%02x\n",
+			       outbuf[0], outbuf[1], outbuf[2], outbuf[3]);
+		}
 
 	kfree(sdesc);
 	kfree(jdesc);

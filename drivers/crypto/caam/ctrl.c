@@ -34,9 +34,7 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <linux/of_platform.h>
-#include <linux/interrupt.h>
-
+#include "compat.h"
 #include "regs.h"
 #include "intern.h"
 #include "jq.h"
@@ -81,6 +79,11 @@ static int caam_remove(struct of_device *ofdev)
 	if (ctrlpriv->qi_present)
 		wr_reg32(&ctrlpriv->qi->qi_control_lo, QICTL_STOP);
 
+	/* Shut down debug views */
+#ifdef CONFIG_DEBUG_FS
+	debugfs_remove_recursive(ctrlpriv->dfs_root);
+#endif
+
 	/* Unmap controller region */
 	iounmap(&ctrlpriv->ctrl);
 
@@ -105,6 +108,7 @@ static int caam_probe(struct of_device *ofdev,
 	struct device_node *nprop, *np;
 	struct caam_full *topregs;
 	struct caam_drv_private *ctrlpriv;
+	u32 mstrcfg;
 
 	ctrlpriv = kzalloc(sizeof(struct caam_drv_private), GFP_KERNEL);
 	if (!ctrlpriv)
@@ -128,6 +132,11 @@ static int caam_probe(struct of_device *ofdev,
 
 	/* Get the IRQ of the controller (for security violations only) */
 	ctrlpriv->secvio_irq = of_irq_to_resource(nprop, 0, NULL);
+
+	/* Enable DECO watchdogs in master configuration register */
+	mstrcfg = rd_reg32(&ctrlpriv->ctrl->mcr);
+	mstrcfg |= MCFGR_WDENABLE;
+	wr_reg32(&ctrlpriv->ctrl->mcr, mstrcfg);
 
 	/*
 	 * Device tree provides no information on the actual number
@@ -200,6 +209,94 @@ static int caam_probe(struct of_device *ofdev,
 	caam_jq_algapi_init(dev);
 #endif
 
+#ifdef CONFIG_DEBUG_FS
+	/*
+	 * FIXME: needs better naming distinction, as some amalgamation of
+	 * "caam" and nprop->full_name. The OF name isn't distinctive,
+	 * but does separate instances
+	 */
+	ctrlpriv->dfs_root = debugfs_create_dir("caam", NULL);
+	ctrlpriv->ctl = debugfs_create_dir("ctl", ctrlpriv->dfs_root);
+
+	/* Controller-level - performance monitor counters */
+	ctrlpriv->ctl_rq_dequeued =
+		debugfs_create_u64("rq_dequeued",
+				   S_IFCHR | S_IRUSR | S_IRGRP | S_IROTH,
+				   ctrlpriv->ctl,
+				   &ctrlpriv->ctrl->perfmon.req_dequeued);
+	ctrlpriv->ctl_ob_enc_req =
+		debugfs_create_u64("ob_rq_encrypted",
+				   S_IFCHR | S_IRUSR | S_IRGRP | S_IROTH,
+				   ctrlpriv->ctl,
+				   &ctrlpriv->ctrl->perfmon.ob_enc_req);
+	ctrlpriv->ctl_ib_dec_req =
+		debugfs_create_u64("ib_rq_decrypted",
+				   S_IFCHR | S_IRUSR | S_IRGRP | S_IROTH,
+				   ctrlpriv->ctl,
+				   &ctrlpriv->ctrl->perfmon.ib_dec_req);
+	ctrlpriv->ctl_ob_enc_bytes =
+		debugfs_create_u64("ob_bytes_encrypted",
+				   S_IFCHR | S_IRUSR | S_IRGRP | S_IROTH,
+				   ctrlpriv->ctl,
+				   &ctrlpriv->ctrl->perfmon.ob_enc_bytes);
+	ctrlpriv->ctl_ob_prot_bytes =
+		debugfs_create_u64("ob_bytes_protected",
+				   S_IFCHR | S_IRUSR | S_IRGRP | S_IROTH,
+				   ctrlpriv->ctl,
+				   &ctrlpriv->ctrl->perfmon.ob_prot_bytes);
+	ctrlpriv->ctl_ib_dec_bytes =
+		debugfs_create_u64("ib_bytes_decrypted",
+				   S_IFCHR | S_IRUSR | S_IRGRP | S_IROTH,
+				   ctrlpriv->ctl,
+				   &ctrlpriv->ctrl->perfmon.ib_dec_bytes);
+	ctrlpriv->ctl_ib_valid_bytes =
+		debugfs_create_u64("ib_bytes_validated",
+				   S_IFCHR | S_IRUSR | S_IRGRP | S_IROTH,
+				   ctrlpriv->ctl,
+				   &ctrlpriv->ctrl->perfmon.ib_valid_bytes);
+
+	/* Controller level - global status values */
+	ctrlpriv->ctl_faultaddr =
+		debugfs_create_u64("fault_addr",
+				   S_IFCHR | S_IRUSR | S_IRGRP | S_IROTH,
+				   ctrlpriv->ctl,
+				   &ctrlpriv->ctrl->perfmon.faultaddr);
+	ctrlpriv->ctl_faultdetail =
+		debugfs_create_u32("fault_detail",
+				   S_IFCHR | S_IRUSR | S_IRGRP | S_IROTH,
+				   ctrlpriv->ctl,
+				   &ctrlpriv->ctrl->perfmon.faultdetail);
+	ctrlpriv->ctl_faultstatus =
+		debugfs_create_u32("fault_status",
+				   S_IFCHR | S_IRUSR | S_IRGRP | S_IROTH,
+				   ctrlpriv->ctl,
+				   &ctrlpriv->ctrl->perfmon.status);
+
+	/* Internal covering keys (useful in non-secure mode only) */
+	ctrlpriv->ctl_kek_wrap.data = &ctrlpriv->ctrl->kek[0];
+	ctrlpriv->ctl_kek_wrap.size = KEK_KEY_SIZE * sizeof(__be32);
+	ctrlpriv->ctl_kek = debugfs_create_blob("kek",
+						S_IFCHR | S_IRUSR |
+						S_IRGRP | S_IROTH,
+						ctrlpriv->ctl,
+						&ctrlpriv->ctl_kek_wrap);
+
+	ctrlpriv->ctl_tkek_wrap.data = &ctrlpriv->ctrl->tkek[0];
+	ctrlpriv->ctl_tkek_wrap.size = KEK_KEY_SIZE * sizeof(__be32);
+	ctrlpriv->ctl_tkek = debugfs_create_blob("tkek",
+						 S_IFCHR | S_IRUSR |
+						 S_IRGRP | S_IROTH,
+						 ctrlpriv->ctl,
+						 &ctrlpriv->ctl_tkek_wrap);
+
+	ctrlpriv->ctl_tdsk_wrap.data = &ctrlpriv->ctrl->tdsk[0];
+	ctrlpriv->ctl_tdsk_wrap.size = KEK_KEY_SIZE * sizeof(__be32);
+	ctrlpriv->ctl_tdsk = debugfs_create_blob("tdsk",
+						 S_IFCHR | S_IRUSR |
+						 S_IRGRP | S_IROTH,
+						 ctrlpriv->ctl,
+						 &ctrlpriv->ctl_tdsk_wrap);
+#endif
 	return 0;
 }
 

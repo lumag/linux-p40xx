@@ -34,34 +34,6 @@
 
 #include "caam_jqtest.h"
 
-#if 0
-static const u_int8_t key[] = {
-	0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
-	0xf0, 0xe1, 0xd2, 0xc3, 0xb4, 0xa5, 0x96, 0x87
-};
-
-static const u_int8_t in[] = {
-	"Now is the time for all good men"
-};
-
-static const u_int8_t iv[] = {
-	0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10,
-	0x01, 0x23, 0x45, 0x57, 0x89, 0xab, 0xcd, 0xef
-};
-
-static const u_int8_t out[] = {
-	0x1e, 0x4d, 0xe7, 0x24, 0xeb, 0x93, 0xb0, 0xe0,
-	0xea, 0x74, 0xe0, 0x1b, 0x1b, 0x2f, 0x17, 0x2e,
-	0xcf, 0xa9, 0xad, 0x2a, 0x0e, 0x63, 0xd3, 0x6e,
-	0xef, 0x4a, 0x07, 0x69, 0x02, 0xca, 0xa2, 0x4b
-};
-
-#define AES_TESTSET_SIZE 32
-#define AES_KEY_SIZE 16
-#define AES_IV_SIZE 16
-
-#endif
-
 static const u_int8_t in[] = {
 	0xC4, 0x75, 0xC5, 0xFA, 0x30, 0x86, 0x21, 0x3F,
 	0x1A, 0xEC, 0xDA, 0xA1, 0x0E, 0xBF, 0xF3, 0x71,
@@ -144,14 +116,14 @@ static const u_int8_t key[] = {
 #define AES_KEY_SIZE 32
 #define AES_IV_SIZE 16
 
-extern wait_queue_head_t jqtest_wq;
+static struct completion completion;
 
 void jq_blkcipher_done(struct device *dev, u32 *head, u32 status, void *auxarg)
 {
-	(*(int *)auxarg)++;
-	wake_up_interruptible(&jqtest_wq);
+	/* Write back returned status, and continue */
+	*(u32 *)auxarg = status;
+	complete(&completion);
 }
-
 
 int jq_aes_cbc_shared(struct device *dev, int show)
 {
@@ -159,12 +131,16 @@ int jq_aes_cbc_shared(struct device *dev, int show)
 	u32 *sdesc, *jdesc, *sdmap, *jdmap;
 	u8 *inbuf, *outbuf, *inmap, *outmap;
 	u16 sdsz, jdsz, inbufsz, outbufsz;
-	int jqarg;
+	u32 rqstatus;
+	u8 err[256];
+	u8 testname[] = "jq_aes_cbc_shared";
 
 	sdsz = 64 * sizeof(u32);
 	jdsz = 16 * sizeof(u32);
 	inbufsz = AES_TESTSET_SIZE;
 	outbufsz = AES_TESTSET_SIZE;
+
+	init_completion(&completion);
 
 	sdesc = kzalloc(sdsz, GFP_KERNEL | GFP_DMA);
 	jdesc = kzalloc(jdsz, GFP_KERNEL | GFP_DMA);
@@ -174,7 +150,7 @@ int jq_aes_cbc_shared(struct device *dev, int show)
 
 	if ((sdesc == NULL) || (jdesc == NULL) ||
 	    (inbuf == NULL) || (outbuf == NULL)) {
-		printk(KERN_INFO "jq_aes_cbc_shared: can't get buffers\n");
+		printk(KERN_INFO "%s: can't get buffers\n", testname);
 		kfree(sdesc);
 		kfree(jdesc);
 		kfree(inbuf);
@@ -183,6 +159,7 @@ int jq_aes_cbc_shared(struct device *dev, int show)
 	};
 
 	memcpy(inbuf, in, inbufsz);
+	memset(outbuf, 0, outbufsz);
 
 	stat = cnstr_shdsc_cbc_blkcipher(sdesc, &sdsz, (u_int8_t *)key,
 					 AES_KEY_SIZE * 8,
@@ -190,7 +167,7 @@ int jq_aes_cbc_shared(struct device *dev, int show)
 					 DIR_DECRYPT, OP_ALG_ALGSEL_AES, 0);
 	if (stat) {
 		printk(KERN_INFO
-		       "jq_aes_cbc_shared: sharedesc construct failed\n");
+		       "%s: sharedesc construct failed\n", testname);
 		kfree(sdesc);
 		kfree(jdesc);
 		kfree(inbuf);
@@ -208,29 +185,37 @@ int jq_aes_cbc_shared(struct device *dev, int show)
 	jdmap = (u32 *)dma_map_single(dev, jdesc, jdsz, DMA_TO_DEVICE);
 
 	if (show == SHOW_DESC) {
-		caam_desc_disasm(jdesc);
-		caam_desc_disasm(sdesc);
+		caam_desc_disasm(jdesc, DISASM_SHOW_OFFSETS);
+		caam_desc_disasm(sdesc, DISASM_SHOW_OFFSETS);
 	}
 
-	stat = caam_jq_enqueue(dev, jdesc, jq_blkcipher_done, (void *)&jqarg);
+	init_completion(&completion);
+
+	stat = caam_jq_enqueue(dev, jdesc, jq_blkcipher_done,
+			       (void *)&rqstatus);
 	if (stat) {
-		printk(KERN_INFO "jq_aes_cbc_shared: can't enqueue\n");
+		printk(KERN_INFO "%s: can't enqueue\n", testname);
 		rtnval = -1;
 	}
-	exit = wait_event_interruptible(jqtest_wq, (jqarg));
+	exit = wait_for_completion_interruptible(&completion);
 	if (exit)
-		printk(KERN_INFO "jq_aes_cbc_shared: interrupted\n");
+		printk(KERN_INFO "%s: interrupted\n", testname);
 
 	dma_unmap_single(dev, (u32)sdmap, sdsz, DMA_BIDIRECTIONAL);
 	dma_unmap_single(dev, (u32)jdmap, jdsz, DMA_TO_DEVICE);
 	dma_unmap_single(dev, (u32)inmap, inbufsz, DMA_TO_DEVICE);
 	dma_unmap_single(dev, (u32)outmap, outbufsz, DMA_FROM_DEVICE);
 
-	if (memcmp(out, outbuf, outbufsz)) {
-		printk(KERN_INFO "jq_aes_cbc_shared: output mismatch\n");
-		printk(KERN_INFO "0x%02x 0x%02x 0x%02x 0x%02x\n",
-			outbuf[0], outbuf[1], outbuf[2], outbuf[3]);
-	}
+	if ((rtnval) || (rqstatus)) {
+		printk(KERN_INFO "%s: request status = 0x%08x\n", testname,
+		       rqstatus);
+		printk(KERN_INFO "%s\n", caam_jq_strstatus(err, rqstatus));
+	} else
+		if (memcmp(out, outbuf, outbufsz)) {
+			printk(KERN_INFO "%s: output mismatch\n", testname);
+			printk(KERN_INFO "0x%02x 0x%02x 0x%02x 0x%02x\n",
+			       outbuf[0], outbuf[1], outbuf[2], outbuf[3]);
+		}
 
 	kfree(sdesc);
 	kfree(jdesc);
@@ -247,7 +232,11 @@ int jq_aes_cbc_job(struct device *dev, int show)
 	u8 *inbuf, *outbuf, *inmap, *outmap;
 	u8 *keybuf, *keymap, *ivbuf, *ivmap;
 	u16 jdsz, inbufsz, outbufsz;
-	int jqarg;
+	u32 rqstatus;
+	u8 err[256];
+	u8 testname[] = "jq_aes_cbc_job";
+
+	init_completion(&completion);
 
 	jdsz = 64 * sizeof(u32);
 	jdesc = kzalloc(jdsz, GFP_KERNEL | GFP_DMA);
@@ -261,7 +250,7 @@ int jq_aes_cbc_job(struct device *dev, int show)
 
 	if ((jdesc == NULL) || (inbuf == NULL) || (outbuf == NULL) ||
 	    (keybuf == NULL) || (ivbuf == NULL)) {
-		printk(KERN_INFO "jq_aes_cbc_job: can't get buffers\n");
+		printk(KERN_INFO "%s: can't get buffers\n", testname);
 		kfree(jdesc);
 		kfree(inbuf);
 		kfree(outbuf);
@@ -273,6 +262,7 @@ int jq_aes_cbc_job(struct device *dev, int show)
 	memcpy(inbuf, in, inbufsz);
 	memcpy(keybuf, key, AES_KEY_SIZE);
 	memcpy(ivbuf, iv, AES_IV_SIZE);
+	memset(outbuf, 0, outbufsz);
 
 	inmap = (u8 *)dma_map_single(dev, inbuf, inbufsz, DMA_TO_DEVICE);
 	outmap = (u8 *)dma_map_single(dev, outbuf, outbufsz, DMA_FROM_DEVICE);
@@ -287,30 +277,39 @@ int jq_aes_cbc_job(struct device *dev, int show)
 					   DIR_DECRYPT, OP_ALG_ALGSEL_AES, 0);
 	if (stat) {
 		printk(KERN_INFO
-		       "jq_aes_cbc_job: jobdesc construct failed\n");
+		       "%s: jobdesc construct failed\n", testname);
 		kfree(jdesc);
 		return -1;
 	};
 
 	if (show == SHOW_DESC)
-		caam_desc_disasm(jdesc);
+		caam_desc_disasm(jdesc, DISASM_SHOW_OFFSETS);
 
-	stat = caam_jq_enqueue(dev, jdesc, jq_blkcipher_done, (void *)&jqarg);
+	stat = caam_jq_enqueue(dev, jdesc, jq_blkcipher_done,
+			       (void *)&rqstatus);
 	if (stat) {
-		printk(KERN_INFO "jq_aes_cbc_job: can't enqueue\n");
+		printk(KERN_INFO "%s: can't enqueue\n", testname);
 		rtnval = -1;
 	}
-	exit = wait_event_interruptible(jqtest_wq, (jqarg));
+	exit = wait_for_completion_interruptible(&completion);
 	if (exit)
-		printk(KERN_INFO "jq_aes_cbc_job: interrupted\n");
+		printk(KERN_INFO "%s: interrupted\n", testname);
 
 	dma_unmap_single(dev, (u32)inmap, inbufsz, DMA_TO_DEVICE);
 	dma_unmap_single(dev, (u32)outmap, outbufsz, DMA_FROM_DEVICE);
 	dma_unmap_single(dev, (u32)keymap, AES_KEY_SIZE, DMA_TO_DEVICE);
 	dma_unmap_single(dev, (u32)ivmap, AES_IV_SIZE, DMA_TO_DEVICE);
 
-	if (memcmp(out, outbuf, outbufsz))
-		printk(KERN_INFO "jq_aes_cbc_job: output mismatch\n");
+	if ((rtnval) || (rqstatus)) {
+		printk(KERN_INFO "%s: request status = 0x%08x\n", testname,
+		       rqstatus);
+		printk(KERN_INFO "%s\n", caam_jq_strstatus(err, rqstatus));
+	} else
+		if (memcmp(out, outbuf, outbufsz)) {
+			printk(KERN_INFO "%s: output mismatch\n", testname);
+			printk(KERN_INFO "0x%02x 0x%02x 0x%02x 0x%02x\n",
+			       outbuf[0], outbuf[1], outbuf[2], outbuf[3]);
+		}
 
 	kfree(jdesc);
 	kfree(inbuf);

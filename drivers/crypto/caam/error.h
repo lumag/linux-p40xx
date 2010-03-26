@@ -1,8 +1,8 @@
 /*
- * caam_jqtest.h - central header for the JobQ unit test module
+ * CAAM Error Reporting code header file
  *
- * Copyright (c) 2008, 2009, Freescale Semiconductor, Inc.
- * All rights reserved.
+ * Copyright (c) 2009, Freescale Semiconductor, Inc.
+ * All Rights Reserved
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -32,23 +32,7 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#ifndef CAAM_JQTEST_H
-#define CAAM_JQTEST_H
-
-#include "../compat.h"
-#include "../desc.h"
-#include "../pdb.h"
-#include "../dcl/dcl.h"
-#include "../jq.h"
-#include "../error.h"
-
-#define SHOW_DESC 1
-#define NO_SHOW_DESC 0
-
-int jq_ipsec_esp_split(struct device *dev, int showdesc);
-int jq_snow_f8(struct device *dev, int showdesc);
-int jq_snow_f9(struct device *dev, int show);
-int jq_aes_cbc_shared(struct device *dev, int show);
-int jq_aes_cbc_job(struct device *dev, int show);
-
-#endif /* CAAM_JQTEST_H */
+#ifndef CAAM_ERROR_H
+#define CAAM_ERROR_H
+char *caam_jq_strstatus(char *outstr, u32 status);
+#endif /* CAAM_ERROR_H */

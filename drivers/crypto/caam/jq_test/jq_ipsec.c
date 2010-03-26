@@ -35,133 +35,347 @@
 #include "caam_jqtest.h"
 
 
-
+/* Class 2 padded all the way out to 64 bytes */
 static u8 class_2_key[] = {
-	0x00, 0xe0, 0xf0, 0xa0,
-	0x00, 0xd0, 0xf0, 0xa0,
-	0x0a, 0xd0, 0xf0, 0xa0,
-	0x0b, 0xd0, 0xf0, 0xa0,
-	0x0f, 0xd0, 0xf0, 0xa0 };
+	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+	0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+	0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+	0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+	0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27,
+	0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f,
+	0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37,
+	0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f };
 
 static u8 class_1_key[] = {
-	0x00, 0x0e, 0x0f, 0x00,
-	0x0c, 0x0f, 0x0a, 0x00,
-	0x0a, 0x0f, 0x0a, 0x00,
-	0x0b, 0x0f, 0x0a, 0x00 };
+	0x00, 0x0e, 0x0f, 0x00, 0x0c, 0x0f, 0x0a, 0x00,
+	0x0a, 0x0f, 0x0a, 0x00, 0x0b, 0x0f, 0x0a, 0x00 };
 
+#define OPTHDRSZ 52
+static const u_int8_t opthdr[] = {
+	0x34, 0x00, 0x10, 0x45, 0x00, 0x40, 0x25, 0x12,
+	0xd2, 0x86, 0x06, 0x40, 0x77, 0x46, 0x43, 0x0a,
+	0xc0, 0x46, 0x43, 0x0a, 0x16, 0x00, 0x22, 0xd0,
+	0x5d, 0x89, 0x18, 0x88, 0x9c, 0xee, 0x19, 0x12,
+	0xbc, 0x21, 0x10, 0x80, 0x00, 0x00, 0x08, 0x98,
+	0x0a, 0x08, 0x01, 0x01, 0x22, 0x75, 0x9a, 0xa6,
+	0xdb, 0x14, 0x3f, 0x08
+};
 
-extern wait_queue_head_t jqtest_wq;
+static const u_int8_t incmp[] = {
+	0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+	0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+	0x10, 0x11, 0x02, 0x03, 0x14, 0x15, 0x06, 0x07,
+	0x18, 0x19, 0x0a, 0x0b, 0x1c, 0x1d, 0x0e, 0x0f,
+	0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27,
+	0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f,
+	0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37,
+	0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f,
+};
+
+static struct completion completion;
 
 void jq_ipsec_done(struct device *dev, u32 *head, u32 status, void *auxarg)
 {
-	/* Bump volatile completion test value and wake calling thread */
-	(*(int *)auxarg)++;
-	wake_up_interruptible(&jqtest_wq);
+	/* Write back returned status, and continue */
+	*(u32 *)auxarg = status;
+	complete(&completion);
 }
 
+#define SHA1_HMAC_KEYSZ 20
+#define SHA1_HMAC_PADSZ 20
+#define SHA224_HMAC_KEYSZ 28
+#define SHA224_HMAC_PADSZ 32
+#define SHA256_HMAC_KEYSZ 32
+#define SHA256_HMAC_PADSZ 32
+#define SHA384_HMAC_KEYSZ 48
+#define SHA384_HMAC_PADSZ 64
+#define SHA512_HMAC_KEYSZ 64
+#define SHA512_HMAC_PADSZ 64
 
-int jq_ipsec_esp_no_term(struct device *dev, int show)
+#define AES_KEYSZ 16
+
+int jq_ipsec_esp_split(struct device *dev, int show)
 {
 	int stat, exit, rtnval = 0;
-	u32 *sdesc, *jdesc, *sdmap, *jdmap;
-	u8 *inbuf, *outbuf, *inmap, *outmap;
-	u16 sdsz, jdsz, inbufsz, outbufsz;
-	int jqarg;
-	struct pdbcont pdb;
-	struct cipherparams cipher;
+	u32 *jdesc, *jdmap, *encapdesc, *encapdmap, *decapdesc, *decapdmap;
+	u32 rqstatus;
+	u8 *hmackeybuf, *spkeybuf, *hmackeymap, *spkeymap;
+	u8 *inbuf, *encapbuf, *decapbuf, *inmap, *encapmap, *decapmap;
+	u8 *cipherkeybuf, *cipherkeymap;
+	u16 jdsz, encapdsz, decapdsz, cipherkeysz, hmackeysz;
+	u16 padsz, inbufsz, encapbufsz, decapbufsz;
+	struct ipsec_encap_pdb encappdb;
+	struct ipsec_decap_pdb decappdb;
 	struct authparams auth;
+	struct cipherparams cipher;
+	u8 err[256];
+	u8 testname[] = "jq_ipsec_esp_split";
 
-	jqarg = 0;
+	init_completion(&completion);
 
-	/* Allocate more than necessary for both descs */
-	sdsz = 64 * sizeof(u32);
-	jdsz = 16 * sizeof(u32);
-	sdesc = kzalloc(sdsz, GFP_KERNEL | GFP_DMA);
-	jdesc = kzalloc(jdsz, GFP_KERNEL | GFP_DMA);
-
-	/* Allocate buffers */
+	/*
+	 * Compute buffer/descriptor sizes
+	 */
+	cipherkeysz = AES_KEYSZ;
+	hmackeysz = SHA1_HMAC_KEYSZ;
+	padsz = SHA1_HMAC_PADSZ;
 	inbufsz = 64;
-	outbufsz = 116;
-	inbuf = kmalloc(inbufsz, GFP_KERNEL | GFP_DMA);
-	outbuf = kmalloc(outbufsz, GFP_KERNEL | GFP_DMA);
+	encapbufsz = 8+16+inbufsz+28; /* payload+SPI+IV+pad+padlen+ICV */
+	decapbufsz = inbufsz;
 
-	if ((sdesc == NULL) || (jdesc == NULL) ||
-	    (inbuf == NULL) || (outbuf == NULL)) {
-		printk(KERN_INFO "jq_ipsec_esp_no_term: can't get buffers\n");
-		kfree(sdesc);
-		kfree(jdesc);
-		kfree(inbuf);
-		kfree(outbuf);
-		return -1;
+	jdsz = MAX_CAAM_DESCSIZE * sizeof(u32);
+	encapdsz = MAX_CAAM_DESCSIZE * sizeof(u32);
+	decapdsz = MAX_CAAM_DESCSIZE * sizeof(u32);
+
+	/*
+	 * Alloc buffer/descriptor space
+	 */
+	hmackeybuf = kmalloc(hmackeysz, GFP_KERNEL | GFP_DMA);
+	cipherkeybuf = kmalloc(cipherkeysz, GFP_KERNEL | GFP_DMA);
+	spkeybuf = kmalloc(padsz, GFP_KERNEL | GFP_DMA);
+	inbuf = kmalloc(inbufsz, GFP_KERNEL | GFP_DMA);
+	encapbuf = kmalloc(encapbufsz, GFP_KERNEL | GFP_DMA);
+	decapbuf = kmalloc(decapbufsz, GFP_KERNEL | GFP_DMA);
+
+	jdesc = kzalloc(jdsz, GFP_KERNEL | GFP_DMA);
+	encapdesc = kzalloc(encapdsz, GFP_KERNEL | GFP_DMA);
+	decapdesc = kzalloc(decapdsz, GFP_KERNEL | GFP_DMA);
+
+	if ((hmackeybuf == NULL) || (cipherkeybuf == NULL) ||
+	    (spkeybuf == NULL) || (jdesc == NULL) || (encapdesc == NULL) ||
+	    (decapdesc == NULL) || (inbuf == NULL) || (encapbuf == NULL) ||
+	    (decapbuf == NULL)) {
+		printk(KERN_INFO "%s: can't get buffers\n", testname);
+		rtnval = -1;
+		goto freeup;
 	};
 
-	/* Fill out PDB options, no optional header */
-	pdb.opthdrlen = 0;
-	pdb.opthdr = NULL;
-	pdb.transmode = PDB_TUNNEL;
-	pdb.pclvers = PDB_IPV4;
-	pdb.outfmt = PDB_OUTPUT_COPYALL;
-	pdb.ivsrc = PDB_IV_FROM_RNG;
-	pdb.seq.esn = PDB_NO_ESN;
-	pdb.seq.antirplysz = PDB_ANTIRPLY_NONE;
+	/*
+	 * First step, generate MD split-key for shared descriptors to use
+	 * Precoat key buffer
+	 */
+	memcpy(hmackeybuf, class_2_key, hmackeysz);
 
-	/* Do transforms */
+	/* Map job, input key, output splitkey */
+	jdmap = (u32 *)dma_map_single(dev, jdesc, jdsz, DMA_TO_DEVICE);
+	hmackeymap = (u8 *)dma_map_single(dev, hmackeybuf, hmackeysz,
+					  DMA_TO_DEVICE);
+	spkeymap = (u8 *)dma_map_single(dev, spkeybuf, padsz,
+					DMA_FROM_DEVICE);
+
+	/*
+	 * Construct keysplitter using mapped HMAC input buffer
+	 * and mapped split key output buffer
+	 */
+	stat = cnstr_jobdesc_mdsplitkey(jdesc, &jdsz, hmackeymap,
+					OP_ALG_ALGSEL_SHA1, spkeymap);
+
+	if (show == SHOW_DESC)
+		caam_desc_disasm(jdesc, DISASM_SHOW_RAW | DISASM_SHOW_OFFSETS);
+
+	/* Execute keysplitter */
+	stat = caam_jq_enqueue(dev, jdesc, jq_ipsec_done, (void *)&rqstatus);
+	if (stat) {
+		printk(KERN_INFO "%s can't enqueue\n", testname);
+		rtnval = -1;
+	}
+	exit = wait_for_completion_interruptible(&completion);
+	if (exit) {
+		printk(KERN_INFO "%s interrupted\n", testname);
+		rtnval = -1;
+	}
+
+	/* Unmap splitter desc, input key, output splitkey */
+	dma_unmap_single(dev, (u32)jdmap, jdsz, DMA_TO_DEVICE);
+	dma_unmap_single(dev, (u32)hmackeymap, hmackeysz, DMA_TO_DEVICE);
+	dma_unmap_single(dev, (u32)spkeymap, padsz, DMA_FROM_DEVICE);
+
+	/* If problem, report, free jobdesc and splitkey, return */
+	if ((rtnval) || (rqstatus)) {
+		printk(KERN_INFO "%s: request status = 0x%08x\n", testname,
+		       rqstatus);
+		printk(KERN_INFO "%s\n", caam_jq_strstatus(err, rqstatus));
+		goto freeup;
+	}
+
+	/*
+	 * Now we have a covered HMAC split key. Build our encapsulation
+	 * and decapsulation descriptors
+	 */
+
+	/* Precoat blockcipher key */
+	memcpy(cipherkeybuf, class_1_key, cipherkeysz);
+
+	/*
+	 * Set up a PDB for the encapsulation side. In this case, am not
+	 * doing header prepend
+	 */
+	memset(&encappdb, 0, sizeof(encappdb));
+	/* encappdb.options = PDBOPTS_ESPCBC_TUNNEL; */
+	/* encappdb.opt_hdr_len = OPTHDRSZ; */
+	encappdb.cbc.iv[0] = 0x01234569;
+	encappdb.cbc.iv[1] = 0x89abcdef;
+	encappdb.cbc.iv[2] = 0xfedcba98;
+	encappdb.cbc.iv[3] = 0x76543210;
+
+	/* Set up a PDB for the decapsulation side */
+	/* decappdb.ip_hdr_len = OPTHDRSZ; */
+	decappdb.options = PDBOPTS_ESPCBC_OUTFMT;
+
+	/* Map key buffers before the descbuild */
+	spkeymap = (u8 *)dma_map_single(dev, spkeybuf, padsz, DMA_TO_DEVICE);
+	cipherkeymap = (u8 *)dma_map_single(dev, cipherkeybuf, 16,
+					    DMA_TO_DEVICE);
+
+	/* Now set up transforms with mapped cipher and auth keys */
 	cipher.algtype = CIPHER_TYPE_IPSEC_AESCBC;
-	cipher.key = class_1_key;
-	cipher.keylen = 16 * 8; /* AES keysize in bits */
+	cipher.key = cipherkeymap;
+	cipher.keylen = cipherkeysz * 8; /* AES keysize in bits */
 
 	auth.algtype = AUTH_TYPE_IPSEC_SHA1HMAC_96;
-	auth.key = class_2_key;
-	auth.keylen = 20 * 8; /* SHA1 keysize in bits */
+	auth.key = spkeymap;
+	auth.keylen = SHA1_HMAC_KEYSZ * 2 * 8;
 
-	/* Now construct */
-	stat = cnstr_pcl_shdsc_ipsec_cbc_encap(sdesc, &sdsz, &pdb, &cipher,
-					       &auth, 0);
+	/*
+	 * Have our keys, cipher selections, and PDB set up for the
+	 * sharedesc constructor. Now construct it
+	 */
+	stat = cnstr_shdsc_ipsec_encap(encapdesc, &encapdsz, &encappdb,
+				       (u8 *)opthdr, &cipher, &auth);
 	if (stat) {
 		printk(KERN_INFO
-		       "jq_ipsec_esp_no_term: sharedesc construct failed\n");
-		kfree(sdesc);
-		kfree(jdesc);
+		       "%s: encap sharedesc construct failed\n", testname);
+		goto freeup;
 		return -1;
 	};
 
-	/* Map data prior to jobdesc build */
-	sdmap = (u32 *)dma_map_single(dev, sdesc, sdsz, DMA_BIDIRECTIONAL);
+	stat = cnstr_shdsc_ipsec_decap(decapdesc, &decapdsz, &decappdb,
+				       &cipher, &auth);
+	if (stat) {
+		printk(KERN_INFO
+		       "%s: decap sharedesc construct failed\n", testname);
+		goto freeup;
+		return -1;
+	};
+
+	/*
+	 * Starting encapsulation phase. Precoat the input frame
+	 * with a known pattern
+	 */
+	memcpy(inbuf, incmp, inbufsz);
+
+	/*
+	 * Encap shared descriptor is ready to go. Now, map it.
+	 * Also, map the input frame and output frame before building
+	 * a sequence job descriptor to run the frame
+	 */
+	encapdmap = (u32 *)dma_map_single(dev, encapdesc, encapdsz,
+					  DMA_BIDIRECTIONAL);
 	inmap = (u8 *)dma_map_single(dev, inbuf, inbufsz, DMA_TO_DEVICE);
-	outmap = (u8 *)dma_map_single(dev, outbuf, outbufsz, DMA_FROM_DEVICE);
+	encapmap = (u8 *)dma_map_single(dev, encapbuf, encapbufsz,
+					DMA_FROM_DEVICE);
 
-	/* build jobdesc */
-	cnstr_seq_jobdesc(jdesc, &jdsz, sdmap, sdsz, inmap, inbufsz,
-			  outmap, outbufsz);
+	/* With mapped buffers, build/map jobdesc for this frame */
+	stat = cnstr_seq_jobdesc(jdesc, &jdsz, encapdmap, encapdsz,
+				 inmap, inbufsz, encapmap, encapbufsz);
 
-	/* map jobdesc */
 	jdmap = (u32 *)dma_map_single(dev, jdesc, jdsz, DMA_TO_DEVICE);
+	if (stat) {
+		printk(KERN_INFO
+		       "%s: encap jobdesc construct failed\n", testname);
+		goto freeup;
+		return -1;
+	};
 
 	/* Show it before we run it */
 	if (show == SHOW_DESC) {
-		caam_desc_disasm(jdesc);
-		caam_desc_disasm(sdesc);
+		caam_desc_disasm(jdesc, DISASM_SHOW_OFFSETS);
+		caam_desc_disasm(encapdesc, DISASM_SHOW_OFFSETS);
 	}
 
-	/* Enqueue and block*/
-	stat = caam_jq_enqueue(dev, jdesc, jq_ipsec_done, (void *)&jqarg);
+	/* Enqueue the encapsulation job and block */
+	stat = caam_jq_enqueue(dev, jdesc, jq_ipsec_done, (void *)&rqstatus);
 	if (stat) {
-		printk(KERN_INFO "jq_ipsec_esp_no_term: can't enqueue\n");
+		printk(KERN_INFO "%s: can't enqueue\n", testname);
 		rtnval = -1;
 	}
-	exit = wait_event_interruptible(jqtest_wq, (jqarg));
-	if (exit)
-		printk(KERN_INFO "jq_ipsec_esp_no_term: interrupted\n");
+	exit = wait_for_completion_interruptible(&completion);
+	if (exit) {
+		printk(KERN_INFO "%s interrupted\n", testname);
+		rtnval = -1;
+	}
 
-
-	dma_unmap_single(dev, (u32)sdmap, sdsz, DMA_BIDIRECTIONAL);
+	/* Upmap shared desc, job desc, and inputs */
+	dma_unmap_single(dev, (u32)encapdmap, encapdsz, DMA_BIDIRECTIONAL);
 	dma_unmap_single(dev, (u32)jdmap, jdsz, DMA_TO_DEVICE);
 	dma_unmap_single(dev, (u32)inmap, inbufsz, DMA_TO_DEVICE);
-	dma_unmap_single(dev, (u32)outmap, outbufsz, DMA_FROM_DEVICE);
-	kfree(sdesc);
-	kfree(jdesc);
-	kfree(inbuf);
-	kfree(outbuf);
+	dma_unmap_single(dev, (u32)encapmap, encapbufsz, DMA_FROM_DEVICE);
 
+	if ((rtnval) || (rqstatus)) {
+		printk(KERN_INFO "%s: request status = 0x%08x\n",
+		       testname, rqstatus);
+		printk(KERN_INFO "%s\n", caam_jq_strstatus(err, rqstatus));
+		goto freeup;
+	}
+
+	/*
+	 * Now do decapsulation phase. Map the decapsulation descriptor
+	 * and encapsulation-input/decapsulation-output frames in their
+	 * correct directions
+	 */
+	decapdmap = (u32 *)dma_map_single(dev, decapdesc, decapdsz,
+					  DMA_BIDIRECTIONAL);
+	encapmap = (u8 *)dma_map_single(dev, encapbuf, encapbufsz,
+					DMA_TO_DEVICE);
+	decapmap = (u8 *)dma_map_single(dev, decapbuf, decapbufsz,
+					DMA_FROM_DEVICE);
+
+	/* With mapped buffers, build/map jobdesc for this frame */
+	stat = cnstr_seq_jobdesc(jdesc, &jdsz, decapdmap, decapdsz,
+				 encapmap, encapbufsz, decapmap, decapbufsz);
+
+	jdmap = (u32 *)dma_map_single(dev, jdesc, jdsz, DMA_TO_DEVICE);
+	if (stat) {
+		printk(KERN_INFO
+		       "%s: encap jobdesc construct failed\n", testname);
+		goto freeup;
+		return -1;
+	};
+
+	if (show == SHOW_DESC) {
+		caam_desc_disasm(jdesc, DISASM_SHOW_OFFSETS);
+		caam_desc_disasm(decapdesc, DISASM_SHOW_OFFSETS);
+	}
+
+	/* Enqueue the decapsulation job and block */
+	stat = caam_jq_enqueue(dev, jdesc, jq_ipsec_done, (void *)&rqstatus);
+	if (stat) {
+		printk(KERN_INFO "%s: can't enqueue\n", testname);
+		rtnval = -1;
+	}
+	exit = wait_for_completion_interruptible(&completion);
+	if (exit) {
+		printk(KERN_INFO "%s interrupted\n", testname);
+		rtnval = -1;
+	}
+
+	/* Upmap shared desc, job desc, inputs and outputs */
+	dma_unmap_single(dev, (u32)decapdmap, decapdsz, DMA_BIDIRECTIONAL);
+	dma_unmap_single(dev, (u32)jdmap, jdsz, DMA_TO_DEVICE);
+	dma_unmap_single(dev, (u32)encapmap, encapbufsz, DMA_FROM_DEVICE);
+	dma_unmap_single(dev, (u32)decapmap, decapbufsz, DMA_FROM_DEVICE);
+
+
+freeup:
+	kfree(hmackeybuf);
+	kfree(cipherkeybuf);
+	kfree(spkeybuf);
+	kfree(jdesc);
+	kfree(encapdesc);
+	kfree(decapdesc);
+	kfree(inbuf);
+	kfree(encapbuf);
+	kfree(decapbuf);
 	return rtnval;
 }
+

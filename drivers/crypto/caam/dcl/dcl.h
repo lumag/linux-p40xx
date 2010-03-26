@@ -37,6 +37,8 @@
 #define DCL_H
 
 #include "../desc.h"
+#include "../pdb.h"
+
 
 /*
  * Section 1 - Descriptor command construction definitions
@@ -121,86 +123,6 @@ enum mktrust {
 	DESC_STD
 };
 
-#define MOVE_NOWAIT       0
-#define MOVE_WAITCOMPLETE MOVE_WAITCOMP
-
-/*
- * LOAD/STORE constants
- */
-
-
-
-
-/*
- * JUMP condition codes
- * First set is standard condition codes, second is for sharing control
- * Any combination within a set is legal, cross-set combinations are not
- */
-
-/* Standard conditions */
-#define JUMP_CC_MATH_NV		(JUMP_COND_MATH_NV)
-#define JUMP_CC_MATH_C		(JUMP_COND_MATH_C)
-#define JUMP_CC_MATH_Z		(JUMP_COND_MATH_Z)
-#define JUMP_CC_MATH_N		(JUMP_COND_MATH_N)
-#define JUMP_CC_PKHA_PRIME	(JUMP_COND_PK_PRIME)
-#define JUMP_CC_PKHA_GCD_1	(JUMP_COND_PK_GCD_1)
-#define JUMP_CC_PKHA_ZERO	(JUMP_COND_PK_0)
-
-/* Sharing conditions */
-#define JUMP_CC_SHARE_NCP	(JUMP_COND_NCP | JUMP_JSL)
-#define JUMP_CC_SHARE_NOP	(JUMP_COND_NOP | JUMP_JSL)
-#define JUMP_CC_SHARE_NIFP	(JUMP_COND_NIFP | JUMP_JSL)
-#define JUMP_CC_SHARE_NIP	(JUMP_COND_NIP | JUMP_JSL)
-#define JUMP_CC_SHARE_CALM	(JUMP_COND_CALM | JUMP_JSL)
-#define JUMP_CC_SHARE_SELF	(JUMP_COND_SELF | JUMP_JSL)
-#define JUMP_CC_SHARE_SHRD	(JUMP_COND_SHRD | JUMP_JSL)
-#define JUMP_CC_SHARE_JQP	(JUMP_COND_JQP | JUMP_JSL)
-
-/*
- * cmd_insert_move() destination combinations
- */
-#define MOVE_INTSRC_DEST_CLASS1_CTX	(MOVE_DEST_CLASS1CTX)
-#define MOVE_INTSRC_DEST_CLASS2_CTX	(MOVE_DEST_CLASS2CTX)
-#define MOVE_INTSRC_DEST_OUT_FIFO	(MOVE_DEST_OUTFIFO)
-#define MOVE_INTSRC_DEST_DESCBUF	(MOVE_DEST_DESCBUF)
-#define MOVE_INTSRC_DEST_DESCBUF_OFFSET16 \
-	(MOVE_DEST_DESCBUF | (1 << MOVE_AUX_SHIFT))
-#define MOVE_INTSRC_DEST_DESCBUF_OFFSET32 \
-	(MOVE_DEST_DESCBUF | (2 << MOVE_AUX_SHIFT))
-#define MOVE_INTSRC_DEST_DESCBUF_OFFSET48 \
-	(MOVE_DEST_DESCBUF | (3 << MOVE_AUX_SHIFT))
-#define MOVE_INTSRC_DEST_MATH0		(MOVE_DEST_MATH0)
-#define MOVE_INTSRC_DEST_MATH1		(MOVE_DEST_MATH1)
-#define MOVE_INTSRC_DEST_MATH2		(MOVE_DEST_MATH2)
-#define MOVE_INTSRC_DEST_MATH3		(MOVE_DEST_MATH3)
-#define MOVE_INTSRC_DEST_CLASS1_IN_FIFO	(MOVE_DEST_CLASS1INFIFO)
-#define MOVE_INTSRC_DEST_CLASS1_IN_FIFO_FLUSH \
-	(MOVE_DEST_CLASS1INFIFO | (2 << MOVE_AUX_SHIFT))
-#define MOVE_INTSRC_DEST_CLASS1_IN_FIFO_LAST \
-	(MOVE_DEST_CLASS1INFIFO | (1 << MOVE_AUX_SHIFT))
-#define MOVE_INTSRC_DEST_CLASS1_IN_FIFO_FLUSHLAST \
-	(MOVE_DEST_CLASS1INFIFO | (3 << MOVE_AUX_SHIFT))
-#define MOVE_INTSRC_DEST_CLASS2_IN_FIFO	(MOVE_DEST_CLASS2INFIFO)
-#define MOVE_INTSRC_DEST_CLASS2_IN_FIFO_LAST \
-	(MOVE_DEST_CLASS2INFIFO | (1 << MOVE_AUX_SHIFT))
-#define MOVE_INTSRC_DEST_PKHA_A		(MOVE_DEST_PK_A)
-#define MOVE_INTSRC_DEST_CLASS1_KEY	(MOVE_DEST_CLASS1KEY)
-#define MOVE_INTSRC_DEST_CLASS2_KEY	(MOVE_DEST_CLASS2KEY)
-
-
-/*
- * Extra option bits for MATH instructions
- */
-
-#define MATH_FLAG_UPDATE      0
-#define MATH_FLAG_NO_UPDATE   MATH_NFU
-
-#define MATH_STALL            MATH_STL
-#define MATH_NO_STALL         0
-
-#define MATH_IMMEDIATE        MATH_IFB
-#define MATH_NO_IMMEDIATE     0
-
 /*
  * Type selectors for cipher types in IPSec protocol OP instructions
  */
@@ -218,7 +140,6 @@ enum mktrust {
 /*
  * Type selectors for authentication in IPSec protocol OP instructions
  */
-
 #define AUTH_TYPE_IPSEC_MD5HMAC_96            1
 #define AUTH_TYPE_IPSEC_SHA1HMAC_96           2
 #define AUTH_TYPE_IPSEC_AESXCBCMAC_96         6
@@ -226,13 +147,6 @@ enum mktrust {
 #define AUTH_TYPE_IPSEC_SHA2HMAC_256          12
 #define AUTH_TYPE_IPSEC_SHA2HMAC_384          13
 #define AUTH_TYPE_IPSEC_SHA2HMAC_512          14
-
-/*
- * Type selectors for bulk algorithm OP instructions
- */
-#define ALG_OP_CLASS1		1
-#define ALG_OP_CLASS2		2
-
 
 /*
  * Command Generator Prototypes
@@ -316,8 +230,8 @@ u_int32_t *cmd_insert_seq_fifo_store(u_int32_t *descwd, u_int32_t class_access,
 				     u_int32_t out_type, u_int32_t len);
 
 u_int32_t *cmd_insert_jump(u_int32_t *descwd, u_int32_t jtype,
-			   u_int32_t test, u_int32_t cond,
-			   u_int8_t offset, u_int32_t *jmpdesc);
+			   u_int32_t class, u_int32_t test, u_int32_t cond,
+			   int8_t offset, u_int32_t *jmpdesc);
 
 u_int32_t *cmd_insert_move(u_int32_t *descwd, u_int32_t waitcomp,
 			   u_int32_t src, u_int32_t dst, u_int8_t offset,
@@ -366,6 +280,26 @@ int cnstr_jobdesc_pkha_rsaexp(u_int32_t *descbuf, u_int16_t *bufsz,
 			      struct pk_in_params *pkin, u_int8_t *out,
 			      u_int32_t out_siz, u_int8_t clear);
 
+int cnstr_jobdesc_mdsplitkey(u_int32_t *descbuf, u_int16_t *bufsize,
+			     u_int8_t *key, u_int32_t cipher,
+			     u_int8_t *padbuf);
+
+int cnstr_jobdesc_aes_gcm(u_int32_t *descbuf, u_int16_t *bufsize,
+			  u_int8_t *key, u_int32_t keylen, u_int8_t *ctx,
+			  enum mdstatesel mdstate, enum icvsel icv,
+			  enum algdir dir, u_int8_t *in, u_int8_t *out,
+			  u_int16_t size, u_int8_t *mac);
+
+int cnstr_jobdesc_kasumi_f8(u_int32_t *descbuf, u_int16_t *bufsize,
+			    u_int8_t *key, u_int32_t keylen,
+			    enum algdir dir, u_int32_t *ctx,
+			    u_int8_t *in, u_int8_t *out, u_int16_t size);
+
+int cnstr_jobdesc_kasumi_f9(u_int32_t *descbuf, u_int16_t *bufsize,
+			    u_int8_t *key, u_int32_t keylen,
+			    enum algdir dir, u_int32_t *ctx,
+			    u_int8_t *in, u_int16_t size, u_int8_t *mac);
+
 /*
  * Section 3 - Single-pass descriptor construction definitions
  */
@@ -374,22 +308,8 @@ int cnstr_jobdesc_pkha_rsaexp(u_int32_t *descbuf, u_int16_t *bufsz,
  * Section 4 - Protocol descriptor construction definitions
  */
 
-struct dsa_pdb {
-	u_int8_t  sgf_ln; /* s/g bitmask for q r g w f c d ab in 31:24 */
-			  /* L in 17:7, n in 6:0 */
-	u_int8_t *q;
-	u_int8_t *r;
-	u_int8_t *g;
-	u_int8_t *w;
-	u_int8_t *f;
-	u_int8_t *c;
-	u_int8_t *d;
-	u_int8_t *tmp; /* temporary data */
-	u_int8_t *ab;  /* only used if ECC processing */
-};
-
 int cnstr_jobdesc_dsaverify(u_int32_t *descbuf, u_int16_t *bufsz,
-			    struct dsa_pdb *dsadata, u_int8_t *msg,
+			    struct dsa_verify_pdb *dsadata, u_int8_t *msg,
 			    u_int32_t msg_sz, u_int8_t clear);
 
 /* If protocol descriptor, IPV4 or 6? */
@@ -449,8 +369,8 @@ struct cipherparams {
 	u_int32_t  keylen;
 };
 
-/* Common definitions for specifying Protocol Data Blocks */
 
+/* Generic IPSec - to be deprecated */
 struct seqnum {
 	enum esn              esn;
 	enum antirply_winsiz  antirplysz;
@@ -464,27 +384,6 @@ struct pdbcont {
 	enum decap_out        outfmt;
 	enum ivsrc            ivsrc;
 	struct seqnum         seq;
-};
-
-struct wimax_pdb {
-	u_int8_t  framecheck;  /* nonzero if FCS to be included */
-	u_int32_t nonce;
-	u_int8_t  b0_flags;
-	u_int8_t  iv_flags;    /* decap only */
-	u_int8_t  ctr_flags;
-	u_int16_t ctr_initial_count;
-	u_int32_t PN;
-	u_int16_t antireplay_len;
-};
-
-struct macsec_pdb {
-	u_int8_t  framecheck;  /* nonzero if FCS to be included */
-	u_int16_t aad_len;
-	u_int64_t sci;
-	u_int32_t PN;
-	u_int16_t ethertype;
-	u_int8_t  tci_an;
-	u_int8_t  antireplay_len;
 };
 
 int32_t cnstr_pcl_shdsc_ipsec_cbc_decap(u_int32_t *descbuf,
@@ -501,26 +400,39 @@ int32_t cnstr_pcl_shdsc_ipsec_cbc_encap(u_int32_t *descbuf,
 					struct authparams *authdata,
 					u_int8_t clear);
 
-int32_t cnstr_shdsc_wimax_encap(u_int32_t *descbuf, u_int16_t *bufsize,
-				struct wimax_pdb *pdb,
+int32_t cnstr_shdsc_ipsec_encap(u_int32_t *descbuf, u_int16_t *bufsize,
+				    struct ipsec_encap_pdb *pdb,
+				    u_int8_t *opthdr,
+				    struct cipherparams *cipherdata,
+				    struct authparams *authdata);
+
+int32_t cnstr_shdsc_ipsec_decap(u_int32_t *descbuf, u_int16_t *bufsize,
+				struct ipsec_decap_pdb *pdb,
 				struct cipherparams *cipherdata,
-				u_int8_t mode, u_int8_t clear);
+				struct authparams *authdata);
+
+
+int32_t cnstr_shdsc_wimax_encap(u_int32_t *descbuf, u_int16_t *bufsize,
+				struct wimax_encap_pdb *pdb,
+				struct cipherparams *cipherdata,
+				u_int8_t mode);
 
 int32_t cnstr_shdsc_wimax_decap(u_int32_t *descbuf, u_int16_t *bufsize,
-				struct wimax_pdb *pdb,
+				struct wimax_decap_pdb *pdb,
 				struct cipherparams *cipherdata,
-				u_int8_t mode, u_int8_t clear);
+				u_int8_t mode);
 
 int32_t cnstr_shdsc_macsec_encap(u_int32_t *descbuf, u_int16_t *bufsize,
-				 struct macsec_pdb *pdb,
-				 struct cipherparams *cipherdata,
-				 u_int8_t clear);
+				 struct macsec_encap_pdb *pdb,
+				 struct cipherparams *cipherdata);
 
 int32_t cnstr_shdsc_macsec_decap(u_int32_t *descbuf, u_int16_t *bufsize,
-				 struct macsec_pdb *pdb,
-				 struct cipherparams *cipherdata,
-				 u_int8_t clear);
+				 struct macsec_decap_pdb *pdb,
+				 struct cipherparams *cipherdata);
 
+/*
+ * Non protocol sharedesc constructors
+ */
 int32_t cnstr_shdsc_snow_f8(u_int32_t *descbuf, u_int16_t *bufsize,
 			    u_int8_t *key, u_int32_t keylen,
 			    enum algdir dir, u_int32_t count,
@@ -547,14 +459,25 @@ int32_t cnstr_pcl_shdsc_3gpp_rlc_decap(u_int32_t *descbuf, u_int16_t *bufsize,
 				       u_int8_t *key, u_int32_t keysz,
 				       u_int32_t count, u_int32_t bearer,
 				       u_int32_t direction,
-				       u_int32_t payload_sz, u_int8_t clear);
+				       u_int16_t payload_sz, u_int8_t clear);
+
+int32_t cnstr_pcl_shdsc_3gpp_rlc_encap(u_int32_t *descbuf, u_int16_t *bufsize,
+				       u_int8_t *key, u_int32_t keysz,
+				       u_int32_t count, u_int32_t bearer,
+				       u_int32_t direction,
+				       u_int16_t payload_sz);
 
 /*
  * Section 5 - disassembler definitions
  */
+
+/* Disassembler options */
+#define DISASM_SHOW_OFFSETS	0x01 /* display instruction indices */
+#define DISASM_SHOW_RAW		0x02 /* display each raw instruction */
+
 void desc_hexdump(u_int32_t *descdata, u_int32_t  size, u_int32_t wordsperline,
 		  int8_t *indentstr);
 
-void caam_desc_disasm(u_int32_t *desc);
+void caam_desc_disasm(u_int32_t *desc, u_int32_t opts);
 
 #endif /* DCL_H */

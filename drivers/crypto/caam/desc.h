@@ -36,8 +36,11 @@
 #ifndef DESC_H
 #define DESC_H
 
-/* Max size of any CAAM descriptor in 32-bit words */
-#define MAX_CAAM_DESCSIZE       63
+/* Max size of any CAAM descriptor in 32-bit words, inclusive of header */
+#define MAX_CAAM_DESCSIZE       64
+
+/* Block size of any entity covered/uncovered with a KEK/TKEK */
+#define KEK_BLOCKSIZE		16
 
 /*
  * Supported descriptor command types as they show up
@@ -274,10 +277,14 @@
 #define FIFOLDST_SGF            (1 << FIFOLDST_SGF_SHIFT)
 #define FIFOLDST_VLF            (1 << FIFOLDST_SGF_SHIFT)
 
-/* Immediate - Key follows command in descriptor */
+/* Immediate - Data follows command in descriptor */
 #define FIFOLD_IMM_SHIFT      23
 #define FIFOLD_IMM_MASK       (1 << FIFOLD_IMM_SHIFT)
 #define FIFOLD_IMM            (1 << FIFOLD_IMM_SHIFT)
+
+#define FIFOST_IMM_SHIFT      23
+#define FIFOST_IMM_MASK       (1 << FIFOST_IMM_SHIFT)
+#define FIFOST_IMM            (1 << FIFOST_IMM_SHIFT)
 
 /* Continue - Not the last FIFO store to come */
 #define FIFOST_CONT_SHIFT     23
@@ -294,6 +301,7 @@
 
 /* Input data type.*/
 #define FIFOLD_TYPE_SHIFT       16
+#define FIFOLD_CONT_TYPE_SHIFT  19 /* shift past last-flush bits */
 #define FIFOLD_TYPE_MASK        (0x3f << FIFOLD_TYPE_SHIFT)
 
 /* PK types */
@@ -1053,27 +1061,28 @@
 #define OP_PCL_PKPROT_F2M                        0x0001
 
 /* For non-protocol/alg-only op commands */
-#define OP_ALG_TYPE_SHIFT  24
-#define OP_ALG_TYPE_MASK   (0x7 << OP_ALG_TYPE_SHIFT)
-#define OP_ALG_TYPE_CLASS1 2
-#define OP_ALG_TYPE_CLASS2 4
+#define OP_ALG_TYPE_SHIFT	24
+#define OP_ALG_TYPE_MASK	(0x7 << OP_ALG_TYPE_SHIFT)
+#define OP_ALG_TYPE_CLASS1	2
+#define OP_ALG_TYPE_CLASS2	4
 
-#define OP_ALG_ALGSEL_SHIFT   16
-#define OP_ALG_ALGSEL_MASK    (0xff << OP_ALG_ALGSEL_SHIFT)
-#define OP_ALG_ALGSEL_AES     (0x10 << OP_ALG_ALGSEL_SHIFT)
-#define OP_ALG_ALGSEL_DES     (0x20 << OP_ALG_ALGSEL_SHIFT)
-#define OP_ALG_ALGSEL_3DES    (0x21 << OP_ALG_ALGSEL_SHIFT)
-#define OP_ALG_ALGSEL_ARC4    (0x30 << OP_ALG_ALGSEL_SHIFT)
-#define OP_ALG_ALGSEL_MD5     (0x40 << OP_ALG_ALGSEL_SHIFT)
-#define OP_ALG_ALGSEL_SHA1    (0x41 << OP_ALG_ALGSEL_SHIFT)
-#define OP_ALG_ALGSEL_SHA224  (0x42 << OP_ALG_ALGSEL_SHIFT)
-#define OP_ALG_ALGSEL_SHA256  (0x43 << OP_ALG_ALGSEL_SHIFT)
-#define OP_ALG_ALGSEL_SHA384  (0x44 << OP_ALG_ALGSEL_SHIFT)
-#define OP_ALG_ALGSEL_SHA512  (0x45 << OP_ALG_ALGSEL_SHIFT)
-#define OP_ALG_ALGSEL_RNG     (0x50 << OP_ALG_ALGSEL_SHIFT)
-#define OP_ALG_ALGSEL_SNOW    (0x60 << OP_ALG_ALGSEL_SHIFT)
-#define OP_ALG_ALGSEL_KASUMI  (0x70 << OP_ALG_ALGSEL_SHIFT)
-#define OP_ALG_ALGSEL_CRC     (0x90 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_SHIFT	16
+#define OP_ALG_ALGSEL_MASK	(0xff << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_SUBMASK	(0x0f << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_AES	(0x10 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_DES	(0x20 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_3DES	(0x21 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_ARC4	(0x30 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_MD5	(0x40 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_SHA1	(0x41 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_SHA224	(0x42 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_SHA256	(0x43 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_SHA384	(0x44 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_SHA512	(0x45 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_RNG	(0x50 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_SNOW	(0x60 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_KASUMI	(0x70 << OP_ALG_ALGSEL_SHIFT)
+#define OP_ALG_ALGSEL_CRC	(0x90 << OP_ALG_ALGSEL_SHIFT)
 
 #define OP_ALG_AAI_SHIFT	4
 #define OP_ALG_AAI_MASK		(0x1ff << OP_ALG_AAI_SHIFT)
@@ -1154,6 +1163,7 @@
 
 /* PKHA algorithm type set */
 #define OP_ALG_PK                    0x00800000
+#define OP_ALG_PK_FUN_MASK           0x3f /* clrmem, modmath, or cpymem */
 
 /* PKHA mode clear memory functions */
 #define OP_ALG_PKMODE_A_RAM          0x80000
@@ -1187,23 +1197,32 @@
 #define OP_ALG_PKMODE_MOD_PRIMALITY  0x00f
 
 /* PKHA mode copy-memory functions */
-#define OP_ALG_PKMODE_SRC_REG_A      0x00000
-#define OP_ALG_PKMODE_SRC_REG_B      0x20000
-#define OP_ALG_PKMODE_SRC_REG_N      0x60000
-#define OP_ALG_PKMODE_DST_REG_A      0x00000
-#define OP_ALG_PKMODE_DST_REG_B      0x04000
-#define OP_ALG_PKMODE_DST_REG_E      0x08000
-#define OP_ALG_PKMODE_DST_REG_N      0x0c000
-#define OP_ALG_PKMODE_SRC_SEG_0      0x00000
-#define OP_ALG_PKMODE_SRC_SEG_1      0x01000
-#define OP_ALG_PKMODE_SRC_SEG_2      0x02000
-#define OP_ALG_PKMODE_SRC_SEG_3      0x03000
-#define OP_ALG_PKMODE_DST_SEG_0      0x00000
-#define OP_ALG_PKMODE_DST_SEG_1      0x00400
-#define OP_ALG_PKMODE_DST_SEG_2      0x00800
-#define OP_ALG_PKMODE_DST_SEG_3      0x00c00
-#define OP_ALG_PKMODE_CPYMEM_N_SZ    0x00080
-#define OP_ALG_PKMODE_CPYMEM_SRC_SZ  0x00081
+#define OP_ALG_PKMODE_SRC_REG_SHIFT  13
+#define OP_ALG_PKMODE_SRC_REG_MASK   (7 << OP_ALG_PKMODE_SRC_REG_SHIFT)
+#define OP_ALG_PKMODE_DST_REG_SHIFT  10
+#define OP_ALG_PKMODE_DST_REG_MASK   (7 << OP_ALG_PKMODE_DST_REG_SHIFT)
+#define OP_ALG_PKMODE_SRC_SEG_SHIFT  8
+#define OP_ALG_PKMODE_SRC_SEG_MASK   (3 << OP_ALG_PKMODE_SRC_SEG_SHIFT)
+#define OP_ALG_PKMODE_DST_SEG_SHIFT  6
+#define OP_ALG_PKMODE_DST_SEG_MASK   (3 << OP_ALG_PKMODE_DST_SEG_SHIFT)
+
+#define OP_ALG_PKMODE_SRC_REG_A      (0 << OP_ALG_PKMODE_SRC_REG_SHIFT)
+#define OP_ALG_PKMODE_SRC_REG_B      (1 << OP_ALG_PKMODE_SRC_REG_SHIFT)
+#define OP_ALG_PKMODE_SRC_REG_N      (3 << OP_ALG_PKMODE_SRC_REG_SHIFT)
+#define OP_ALG_PKMODE_DST_REG_A      (0 << OP_ALG_PKMODE_DST_REG_SHIFT)
+#define OP_ALG_PKMODE_DST_REG_B      (1 << OP_ALG_PKMODE_DST_REG_SHIFT)
+#define OP_ALG_PKMODE_DST_REG_E      (2 << OP_ALG_PKMODE_DST_REG_SHIFT)
+#define OP_ALG_PKMODE_DST_REG_N      (3 << OP_ALG_PKMODE_DST_REG_SHIFT)
+#define OP_ALG_PKMODE_SRC_SEG_0      (0 << OP_ALG_PKMODE_SRC_SEG_SHIFT)
+#define OP_ALG_PKMODE_SRC_SEG_1      (1 << OP_ALG_PKMODE_SRC_SEG_SHIFT)
+#define OP_ALG_PKMODE_SRC_SEG_2      (2 << OP_ALG_PKMODE_SRC_SEG_SHIFT)
+#define OP_ALG_PKMODE_SRC_SEG_3      (3 << OP_ALG_PKMODE_SRC_SEG_SHIFT)
+#define OP_ALG_PKMODE_DST_SEG_0      (0 << OP_ALG_PKMODE_DST_SEG_SHIFT)
+#define OP_ALG_PKMODE_DST_SEG_1      (1 << OP_ALG_PKMODE_DST_SEG_SHIFT)
+#define OP_ALG_PKMODE_DST_SEG_2      (2 << OP_ALG_PKMODE_DST_SEG_SHIFT)
+#define OP_ALG_PKMODE_DST_SEG_3      (3 << OP_ALG_PKMODE_DST_SEG_SHIFT)
+#define OP_ALG_PKMODE_CPYMEM_N_SZ    0x80
+#define OP_ALG_PKMODE_CPYMEM_SRC_SZ  0x81
 
 /*
  * SEQ_IN_PTR Command Constructs
@@ -1246,6 +1265,7 @@
 
 /* TYPE field is all that's relevant */
 #define SIGN_TYPE_SHIFT         16
+#define SIGN_TYPE_MASK          (0x0f << SIGN_TYPE_SHIFT)
 
 #define SIGN_TYPE_FINAL         (0x00 << SIGN_TYPE_SHIFT)
 #define SIGN_TYPE_FINAL_RESTORE (0x01 << SIGN_TYPE_SHIFT)

@@ -34,10 +34,7 @@
  *
  */
 
-#include <linux/interrupt.h>
-#include <linux/dma-mapping.h>
-#include <linux/of_platform.h>
-
+#include "compat.h"
 #include "regs.h"
 #include "jq.h"
 #include "desc.h"
@@ -65,8 +62,12 @@ irqreturn_t caam_jq_interrupt(int irq, void *st_dev)
 	 */
 	BUG_ON(irqstate & JQINT_JQ_ERROR);
 
+	/* mask valid interrupts */
+	setbits32(&jqp->qregs->qconfig_lo, JQCFG_IMSK);
+
 	/* Have valid interrupt at this point, just ACK and trigger */
 	wr_reg32(&jqp->qregs->jqintstatus, irqstate);
+
 	tasklet_schedule(&jqp->irqtask);
 
 	return IRQ_HANDLED;
@@ -75,39 +76,67 @@ irqreturn_t caam_jq_interrupt(int irq, void *st_dev)
 /* Deferred service handler, run as interrupt-fired tasklet */
 void caam_jq_dequeue(unsigned long devarg)
 {
-	int idx;
+	int jobs_in_outring, hw_idx, sw_idx, i;
 	struct device *dev = (struct device *)devarg;
 	struct caam_drv_private_jq *jqp = dev_get_drvdata(dev);
 	void (*usercall)(struct device *dev, u32 *desc, u32 status, void *arg);
 	u32 *userdesc, userstatus;
 	void *userarg;
+	unsigned long flags;
+
+	spin_lock_irqsave(&jqp->outlock, flags);
+
+	jobs_in_outring = rd_reg32(&jqp->qregs->outring_used);
 
 	/* Processing single output entries at this time */
-	while (rd_reg32(&jqp->qregs->outring_used)) {
-		spin_lock(&jqp->outlock);
-		idx = jqp->out_ring_read_index;
-		BUG_ON((idx > JOBQ_DEPTH) || (idx < 0));
+	while (jobs_in_outring--) {
+		hw_idx = jqp->out_ring_read_index & (JOBQ_DEPTH - 1);
+
+		for (i = 0; i < JOBQ_DEPTH; i++) {
+			rmb();
+			if (bus_to_virt((u32)jqp->outring[hw_idx].desc) ==
+			    jqp->entinfo[(hw_idx + i) & (JOBQ_DEPTH - 1)].
+			    desc_addr_virt)
+				break; /* found */
+		}
+		BUG_ON(i == JOBQ_DEPTH); /*failed to find matching descriptor*/
+
+		sw_idx = (hw_idx + i) & (JOBQ_DEPTH - 1);
 
 		/* Unmap just-run descriptor so we can post-process */
-		dma_unmap_single(dev, (u32)jqp->outring[idx].desc,
-				 jqp->entinfo[idx].desc_size,
+		dma_unmap_single(dev, (u32)jqp->outring[hw_idx].desc,
+				 jqp->entinfo[sw_idx].desc_size,
 				 DMA_BIDIRECTIONAL);
 
 		/* Stash callback params for use outside of lock */
-		usercall = jqp->entinfo[idx].callbk;
-		userarg = jqp->entinfo[idx].cbkarg;
-		userdesc = jqp->entinfo[idx].desc_addr_virt;
-		userstatus = jqp->outring[idx].jqstatus;
+		usercall = jqp->entinfo[sw_idx].callbk;
+		userarg = jqp->entinfo[sw_idx].cbkarg;
+		userdesc = jqp->entinfo[sw_idx].desc_addr_virt;
+		userstatus = jqp->outring[hw_idx].jqstatus;
 
 		/* Remove entry from ring */
+		jqp->entinfo[sw_idx].desc_addr_virt = 0;
+		smp_wmb();
 		jqp->out_ring_read_index++;
-		jqp->out_ring_read_index &= (JOBQ_DEPTH - 1);
+
+		/* set done */
 		wr_reg32(&jqp->qregs->outring_rmvd, 1);
-		spin_unlock(&jqp->outlock);
+
+		spin_unlock_irqrestore(&jqp->outlock, flags);
 
 		/* Finally, execute user's callback */
 		usercall(dev, userdesc, userstatus, userarg);
+
+		spin_lock_irqsave(&jqp->outlock, flags);
 	}
+
+	spin_unlock_irqrestore(&jqp->outlock, flags);
+
+	/* reenable / unmask IRQs */
+	clrbits32(&jqp->qregs->qconfig_lo, JQCFG_IMSK);
+
+	if (rd_reg32(&jqp->qregs->outring_used))
+		tasklet_schedule(&jqp->irqtask);
 }
 
 /**
@@ -125,6 +154,7 @@ int caam_jq_register(struct device *ctrldev, struct device **qdev)
 {
 	struct caam_drv_private *ctrlpriv;
 	struct caam_drv_private_jq *jqpriv;
+	unsigned long flags;
 	int q;
 
 	jqpriv = NULL;
@@ -132,19 +162,19 @@ int caam_jq_register(struct device *ctrldev, struct device **qdev)
 
 
 	/* Lock, if free queue - assign, unlock */
-	spin_lock(&ctrlpriv->jq_alloc_lock);
+	spin_lock_irqsave(&ctrlpriv->jq_alloc_lock, flags);
 	for (q = 0; q < ctrlpriv->total_jobqs; q++) {
 		jqpriv = dev_get_drvdata(ctrlpriv->jqdev[q]);
 		if (jqpriv->assign == JOBQ_UNASSIGNED) {
 			jqpriv->assign = JOBQ_ASSIGNED;
 			*qdev = ctrlpriv->jqdev[q];
-			spin_unlock(&ctrlpriv->jq_alloc_lock);
+			spin_unlock_irqrestore(&ctrlpriv->jq_alloc_lock, flags);
 			return q;
 		}
 	}
 
 	/* If assigned, write dev where caller needs it */
-	spin_unlock(&ctrlpriv->jq_alloc_lock);
+	spin_unlock_irqrestore(&ctrlpriv->jq_alloc_lock, flags);
 	*qdev = NULL;
 	return -ENODEV;
 }
@@ -161,6 +191,7 @@ int caam_jq_deregister(struct device *qdev)
 {
 	struct caam_drv_private_jq *jqpriv = dev_get_drvdata(qdev);
 	struct caam_drv_private *ctrlpriv;
+	unsigned long flags;
 
 	/* Get the owning controller's private space */
 	ctrlpriv = dev_get_drvdata(jqpriv->parentdev);
@@ -173,9 +204,9 @@ int caam_jq_deregister(struct device *qdev)
 		return -EBUSY;
 
 	/* Release queue */
-	spin_lock(&ctrlpriv->jq_alloc_lock);
+	spin_lock_irqsave(&ctrlpriv->jq_alloc_lock, flags);
 	jqpriv->assign = JOBQ_UNASSIGNED;
-	spin_unlock(&ctrlpriv->jq_alloc_lock);
+	spin_unlock_irqrestore(&ctrlpriv->jq_alloc_lock, flags);
 
 	return 0;
 }
@@ -215,6 +246,7 @@ EXPORT_SYMBOL(caam_jq_deregister);
 		    void *areq)
 {
 	struct caam_drv_private_jq *jqp;
+	unsigned long flags;
 	int idx;
 
 	jqp = dev_get_drvdata(dev);
@@ -232,10 +264,13 @@ EXPORT_SYMBOL(caam_jq_deregister);
 	 * TODO: should be able to walk a list, but maps only
 	 * one jobdesc at a time for now
 	 */
-	spin_lock(&jqp->inplock);
-	BUG_ON((jqp->inp_ring_write_index > JOBQ_DEPTH) ||
-	       (jqp->inp_ring_write_index < 0));
-	idx = jqp->inp_ring_write_index;
+	spin_lock_irqsave(&jqp->inplock, flags);
+	idx = jqp->inp_ring_write_index & (JOBQ_DEPTH - 1);
+
+	if (jqp->entinfo[idx].desc_addr_virt != 0) {
+		spin_unlock_irqrestore(&jqp->inplock, flags);
+		return -EBUSY; /* no room */
+	}
 
 	/* Store off info that the tasklet will need */
 	jqp->entinfo[idx].desc_addr_virt = desc;
@@ -252,15 +287,17 @@ EXPORT_SYMBOL(caam_jq_deregister);
 	if (dma_mapping_error(dev, jqp->inpring[idx])) {
 		dev_err(dev,
 			"caam_jq_enqueue(): can't map jobdesc\n");
-		spin_unlock(&jqp->inplock);
+		spin_unlock_irqrestore(&jqp->inplock, flags);
 		return -EIO;
 	}
+	/* Bump/wrap index and unlock */
+	smp_wmb();
+	jqp->inp_ring_write_index++;
+
+	wmb();
 	wr_reg32(&jqp->qregs->inpring_jobadd, 1);
 
-	/* Bump/wrap index and unlock */
-	jqp->inp_ring_write_index++;
-	jqp->inp_ring_write_index &= (JOBQ_DEPTH - 1);
-	spin_unlock(&jqp->inplock);
+	spin_unlock_irqrestore(&jqp->inplock, flags);
 
 	return 0;
 }
@@ -331,7 +368,12 @@ int caam_jq_init(struct device *dev)
 	spin_lock_init(&jqp->inplock);
 	spin_lock_init(&jqp->outlock);
 
-	/* Connect job queue interrupt handler. No coalescing yet */
+	/* Select interrupt coalescing parameters */
+	setbits32(&jqp->qregs->qconfig_lo, JOBQ_INTC |
+		  (JOBQ_INTC_COUNT_THLD << JQCFG_ICDCT_SHIFT) |
+		  (JOBQ_INTC_TIME_THLD << JQCFG_ICTT_SHIFT));
+
+	/* Connect job queue interrupt handler. */
 	tasklet_init(&jqp->irqtask, caam_jq_dequeue, (u32)dev);
 	error = request_irq(jqp->irq, caam_jq_interrupt, 0,
 			    "caam-jobq", dev);
@@ -436,11 +478,6 @@ int caam_jq_probe(struct of_device *ofdev,
 	jqdev = &jq_ofdev->dev;
 	dev_set_drvdata(jqdev, jqpriv);
 	ctrlpriv->jqdev[q] = jqdev;
-
-	/* FIXME: temporary detective code */
-	dev_info(jqdev,
-		 "caam_jq_probe: dev[%d] %08x, priv %08x, reg %08x\n",
-		 q, (u32)jqdev, (u32)jqpriv, (u32)jqpriv->qregs);
 
 	/* Identify the interrupt */
 	jqpriv->irq = of_irq_to_resource(np, 0, NULL);
