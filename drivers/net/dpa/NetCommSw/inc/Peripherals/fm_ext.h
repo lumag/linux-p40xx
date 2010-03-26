@@ -1,0 +1,1694 @@
+/* Copyright (c) 2008-2009 Freescale Semiconductor, Inc.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *     * Redistributions of source code must retain the above copyright
+ *       notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above copyright
+ *       notice, this list of conditions and the following disclaimer in the
+ *       documentation and/or other materials provided with the distribution.
+ *     * Neither the name of Freescale Semiconductor nor the
+ *       names of its contributors may be used to endorse or promote products
+ *       derived from this software without specific prior written permission.
+ *
+ *
+ * ALTERNATIVELY, this software may be distributed under the terms of the
+ * GNU General Public License ("GPL") as published by the Free Software
+ * Foundation, either version 2 of that License or (at your option) any
+ * later version.
+ *
+ * THIS SOFTWARE IS PROVIDED BY Freescale Semiconductor ``AS IS'' AND ANY
+ * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL Freescale Semiconductor BE LIABLE FOR ANY
+ * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/**************************************************************************//**
+ @File          FM_ext.h
+
+ @Description   FM Application Programming Interface.
+*//***************************************************************************/
+#ifndef __FM_EXT
+#define __FM_EXT
+
+#include "error_ext.h"
+#include "std_ext.h"
+
+
+/**************************************************************************//**
+ @Group         FM_grp Frame Manager API
+
+ @Description   FM API functions, definitions and enums.
+
+
+ @{
+*//***************************************************************************/
+
+/**************************************************************************//**
+ @Group         FM_lib_grp FM library
+
+ @Description   FM API functions, definitions and enums
+                The FM module is the main driver module and is a mandatory module
+                for FM driver users. Before any further module initialization,
+                this module must be initialized.
+                The FM is a "singletone" module. It is responsible of the common
+                HW modules: FPM, DMA, common QMI, common BMI initializations and
+                run-time control routines. This module must be initialized always
+                when working with any of the FM modules.
+                NOTE - We assumes that the FML will be initialize only by core No. 0!
+
+ @{
+*//***************************************************************************/
+
+/**************************************************************************//**
+ @Description   enum for defining port types
+*//***************************************************************************/
+typedef enum e_FmPortType {
+    e_FM_PORT_TYPE_OFFLINE_PARSING, /**< Offline parsing port (id's: 0-6, share id's with
+                                         host command, so must have exclusive id) */
+    e_FM_PORT_TYPE_HOST_COMMAND,    /**< Host command port (id's: 0-6, share id's with
+                                         offline parsing ports, so must have exclusive id) */
+    e_FM_PORT_TYPE_RX,              /**< 1G Rx port (id's: 0-3) */
+    e_FM_PORT_TYPE_RX_10G,          /**< 10G Rx port (id's: 0) */
+    e_FM_PORT_TYPE_TX,              /**< 1G Tx port (id's: 0-3) */
+    e_FM_PORT_TYPE_TX_10G,          /**< 10G Tx port (id's: 0) */
+    e_FM_PORT_TYPE_DUMMY
+} e_FmPortType;
+
+/**************************************************************************//**
+ @Collection    General FM defines
+*//***************************************************************************/
+#define FM_MAX_NUM_OF_PARTITIONS    64      /**< Maximim number of partitions */
+#define FM_PHYS_ADDRESS_SIZE        6       /**< FM Physical address size */
+/* @} */
+
+/**************************************************************************//**
+ @Collection   FM Frame error
+*//***************************************************************************/
+typedef uint32_t    fmPortFrameErrSelect_t;                         /**< typedef for defining Frame Descriptor errors */
+
+#define FM_PORT_FRM_ERR_UNSUPPORTED_FORMAT              0x04000000  /**< Offline parsing only! Unsupported Format */
+#define FM_PORT_FRM_ERR_LENGTH                          0x02000000  /**< Offline parsing only! Length Error */
+#define FM_PORT_FRM_ERR_DMA                             0x01000000  /**< DMA Data error */
+#define FM_PORT_FRM_ERR_PHYSICAL                        0x00080000  /**< Rx FIFO overflow, FCS error, code error, running disparity
+                                                                         error (SGMII and TBI modes), FIFO parity error. PHY
+                                                                         Sequence error, PHY error control character detected. */
+#define FM_PORT_FRM_ERR_SIZE                            0x00040000  /**< Frame too long OR Frame size exceeds max_length_frame  */
+#define FM_PORT_FRM_ERR_CLS_DISCARD                     0x00020000  /**< classification discard */
+#define FM_PORT_FRM_ERR_EXTRACTION                      0x00008000  /**< Extract Out of Frame */
+#define FM_PORT_FRM_ERR_NO_SCHEME                       0x00004000  /**< No Scheme Selected */
+#define FM_PORT_FRM_ERR_KEYSIZE_OVERFLOW                0x00002000  /**< No Scheme Selected */
+#define FM_PORT_FRM_ERR_COLOR_YELLOW                    0x00000400
+#define FM_PORT_FRM_ERR_COLOR_RED                       0x00000800
+#define FM_PORT_FRM_ERR_ILL_PLCR                        0x00000200  /**< Illegal Policer Profile selected */
+#define FM_PORT_FRM_ERR_PLCR_FRAME_LEN                  0x00000100  /**< Illegal Policer Profile selected */
+#define FM_PORT_FRM_ERR_PRS_TIMEOUT                     0x00000080  /**< Parser Time out Exceed */
+#define FM_PORT_FRM_ERR_PRS_ILL_INSTRUCT                0x00000040  /**< Invalid Soft Parser instruction */
+#define FM_PORT_FRM_ERR_PRS_HDR_ERR                     0x00000020  /**< Header error was identified during parsing */
+#define FM_PORT_FRM_ERR_PROCESS_TIMEOUT                 0x00000001  /**< FPT Frame Processing Timeout Exceeded */
+/* @} */
+
+#ifdef __MWERKS__
+#pragma pack(push,1)
+#endif /*__MWERKS__ */
+#define MEM_MAP_START
+
+/**************************************************************************//**
+ @Description   FM physical Address
+*//***************************************************************************/
+typedef _Packed struct t_FmPhysAddr
+{
+    volatile uint16_t high;
+    volatile uint32_t low;
+}_PackedType t_FmPhysAddr;
+
+/**************************************************************************//**
+ @Description   Parse results memory layout
+*//***************************************************************************/
+typedef _Packed struct t_FmPrsResult {
+    uint8_t     lpid;               /**< Logical port id */
+    uint8_t     shimr;              /**< Shim header result  */
+    uint16_t    l2r;                /**< Layer 2 result */
+    uint16_t    l3r;                /**< Layer 3 result */
+    uint8_t     l4r;                /**< Layer 4 result */
+    uint8_t     cplan;              /**< Classification plan id */
+    uint16_t    nxthdr;             /**< Next Header  */
+    uint16_t    cksum;              /**< Checksum */
+    uint32_t    lcv;                /**< LCV */
+    uint8_t     shim_off[3];        /**< Shim offset */
+    uint8_t     eth_off;            /**< ETH offset */
+    uint8_t     llc_snap_off;       /**< LLC_SNAP offset */
+    uint8_t     vlan_off[2];        /**< VLAN offset */
+    uint8_t     etype_off;          /**< ETYPE offset */
+    uint8_t     pppoe_off;          /**< PPP offset */
+    uint8_t     mpls_off[2];        /**< MPLS offset */
+    uint8_t     ip_off[2];          /**< IP offset */
+    uint8_t     gre_off;            /**< GRE offset */
+    uint8_t     l4_off;             /**< Layer 4 offset */
+    uint8_t     nxthdr_off;         /**< Parser end point */
+} _PackedType t_FmPrsResult;
+
+/**************************************************************************//**
+ @Description   Parse results
+*//***************************************************************************/
+#define FM_PR_L2_VLAN_STACK       0x0100
+#define FM_PR_L2_ETHERNET         0x8000
+#define FM_PR_L2_VLAN             0x4000
+#define FM_PR_L2_LLC_SNAP         0x2000
+#define FM_PR_L2_MPLS             0x1000
+#define FM_PR_L2_PPPoE            0x0800
+
+/**************************************************************************//**
+ @Description   Time stamp in buffer
+*//***************************************************************************/
+typedef _Packed struct t_FmTimeStamp {
+    uint32_t    timeStamp;          /**< Time stamp integer */
+    uint32_t    timeStampFrac;      /**< Time stamp fraction */
+} _PackedType t_FmTimeStamp;
+
+/**************************************************************************//**
+ @Description   Frame descriptor
+*//***************************************************************************/
+typedef _Packed struct t_FmFD {
+    uint32_t    id;                 /**< FD id */
+    uint32_t    addrl;              /**< Data Address */
+    uint32_t    length;             /**< Frame length */
+    uint32_t    status;             /**< FD status */
+} _PackedType t_FmFD;
+
+#define MEM_MAP_END
+#ifdef __MWERKS__
+#pragma pack(pop)
+#endif /* __MWERKS__ */
+
+/**************************************************************************//**
+ @Collection   Frame descriptor macros
+*//***************************************************************************/
+#define FM_FD_DD_MASK       0xc0000000           /**< FD DD field mask */
+#define FM_FD_PID_MASK      0x3f000000           /**< FD PID field mask */
+#define FM_FD_BPID_MASK     0x00ff0000           /**< FD BPID field mask */
+#define FM_FD_ADDRH_MASK    0x0000ffff           /**< FD ADDRH field mask */
+#define FM_FD_ADDRL_MASK    0xffffffff           /**< FD ADDRL field mask */
+#define FM_FD_FORMAT_MASK   0xe0000000           /**< FD FORMAT field mask */
+#define FM_FD_OFFSET_MASK   0x1ff00000           /**< FD OFFSET field mask */
+#define FM_FD_LENGTH_MASK   0x000fffff           /**< FD LENGTH field mask */
+
+#define FM_FD_GET_DD(fd)            ((((t_FmFD *)fd)->id & FM_FD_DD_MASK) >> (31-1))            /**< Macro to get FD DD field */
+#define FM_FD_GET_PID(fd)           ((((t_FmFD *)fd)->id & FM_FD_PID_MASK) >> (31-7))           /**< Macro to get FD PID field */
+#define FM_FD_GET_BPID(fd)          ((((t_FmFD *)fd)->id & FM_FD_BPID_MASK) >> (31-15))         /**< Macro to get FD BPID field */
+#define FM_FD_GET_ADDRH(fd)         (((t_FmFD *)fd)->id & FM_FD_ADDRH_MASK)                     /**< Macro to get FD ADDRH field */
+#define FM_FD_GET_ADDRL(fd)         ((t_FmFD *)fd)->addrl                                       /**< Macro to get FD ADDRL field */
+#define FM_FD_GET_PHYS_ADDR(fd)     ((uint64_t)(((uint64_t)FM_FD_GET_ADDRH(fd) << 32) | (uint64_t)FM_FD_GET_ADDRL(fd))) /**< Macro to get FD ADDR field */
+#define FM_FD_GET_FORMAT(fd)        ((((t_FmFD *)fd)->length & FM_FD_FORMAT_MASK) >> (31-2))    /**< Macro to get FD FORMAT field */
+#define FM_FD_GET_OFFSET(fd)        ((((t_FmFD *)fd)->length & FM_FD_OFFSET_MASK) >> (31-11))   /**< Macro to get FD OFFSET field */
+#define FM_FD_GET_LENGTH(fd)        (((t_FmFD *)fd)->length & FM_FD_LENGTH_MASK)                /**< Macro to get FD LENGTH field */
+#define FM_FD_GET_STATUS(fd)        ((t_FmFD *)fd)->status                                      /**< Macro to get FD STATUS field */
+#define FM_FD_GET_ADDR(fd)          XX_PhysToVirt(CAST_UINT64_TO_POINTER(FM_FD_GET_PHYS_ADDR(fd)))
+
+#define FM_FD_SET_DD(fd,val)        (((t_FmFD *)fd)->id = ((((t_FmFD *)fd)->id & ~FM_FD_DD_MASK) | ((val << (31-1))& FM_FD_DD_MASK )))      /**< Macro to get FD DD field */
+#define FM_FD_SET_PID(fd,val)       (((t_FmFD *)fd)->id = ((((t_FmFD *)fd)->id & ~FM_FD_PID_MASK) | ((val << (31-7))& FM_FD_PID_MASK)))     /**< Macro to get FD PID field */
+#define FM_FD_SET_BPID(fd,val)      (((t_FmFD *)fd)->id = ((((t_FmFD *)fd)->id & ~FM_FD_BPID_MASK) | ((val  << (31-15))& FM_FD_BPID_MASK))) /**< Macro to get FD BPID field */
+#define FM_FD_SET_ADDRH(fd,val)     (((t_FmFD *)fd)->id = ((((t_FmFD *)fd)->id & ~FM_FD_ADDRH_MASK) | (val & FM_FD_ADDRH_MASK)))            /**< Macro to get FD ADDRH field */
+#define FM_FD_SET_ADDRL(fd,val)     ((t_FmFD *)fd)->addrl = val                                 /**< Macro to get FD ADDRL field */
+#define FM_FD_SET_ADDR(fd,val)                                      \
+do {                                                                \
+    uint64_t physAddr = CAST_POINTER_TO_UINT64(XX_VirtToPhys(val)); \
+    FM_FD_SET_ADDRH(fd, ((uint32_t)(physAddr >> 32)));              \
+    FM_FD_SET_ADDRL(fd, (uint32_t)physAddr);                        \
+} while (0)                                                                                     /**< Macro to get FD ADDR field */
+#define FM_FD_SET_FORMAT(fd,val)    (((t_FmFD *)fd)->length = ((((t_FmFD *)fd)->length & ~FM_FD_FORMAT_MASK) | ((val  << (31-2))& FM_FD_FORMAT_MASK)))  /**< Macro to get FD FORMAT field */
+#define FM_FD_SET_OFFSET(fd,val)    (((t_FmFD *)fd)->length = ((((t_FmFD *)fd)->length & ~FM_FD_OFFSET_MASK) | ((val << (31-11))& FM_FD_OFFSET_MASK) )) /**< Macro to get FD OFFSET field */
+#define FM_FD_SET_LENGTH(fd,val)    (((t_FmFD *)fd)->length = (((t_FmFD *)fd)->length & ~FM_FD_LENGTH_MASK) | (val & FM_FD_LENGTH_MASK))                /**< Macro to get FD LENGTH field */
+#define FM_FD_SET_STATUS(fd,val)    ((t_FmFD *)fd)->status = val                                /**< Macro to get FD STATUS field */
+
+
+#define FM_FD_CMD_FCO  0x80000000      /* Frame queue Context Override */
+#define FM_FD_CMD_RPD  0x40000000      /* Read Prepended Data */
+#define FM_FD_CMD_UDP  0x20000000      /* Update Prepended Data */
+#define FM_FD_CMD_BMF  0x10000000      /* Buffer Must not be Freed */
+#define FM_FD_CMD_DTC  0x08000000      /* Do TCP Checksum */
+#define FM_FD_CMD_DME  0x01000000      /* DMA Error */
+#define FM_FD_CMD_CFQ  0x00ffffff      /* Confirmation Frame Queue */
+/* @} */
+
+/**************************************************************************//**
+ @Description   FM Exceptions
+*//***************************************************************************/
+typedef enum e_FmExceptions {
+    e_FM_EX_DMA_BUS_ERROR,              /**< DMA bus error. */
+    e_FM_EX_DMA_READ_ECC,               /**< Read Buffer ECC error */
+    e_FM_EX_DMA_SYSTEM_WRITE_ECC,       /**< Write Buffer ECC error on system side */
+    e_FM_EX_DMA_FM_WRITE_ECC,           /**< Write Buffer ECC error on FM side */
+    e_FM_EX_FPM_STALL_ON_TASKS ,        /**< Stall of tasks on FPM */
+    e_FM_EX_FPM_SINGLE_ECC,             /**< Single ECC on FPM. */
+    e_FM_EX_FPM_DOUBLE_ECC,             /**< Double ECC error on FPM ram access */
+    e_FM_EX_QMI_SINGLE_ECC,             /**< Single ECC on QMI. */
+    e_FM_EX_QMI_DOUBLE_ECC,             /**< Double bit ECC occured on QMI */
+    e_FM_EX_QMI_DEQ_FROM_DEFQ,          /**< Dequeu from default queue id, as a result
+                                             of invalid port id. */
+    e_FM_EX_BMI_LIST_RAM_ECC,           /**< Linked List RAM ECC error */
+    e_FM_EX_BMI_PIPELINE_ECC,           /**< Pipeline Table ECC Error */
+    e_FM_EX_BMI_STATISTICS_RAM_ECC,     /**< Statistics Count RAM ECC Error Enable */
+    e_FM_EX_IRAM_ECC,                   /**< Double bit ECC occured on IRAM*/
+    e_FM_EX_MURAM_ECC                   /**< Double bit ECC occured on MURAM*/
+} e_FmExceptions;
+
+/**************************************************************************//**
+ @Group         FM_init_grp FM Initialization Unit
+
+ @Description   FM Initialization Unit
+
+                Initialization Flow
+                Initialization of the FM Module will be carried out by the application
+                according to the following sequence:
+                a.  Calling the configuration routine with basic parameters.
+                b.  Calling the advance initialization routines to change driver's defaults.
+                c.  Calling the initialization routine.
+
+ @{
+*//***************************************************************************/
+
+/**************************************************************************//**
+ @Function      t_FmExceptionsCallback
+
+ @Description   Exceptions user callback routine, will be called upon an
+                exception passing the exception identification.
+
+ @Param[in]     h_App      - User's application descriptor.
+ @Param[in]     exception  - The exception.
+*//***************************************************************************/
+typedef void (t_FmExceptionsCallback) ( t_Handle              h_App,
+                                        e_FmExceptions        exception);
+
+/**************************************************************************//**
+ @Function      t_FmBusErrorCallback
+
+ @Description   Bus error user callback routine, will be called upon a
+                bus error, passing parameters describing the errors and the owner.
+
+ @Param[in]     h_App       - User's application descriptor.
+ @Param[in]     portType    - Port type (e_FmPortType)
+ @Param[in]     portId      - Port id - relative to type.
+ @Param[in]     addr        - Address that caused the error
+ @Param[in]     tnum        - Owner of error
+ @Param[in]     partition   - memory partition
+*//***************************************************************************/
+typedef void (t_FmBusErrorCallback) ( t_Handle        h_App,
+                                      e_FmPortType    portType,
+                                      uint8_t         portId,
+                                      uint64_t        addr,
+                                      uint8_t         tnum,
+                                      uint8_t         partition);
+
+/**************************************************************************//**
+ @Description   structure for defining Ucode patch for loading.
+*//***************************************************************************/
+typedef struct t_FmPcdFirmwareParams {
+    uint32_t                size;                   /**< Size of uCode */
+    uint32_t                *p_Code;                /**< A pointer to the uCode */
+} t_FmPcdFirmwareParams;
+
+/**************************************************************************//**
+ @Description   structure representing FM initialization parameters
+*//***************************************************************************/
+typedef struct t_FmParams {
+    uint8_t                 fmId;                   /**< Index of the FM */
+#ifndef CONFIG_GUEST_PARTITION
+    uint64_t                baseAddr;               /**< A pointer to base of memory mapped FM registers (virtual).*/
+    t_Handle                h_FmMuram;              /**< A handle of an initialized MURAM object,
+                                                         to be used by the FM */
+    uint16_t                fmClkFreq;              /**< In Mhz */
+    uint8_t                 liodnPerPartition[FM_MAX_NUM_OF_PARTITIONS]; /**< For each partition, LIODN should be configured here. */
+    t_FmExceptionsCallback  *f_Exceptions;          /**< An application callback routine to
+                                                         handle exceptions.*/
+    t_FmBusErrorCallback    *f_BusError;            /**< An application callback routine to
+                                                         handle exceptions.*/
+    t_Handle                h_App;                  /**< A handle to an application layer object; This handle will
+                                                         be passed by the driver upon calling the above callbacks */
+    int                     irq;                    /**< FM interrupt source for normal events */
+    int                     errIrq;                 /**< FM interrupt source for errors */
+    t_FmPcdFirmwareParams   firmware;               /**< Ucode */
+#endif /* CONFIG_GUEST_PARTITION */
+} t_FmParams;
+
+
+/**************************************************************************//**
+ @Function      FM_Config
+
+ @Description   Creates descriptor for the FM module.
+
+                The routine returns a handle (descriptor) to the FM object.
+                This descriptor must be passed as first parameter to all other
+                FM function calls.
+
+                No actual initialization or configuration of FM hardware is
+                done by this routine.
+
+ @Param[in]     p_FmParams  - A pointer to data structure of parameters
+
+ @Return        Handle to FM object, or NULL for Failure.
+*//***************************************************************************/
+t_Handle FM_Config(t_FmParams *p_FmParams);
+
+/**************************************************************************//**
+ @Function      FM_Init
+
+ @Description   Initializes the FM module
+
+ @Param[in]     h_Fm - FM module descriptor
+
+ @Return        E_OK on success; Error code otherwise.
+*//***************************************************************************/
+t_Error FM_Init(t_Handle h_Fm);
+
+/**************************************************************************//**
+ @Function      FM_Free
+
+ @Description   Frees all resources that were assigned to FM module.
+
+                Calling this routine invalidates the descriptor.
+
+ @Param[in]     h_Fm - FM module descriptor
+
+ @Return        E_OK on success; Error code otherwise.
+*//***************************************************************************/
+t_Error FM_Free(t_Handle h_Fm);
+
+
+/**************************************************************************//**
+ @Group         FM_advanced_init_grp    FM Advanced Configuration Unit
+
+ @Description   Configuration functions used to change default values.
+
+ @{
+*//***************************************************************************/
+
+/**************************************************************************//**
+ @Description   DMA debug mode
+*//***************************************************************************/
+typedef enum e_FmDmaDbgCntMode {
+    e_FM_DMA_DBG_NO_CNT             = 0,    /**< No counting */
+    e_FM_DMA_DBG_CNT_DONE           = 1,    /**< Count DONE commands */
+    e_FM_DMA_DBG_CNT_COMM_Q_EM      = 2,    /**< count command queue emergency signals */
+    e_FM_DMA_DBG_CNT_INT_READ_EM    = 3,    /**< Count Internal Read buffer emergency signal */
+    e_FM_DMA_DBG_CNT_INT_WRITE_EM   = 4,    /**< Count Internal Write buffer emergency signal */
+    e_FM_DMA_DBG_CNT_FPM_WAIT       = 5,    /**< Count FPM WAIT signal */
+    e_FM_DMA_DBG_CNT_SIGLE_BIT_ECC  = 6,    /**< Single bit ECC errors. */
+    e_FM_DMA_DBG_CNT_RAW_WAR_PROT   = 7     /**< Number of times there was a need for RAW & WAR protection. */
+} e_FmDmaDbgCntMode;
+
+/**************************************************************************//**
+ @Description   DMA Cache Override
+*//***************************************************************************/
+typedef enum e_FmDmaCacheOverride {
+    e_FM_DMA_NO_CACHE_OR,                   /**< No override of the Cache field */
+    e_FM_DMA_NO_STASH_DATA,                 /**< Data should not be stashed in system level cache */
+    e_FM_DMA_MAY_STASH_DATA,                /**< Data may be stashed in system level cache */
+    e_FM_DMA_STASH_DATA                     /**< Data should be stashed in system level cache */
+} e_FmDmaCacheOverride;
+
+/**************************************************************************//**
+ @Description   DMA External Bus Priority
+*//***************************************************************************/
+typedef enum e_FmDmaExtBusPri {
+    e_FM_DMA_EXT_BUS_NORMAL,                /**< Normal priority */
+    e_FM_DMA_EXT_BUS_EBS,                   /**< AXI extended bus service priority */
+    e_FM_DMA_EXT_BUS_SOS,                   /**< AXI sos priority */
+    e_FM_DMA_EXT_BUS_EBS_AND_SOS            /**< AXI ebs + sos priority */
+} e_FmDmaExtBusPri;
+
+/**************************************************************************//**
+ @Description   enum for choosing the field that will be output on AID
+*//***************************************************************************/
+typedef enum e_FmDmaAidMode {
+    e_FM_DMA_AID_OUT_PORT_ID,               /**< 4 LSB of PORT_ID */
+    e_FM_DMA_AID_OUT_TNUM                   /**< 4 LSB of TNUM */
+} e_FmDmaAidMode;
+
+/**************************************************************************//**
+ @Description   DMA AXI Bus protection
+*//***************************************************************************/
+typedef enum e_FmDmaBusProtectionType {
+    e_FM_DMA_DATA_BUS_PROT,                 /**< AXI data bus protection */
+    e_FM_DMA_INSTRUCTION_BUS_PROT           /**< AXI instruction bus protection */
+} e_FmDmaBusProtectionType;
+
+/**************************************************************************//**
+ @Description   FPM Catasrophic error behaviour
+*//***************************************************************************/
+typedef enum e_FmCatastrophicErr {
+    e_FM_CATASTROPHIC_ERR_STALL_PORT,       /**< Port_ID is stalled (only reset can release it) */
+    e_FM_CATASTROPHIC_ERR_STALL_TASK        /**< Only errornous task is stalled */
+} e_FmCatastrophicErr;
+
+/**************************************************************************//**
+ @Description   FPM DMA error behaviour
+*//***************************************************************************/
+typedef enum e_FmDmaErr {
+    e_FM_DMA_ERR_CATASTROPHIC,              /**< Dma error is treated as a catastrophic error */
+    e_FM_DMA_ERR_REPORT                     /**< Dma error is just reported */
+} e_FmDmaErr;
+
+/**************************************************************************//**
+ @Description   DMA Emergency level by BMI emergency signal
+*//***************************************************************************/
+typedef enum e_FmDmaEmergencyLevel {
+    e_FM_DMA_EM_EBS,                        /**< EBS emergency */
+    e_FM_DMA_EM_SOS                         /**< SOS emergency */
+} e_FmDmaEmergencyLevel;
+
+/**************************************************************************//**
+ @Collection   DMA emergency options
+*//***************************************************************************/
+typedef uint32_t fmEmergencyBus_t;          /**< DMA emergency options */
+
+#define  FM_DMA_MURAM_READ_EMERGENCY        0x00800000    /**< Enable emergency for MURAM1 */
+#define  FM_DMA_MURAM_WRITE_EMERGENCY       0x00400000    /**< Enable emergency for MURAM2 */
+#define  FM_DMA_EXT_BUS_EMERGENCY           0x00100000    /**< Enable emergency for external bus */
+/* @} */
+
+/**************************************************************************//**
+ @Description   A structure for defining DMA emergency level
+*//***************************************************************************/
+typedef struct t_FmDmaEmergency {
+    fmEmergencyBus_t        emergencyBusSelect;             /**< An OR of the busses where emergency
+                                                                 should be enabled */
+    e_FmDmaEmergencyLevel   emergencyLevel;                 /**< EBS/SOS */
+} t_FmDmaEmergency;
+
+/**************************************************************************//**
+ @Description   structure for defining FM threshold
+*//***************************************************************************/
+typedef struct t_FmThresholds {
+    uint8_t                 dispLimit;                      /**< The number of times a frames may
+                                                                 be passed in the FM before assumed to
+                                                                 be looping. */
+    uint8_t                 prsDispTh;                      /**< This is the number pf packets that may be
+                                                                 queued in the parser dispatch queue*/
+    uint8_t                 plcrDispTh;                     /**< This is the number pf packets that may be
+                                                                 queued in the policer dispatch queue*/
+    uint8_t                 kgDispTh;                       /**< This is the number pf packets that may be
+                                                                 queued in the keygen dispatch queue*/
+    uint8_t                 bmiDispTh;                      /**< This is the number pf packets that may be
+                                                                 queued in the BMI dispatch queue*/
+    uint8_t                 qmiEnqDispTh;                   /**< This is the number pf packets that may be
+                                                                 queued in the QMI enqueue dispatch queue*/
+    uint8_t                 qmiDeqDispTh;                   /**< This is the number pf packets that may be
+                                                                 queued in the QMI dequeue dispatch queue*/
+    uint8_t                 fmCtl1DispTh;                    /**< This is the number pf packets that may be
+                                                                 queued in fmCtl1 dispatch queue*/
+    uint8_t                 fmCtl2DispTh;                    /**< This is the number pf packets that may be
+                                                                 queued in fmCtl2 dispatch queue*/
+} t_FmThresholds;
+
+/**************************************************************************//**
+ @Description   structure for defining DMA mode parameters
+*//***************************************************************************/
+typedef struct t_FmDmaBusProtect {
+    bool                        privilegeBusProtect;        /**< TRUE to select privilage bus protection */
+    e_FmDmaBusProtectionType    busProtectType;             /**< Data/Instruction protect select. */
+} t_FmDmaBusProtect;
+
+/**************************************************************************//**
+ @Description   structure for defining DMA thresholds
+*//***************************************************************************/
+typedef struct t_FmDmaThresholds {
+    uint8_t                     assertEmergency;            /**< When this value is reached,
+                                                                 assert emergency (Threshold)*/
+    uint8_t                     clearEmergency;             /**< After emergency is asserted, it is held
+                                                                 until this value is reached (Hystheresis) */
+} t_FmDmaThresholds;
+
+
+/**************************************************************************//**
+ @Function      FM_ConfigResetOnInit
+
+ @Description   Tell the driver whether to reset the FM before initialization or
+                not. It changes the default configuration [DEFAULT_resetOnInit].
+
+ @Param[in]     h_Fm                A handle to an FM Module.
+ @Param[in]     enable              When TRUE, FM will be reset before any initialization.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigResetOnInit(t_Handle h_Fm, bool enable);
+
+/**************************************************************************//**
+ @Function      FM_ConfigTotalNumOfTasks
+
+ @Description   Change the total number of tasks from its default
+                configuration [DEFAULT_totalNumOfTasks]
+
+ @Param[in]     h_Fm                A handle to an FM Module.
+ @Param[in]     totalNumOfTasks     The selected new value.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigTotalNumOfTasks(t_Handle h_Fm, uint8_t totalNumOfTasks);
+
+/**************************************************************************//**
+ @Function      FM_ConfigTotalFifoSize
+
+ @Description   Change the total Fifo size from its default
+                configuration [DEFAULT_totalFifoSize]
+
+ @Param[in]     h_Fm                A handle to an FM Module.
+ @Param[in]     totalFifoSize       The selected new value.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigTotalFifoSize(t_Handle h_Fm, uint32_t totalFifoSize);
+
+/**************************************************************************//**
+ @Function      FM_ConfigMaxNumOfOpenDmas
+
+ @Description   Change the maximum allowed open DMA's for this FM from its default
+                configuration [DEFAULT_maxNumOfOpenDmas]
+
+ @Param[in]     h_Fm                A handle to an FM Module.
+ @Param[in]     maxNumOfOpenDmas    The selected new value.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigMaxNumOfOpenDmas(t_Handle h_Fm, uint8_t maxNumOfOpenDmas);
+
+/**************************************************************************//**
+ @Function      FM_ConfigThresholds
+
+ @Description   Calling this routine changes the internal driver data base
+                from its default FM threshold configuration:
+                                          dispLimit:    [DEFAULT_dispLimit]
+                                          prsDispTh:    [DEFAULT_prsDispTh]
+                                          plcrDispTh:   [DEFAULT_plcrDispTh]
+                                          kgDispTh:     [DEFAULT_kgDispTh]
+                                          bmiDispTh:    [DEFAULT_bmiDispTh]
+                                          qmiEnqDispTh: [DEFAULT_qmiEnqDispTh]
+                                          qmiDeqDispTh: [DEFAULT_qmiDeqDispTh]
+                                          fmCtl1DispTh:  [DEFAULT_fmCtl1DispTh]
+                                          fmCtl2DispTh:  [DEFAULT_fmCtl2DispTh]
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+ @Param[in]     p_FmThresholds  A structure of threshold parameters.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigThresholds(t_Handle h_Fm, t_FmThresholds *p_FmThresholds);
+
+/**************************************************************************//**
+ @Function      FM_ConfigTimeStamp
+
+ @Description   This routine enables the FPM timeStamp and sets its frequency.
+                Calling this routine changes the internal driver data base
+                from its default configuration - by default time stamp is disabled.
+                The value selected here will be used for the non-Rx ports
+                rate-limit mechanism and for the policer profiles.
+                Note that rate-limiting may be done only for time
+                units larger than the timeStampPeriod specifies
+                here (i.e. select here the smallest time unit
+                required between all ports).
+
+
+ @Param[in]     h_Fm                A handle to an FM Module.
+ @Param[in]     timeStampPeriod    (in nano-seconds)
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigTimeStamp(t_Handle h_Fm, uint32_t timeStampPeriod);
+
+/**************************************************************************//**
+ @Function      FM_ConfigDmaBusProtect
+
+ @Description   Calling this routine changes the internal driver data base
+                from its default FM threshold configuration
+                                  privilegeBusProtect:      [DEFAULT_secureBusProtect]
+                                  secureBusProtect:         [DEFAULT_privilegeBusProtect]
+                                  busProtectType:           [DEFAULT_busProtectionType]
+
+ @Param[in]     h_Fm                A handle to an FM Module.
+ @Param[in]     p_FmDmaBusProtect   A structure of bus protection parameters.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigDmaBusProtect(t_Handle h_Fm, t_FmDmaBusProtect *p_FmDmaBusProtect);
+
+ /**************************************************************************//**
+ @Function      FM_ConfigDmaCacheOverride
+
+ @Description   Calling this routine changes the internal driver data base
+                from its default configuration of cache override mode [DEFAULT_cacheOverride]
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+ @Param[in]     cacheOverride   The selected new value.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigDmaCacheOverride(t_Handle h_Fm, e_FmDmaCacheOverride cacheOverride);
+
+/**************************************************************************//**
+ @Function      FM_ConfigDmaAidOverride
+
+ @Description   Calling this routine changes the internal driver data base
+                from its default configuration of aid override mode [DEFAULT_aidOverride]
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+ @Param[in]     aidOverride     The selected new value.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigDmaAidOverride(t_Handle h_Fm, bool aidOverride);
+
+/**************************************************************************//**
+ @Function      FM_ConfigDmaAidMode
+
+ @Description   Calling this routine changes the internal driver data base
+                from its default configuration of aid mode [DEFAULT_aidMode]
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+ @Param[in]     aidMode         The selected new value.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigDmaAidMode(t_Handle h_Fm, e_FmDmaAidMode aidMode);
+
+/**************************************************************************//**
+ @Function      FM_ConfigDmaAxiDbgNumOfBeats
+
+ @Description   Calling this routine changes the internal driver data base
+                from its default configuration of axi debug [DEFAULT_axiDbgNumOfBeats]
+
+ @Param[in]     h_Fm                A handle to an FM Module.
+ @Param[in]     axiDbgNumOfBeats    The selected new value.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigDmaAxiDbgNumOfBeats(t_Handle h_Fm, uint8_t axiDbgNumOfBeats);
+
+/**************************************************************************//**
+ @Function      FM_ConfigDmaCamNumOfEntries
+
+ @Description   Calling this routine changes the internal driver data base
+                from its default configuration of number of CAM entries [DEFAULT_dmaCamNumOfEntries]
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+ @Param[in]     numOfEntries    The selected new value.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigDmaCamNumOfEntries(t_Handle h_Fm, uint8_t numOfEntries);
+
+/**************************************************************************//**
+ @Function      FM_ConfigDmaWatchdog
+
+ @Description   Calling this routine changes the internal driver data base
+                from its default watchdog configuration, which is the maximum
+                possible value.
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+ @Param[in]     watchDogValue   The selected new value - in microseconds.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigDmaWatchdog(t_Handle h_Fm, uint32_t watchDogValue);
+
+/**************************************************************************//**
+ @Function      FM_ConfigDmaWriteBufThresholds
+
+ @Description   Calling this routine changes the internal driver data base
+                from its default configuration of DMA write buffer threshold
+                assertEmergency: [DEFAULT_dmaWriteIntBufLow]
+                clearEmergency:  [DEFAULT_dmaWriteIntBufHigh]
+
+ @Param[in]     h_Fm                A handle to an FM Module.
+ @Param[in]     p_FmDmaThresholds   A structure of thresholds to define emegrency behavior -
+                                    When 'assertEmergency' value is reached, emergency is asserted,
+                                    then it is held until 'clearEmergency' value is reached.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigDmaWriteBufThresholds(t_Handle h_Fm, t_FmDmaThresholds *p_FmDmaThresholds);
+
+ /**************************************************************************//**
+ @Function      FM_ConfigDmaCommQThresholds
+
+ @Description   Calling this routine changes the internal driver data base
+                from its default configuration of DMA command queue threshold
+                assertEmergency: [DEFAULT_dmaCommQLow]
+                clearEmergency:  [DEFAULT_dmaCommQHigh]
+
+ @Param[in]     h_Fm                A handle to an FM Module.
+ @Param[in]     p_FmDmaThresholds   A structure of thresholds to define emegrency behavior -
+                                    When 'assertEmergency' value is reached, emergency is asserted,
+                                    then it is held until 'clearEmergency' value is reached..
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigDmaCommQThresholds(t_Handle h_Fm, t_FmDmaThresholds *p_FmDmaThresholds);
+
+/**************************************************************************//**
+ @Function      FM_ConfigDmaReadBufThresholds
+
+ @Description   Calling this routine changes the internal driver data base
+                from its default configuration of DMA read buffer threshold
+                assertEmergency: [DEFAULT_dmaReadIntBufLow]
+                clearEmergency:  [DEFAULT_dmaReadIntBufHigh]
+
+ @Param[in]     h_Fm                A handle to an FM Module.
+ @Param[in]     p_FmDmaThresholds   A structure of thresholds to define emegrency behavior -
+                                    When 'assertEmergency' value is reached, emergency is asserted,
+                                    then it is held until 'clearEmergency' value is reached..
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigDmaReadBufThresholds(t_Handle h_Fm, t_FmDmaThresholds *p_FmDmaThresholds);
+
+/**************************************************************************//**
+ @Function      FM_ConfigDmaSosEmergencyThreshold
+
+ @Description   Calling this routine changes the internal driver data base
+                from its default dma SOS emergency configuration [DEFAULT_dmaSosEmergency]
+
+ @Param[in]     h_Fm                A handle to an FM Module.
+ @Param[in]     dmaSosEmergency     The selected new value.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigDmaSosEmergencyThreshold(t_Handle h_Fm, uint32_t dmaSosEmergency);
+
+/**************************************************************************//**
+ @Function      FM_ConfigEnableCounters
+
+ @Description   Calling this routine changes the internal driver data base
+                from its default counters configuration where counters are disabled.
+
+ @Param[in]     h_Fm    A handle to an FM Module.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigEnableCounters(t_Handle h_Fm);
+
+/**************************************************************************//**
+ @Function      FM_ConfigDmaDbgCounter
+
+ @Description   Calling this routine changes the internal driver data base
+                from its default DMA debug counters configuration [DEFAULT_dmaDbgCntMode]
+
+ @Param[in]     h_Fm                A handle to an FM Module.
+ @Param[in]     fmDmaDbgCntMode     An enum selecting the debug counter mode.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigDmaDbgCounter(t_Handle h_Fm, e_FmDmaDbgCntMode fmDmaDbgCntMode);
+
+/**************************************************************************//**
+ @Function      FM_ConfigDmaStopOnBusErr
+
+ @Description   Calling this routine changes the internal driver data base
+                from its default selection of bus error behavior [DEFAULT_dmaStopOnBusError]
+
+
+ @Param[in]     h_Fm    A handle to an FM Module.
+ @Param[in]     stop    TRUE to stop on bus error, FALSE to continue.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+                Only if bus error is enabled.
+*//***************************************************************************/
+t_Error FM_ConfigDmaStopOnBusErr(t_Handle h_Fm, bool stop);
+
+/**************************************************************************//**
+ @Function      FM_ConfigDmaEmergency
+
+ @Description   Calling this routine changes the internal driver data base
+                from its default selection of DMA emergency where's it's disabled.
+
+ @Param[in]     h_Fm        A handle to an FM Module.
+ @Param[in]     p_Emergency An OR mask of all required options.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigDmaEmergency(t_Handle h_Fm, t_FmDmaEmergency *p_Emergency);
+
+/**************************************************************************//**
+ @Function      FM_ConfigDmaEmergencySmoother
+
+ @Description   sets the minimum amount of DATA beats transferred on the AXI
+                READ and WRITE ports before lowering the emergency level.
+                By default smother is disabled.
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+ @Param[in]     emergencyCnt    emergency switching counter.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigDmaEmergencySmoother(t_Handle h_Fm, uint32_t emergencyCnt);
+
+/**************************************************************************//**
+ @Function      FM_ConfigDmaErr
+
+ @Description   Calling this routine changes the internal driver data base
+                from its default DMA error treatment [DEFAULT_dmaErr]
+
+ @Param[in]     h_Fm    A handle to an FM Module.
+ @Param[in]     dmaErr  The selected new choice.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigDmaErr(t_Handle h_Fm, e_FmDmaErr dmaErr);
+
+/**************************************************************************//**
+ @Function      FM_ConfigCatastrophicErr
+
+ @Description   Calling this routine changes the internal driver data base
+                from its default behavior on catastrophic error [DEFAULT_catastrophicErr]
+
+ @Param[in]     h_Fm                A handle to an FM Module.
+ @Param[in]     catastrophicErr     The selected new choice.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigCatastrophicErr(t_Handle h_Fm, e_FmCatastrophicErr catastrophicErr);
+
+/**************************************************************************//**
+ @Function      FM_ConfigEnableMuramTestMode
+
+ @Description   Calling this routine changes the internal driver data base
+                from its default selection of test mode where it's disabled.
+
+ @Param[in]     h_Fm    A handle to an FM Module.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigEnableMuramTestMode(t_Handle h_Fm);
+
+/**************************************************************************//**
+ @Function      FM_ConfigEnableIramTestMode
+
+ @Description   Calling this routine changes the internal driver data base
+                from its default selection of test mode where it's disabled.
+
+ @Param[in]     h_Fm    A handle to an FM Module.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigEnableIramTestMode(t_Handle h_Fm);
+
+/**************************************************************************//**
+ @Function      FM_ConfigHaltOnExternalActivation
+
+ @Description   Calling this routine changes the internal driver data base
+                from its default selection of FM behaviour on external halt
+                activation [DEFAULT_haltOnExternalActivation].
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+ @Param[in]     enable          TRUE to enable halt on external halt
+                                activation.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigHaltOnExternalActivation(t_Handle h_Fm, bool enable);
+
+/**************************************************************************//**
+ @Function      FM_ConfigHaltOnUnrecoverableEccError
+
+ @Description   Calling this routine changes the internal driver data base
+                from its default selection of FM behaviour on unrecoverable
+                Ecc error [DEFAULT_haltOnUnrecoverableEccError].
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+ @Param[in]     enable          TRUE to enable halt on unrecoverable Ecc error
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigHaltOnUnrecoverableEccError(t_Handle h_Fm, bool enable);
+
+/**************************************************************************//**
+ @Function      FM_ConfigException
+
+ @Description   Calling this routine changes the internal driver data base
+                from its default selection of exceptions enablement.
+                By default all exceptions are enabled.
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+ @Param[in]     exception       The exception to be selected.
+ @Param[in]     enable          TRUE to enable interrupt, FALSE to mask it.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigException(t_Handle h_Fm, e_FmExceptions exception, bool enable);
+
+/**************************************************************************//**
+ @Function      FM_ConfigExternalEccRamsEnable
+
+ @Description   Calling this routine changes the internal driver data base
+                from its default [DEFAULT_externalEccRamsEnable].
+                When this option is enabled Rams ECC enable is not effected
+                by the FPM RCR bit, but by a JTAG.
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+ @Param[in]     enable          TRUE to enable this option.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_ConfigExternalEccRamsEnable(t_Handle h_Fm, bool enable);
+
+/** @} */ /* end of FM_advanced_init_grp group */
+/** @} */ /* end of FM_init_grp group */
+
+
+/**************************************************************************//**
+ @Group         FM_runtime_control_grp FM Runtime Control Unit
+
+ @Description   FM Runtime control unit API functions, definitions and enums.
+                The FM driver provides a set of control routines for each module.
+                These routines may only be called after the module was fully
+                initialized (both configuration and initialization routines were
+                called). They are typically used to get information from hardware
+                (status, counters/statistics, revision etc.), to modify a current
+                state or to force/enable a required action. Run-time control may
+                be called whenever necessary and as many times as needed.
+ @{
+*//***************************************************************************/
+
+/**************************************************************************//**
+ @Collection   General FM defines.
+*//***************************************************************************/
+#define NUM_OF_PORT_TYPES               e_FM_PORT_TYPE_DUMMY    /**< Number of port types */
+#define MAX_NUM_OF_PORTS_PER_TYPE       7                       /**< Max number of ports of the same type */
+/* @} */
+
+/**************************************************************************//**
+ @Description   Port id by type and relative id.
+                This type is a 2 dimentional array of port id's according
+                to port types.used to pass per-port parameters.
+                Note that not all places in the array are valid e.g
+                array[e_FM_PORT_TYPE_TX_10G][1] is not a valid indexes pair.
+*//***************************************************************************/
+typedef uint8_t t_PortsParam[NUM_OF_PORT_TYPES][MAX_NUM_OF_PORTS_PER_TYPE];
+
+/**************************************************************************//**
+ @Description   DMA Emergency control on MURAM
+*//***************************************************************************/
+typedef enum e_FmDmaMuramPort {
+    e_FM_DMA_MURAM_PORT_WRITE,              /**< MURAM write port */
+    e_FM_DMA_MURAM_PORT_READ                /**< MURAM read port */
+} e_FmDmaMuramPort;
+
+/**************************************************************************//**
+ @Description   enum for defining FM counters
+*//***************************************************************************/
+typedef enum e_FmCounters {
+    e_FM_COUNTERS_ENQ_TOTAL_FRAME,              /**< QMI total enqueued frames counter */
+    e_FM_COUNTERS_DEQ_TOTAL_FRAME,              /**< QMI total dequeued frames counter */
+    e_FM_COUNTERS_DEQ_0,                        /**< QMI 0 frames from QMan counter */
+    e_FM_COUNTERS_DEQ_1,                        /**< QMI 1 frames from QMan counter */
+    e_FM_COUNTERS_DEQ_2,                        /**< QMI 2 frames from QMan counter */
+    e_FM_COUNTERS_DEQ_3,                        /**< QMI 3 frames from QMan counter */
+    e_FM_COUNTERS_DEQ_FROM_DEFAULT,             /**< QMI dequeue from default queue counter */
+    e_FM_COUNTERS_DEQ_FROM_CONTEXT,             /**< QMI dequeue from FQ context counter */
+    e_FM_COUNTERS_DEQ_FROM_FD,                  /**< QMI dequeue from FD command field counter */
+    e_FM_COUNTERS_DEQ_CONFIRM,                  /**< QMI dequeue confirm counter */
+    e_FM_COUNTERS_SEMAPHOR_ENTRY_FULL_REJECT,   /**< DMA semaphor reject due to full entry counter */
+    e_FM_COUNTERS_SEMAPHOR_QUEUE_FULL_REJECT,   /**< DMA semaphor reject due to full CAM queue counter */
+    e_FM_COUNTERS_SEMAPHOR_SYNC_REJECT          /**< DMA semaphor reject due to sync counter */
+} e_FmCounters;
+
+/**************************************************************************//**
+ @Description   structure for returning revision information
+*//***************************************************************************/
+typedef struct t_FmRevisionInfo {
+    uint8_t         majorRev;               /**< Major revision */
+    uint8_t         minorRev;               /**< Minor revision */
+} t_FmRevisionInfo;
+
+/**************************************************************************//**
+ @Description   struct for defining DMA status
+*//***************************************************************************/
+typedef struct t_FmDmaStatus {
+    bool    cmqNotEmpty;            /**< Command queue is not empty */
+    bool    busError;               /**< Bus error occured */
+    bool    readBufEccError;        /**< Double ECC error on buffer Read */
+    bool    writeBufEccSysError;    /**< Double ECC error on buffer write from system side */
+    bool    writeBufEccFmError;     /**< Double ECC error on buffer write from FM side */
+} t_FmDmaStatus;
+
+
+#if (defined(DEBUG_ERRORS) && (DEBUG_ERRORS > 0))
+/**************************************************************************//**
+ @Function      FM_DumpRegs
+
+ @Description   Dumps all FM registers
+
+ @Param[in]     h_Fm      A handle to an FM Module.
+
+ @Return        E_OK on success;
+
+ @Cautions      Allowed only FM_Init().
+*//***************************************************************************/
+t_Error FM_DumpRegs(t_Handle h_Fm);
+#endif /* (defined(DEBUG_ERRORS) && ... */
+
+/**************************************************************************//**
+ @Function      FM_Isr
+
+ @Description   FM interrupt-service-routine.
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+void FM_Isr(t_Handle h_Fm);
+
+/**************************************************************************//**
+ @Function      FM_SetException
+
+ @Description   Calling this routine enables/disables the specified exception.
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+ @Param[in]     exception       The exception to be selected.
+ @Param[in]     enable          TRUE to enable interrupt, FALSE to mask it.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+t_Error FM_SetException(t_Handle h_Fm, e_FmExceptions exception, bool enable);
+
+/**************************************************************************//**
+ @Function      FM_SetPortsBandwidth
+
+ @Description   Sets relative weights between ports when accessing common resources.
+
+ @Param[in]     h_Fm                A handle to an FM Module.
+ @Param[in]     p_PortsBandwidth    A table of ports bandwidth in percentage, i.e.
+                                    total must equal 100.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+t_Error FM_SetPortsBandwidth(t_Handle h_Fm, t_PortsParam *p_PortsBandwidth);
+
+/**************************************************************************//**
+ @Function      FM_EnableRamsEcc
+
+ @Description   Enables ECC mechanism for the different FM RAM's - IRAM, MURAM,
+                Parser, Keygen and Policer.
+                Note:
+                If FM_ConfigExternalEccRamsEnable was called to enable external
+                setting of ECC, this routine effects IRAM ECC only.
+                This routine is also called by the driver if an ECC exception is
+                enabled.
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_EnableRamsEcc(t_Handle h_Fm);
+
+/**************************************************************************//**
+ @Function      FM_DisableRamsEcc
+
+ @Description   Disables ECC mechanism for the different FM RAM's - IRAM, MURAM,
+                Parser, Keygen and Policer.
+                Note:
+                If FM_ConfigExternalEccRamsEnable was called to enable external
+                setting of ECC, this routine effects IRAM ECC only.
+                In opposed to FM_EnableRamsEcc, this routine must be called
+                explicitly to disable all Rams ECC.
+
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Config() and before FM_Init().
+*//***************************************************************************/
+t_Error FM_DisableRamsEcc(t_Handle h_Fm);
+
+/**************************************************************************//**
+ @Function      FM_GetRevision
+
+ @Description   Returns the FM revision
+
+ @Param[in]     h_Fm                A handle to an FM Module.
+ @Param[out]    p_FmRevisionInfo    A structure of revision information parameters.
+
+ @Return        None.
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+void  FM_GetRevision(t_Handle h_Fm, t_FmRevisionInfo *p_FmRevisionInfo);
+
+/**************************************************************************//**
+ @Function      FM_GetCounter
+
+ @Description   Reads one of the FM counters.
+
+ @Param[in]     h_Fm        A handle to an FM Module.
+ @Param[in]     counter     The requested counter.
+
+ @Return        Counter's current value.
+
+ @Cautions      Allowed only following FM_Init().
+                Note that it is user's responsibilty to call this routine only
+                for enabled counters, and there will be no indication if a
+                disabled counter is accessed.
+*//***************************************************************************/
+uint32_t  FM_GetCounter(t_Handle h_Fm, e_FmCounters counter);
+
+/**************************************************************************//**
+ @Function      FM_SetCounter
+
+ @Description   Sets a value to an enabled counter. Use "0" to reset the counter.
+
+ @Param[in]     h_Fm        A handle to an FM Module.
+ @Param[in]     counter     The requested counter.
+ @Param[in]     val         The requested value to be written into the counter.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+t_Error  FM_SetCounter(t_Handle h_Fm, e_FmCounters counter, uint32_t val);
+
+/**************************************************************************//**
+ @Function      FM_Resume
+
+ @Description   Release FM after halt FM command or after unrecoverable ECC error.
+
+ @Param[in]     h_Fm        A handle to an FM Module.
+
+ @Return        E_OK on success; Error code otherwise.
+*//***************************************************************************/
+void FM_Resume(t_Handle h_Fm);
+
+/**************************************************************************//**
+ @Function      FM_GetTimeStamp
+
+ @Description   Reads the current time stamp
+
+ @Param[in]     h_Fm    A handle to an FM Module.
+
+ @Return        TimeStamp integer at calling time.
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+uint32_t FM_GetTimeStamp(t_Handle h_Fm);
+
+/**************************************************************************//**
+ @Function      FM_DmaEmergencyCtrl
+
+ @Description   Manual emergency set
+
+ @Param[in]     h_Fm        A handle to an FM Module.
+ @Param[in]     muramPort   MURAM direction select.
+ @Param[in]     enable      TRUE to manualy enable emergency, FALSE to disable.
+
+ @Return        None.
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+void FM_DmaEmergencyCtrl(t_Handle h_Fm, e_FmDmaMuramPort muramPort, bool enable);
+
+/**************************************************************************//**
+ @Function      FM_SetDmaExtBusPri
+
+ @Description   Manual emergency set
+
+ @Param[in]     h_Fm    A handle to an FM Module.
+ @Param[in]     pri     External bus priority select
+
+ @Return        None.
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+void FM_SetDmaExtBusPri(t_Handle h_Fm, e_FmDmaExtBusPri pri);
+
+/**************************************************************************//**
+ @Function      FM_ForceIntr
+
+ @Description   Causes an interrupt event on the requested source.
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+ @Param[in]     exception       An exception to be forced.
+
+ @Return        E_OK on success; Error code if the exception is not enabled,
+                or is not able to create interrupt.
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+t_Error FM_ForceIntr (t_Handle h_Fm, e_FmExceptions exception);
+
+/**************************************************************************//**
+ @Function      FM_GetDmaStatus
+
+ @Description   Reads the DMA current status
+
+ @Param[in]     h_Fm                A handle to an FM Module.
+ @Param[out]     p_FmDmaStatus      A structure of DMA status parameters.
+
+ @Return        None
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+void FM_GetDmaStatus(t_Handle h_Fm, t_FmDmaStatus *p_FmDmaStatus);
+
+/**************************************************************************//**
+ @Function      FM_GetPcdHandle
+
+ @Description   Used by FMC in order to get PCD handle
+
+ @Param[in]     h_Fm     A handle to an FM Module.
+
+ @Return        A handle to the PCD module, NULL if uninitialized.
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+t_Handle FM_GetPcdHandle(t_Handle h_Fm);
+/** @} */ /* end of FM_runtime_control_grp group */
+
+#if (defined(DEBUG_ERRORS) && (DEBUG_ERRORS > 0))
+/**************************************************************************//**
+ @Function      FmDumpPortRegs
+
+ @Description   Dumps FM port registers which are part of FM common registers
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+ @Param[in]     hardwarePortId    HW port id.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only FM_Init().
+*//***************************************************************************/
+t_Error FmDumpPortRegs(t_Handle h_Fm,uint8_t hardwarePortId);
+#endif /* (defined(DEBUG_ERRORS) && ... */
+
+/** @} */ /* end of FM_lib_grp group */
+/** @} */ /* end of FM_grp group */
+
+/*****************************************************/
+/*****************************************************/
+/****   Inter-module Routines and definitions     ****/
+/*****************************************************/
+/*****************************************************/
+#ifndef DOXYGEN_ONLY
+
+/**************************************************************************//**
+@Group         FM_InterModule_grp FM Inter-Module Unit
+
+ @Description   FM Inter Module functions -
+                These are not User API routines but routines that may be called
+                from other modules.
+                Routines used by PCD module are always called directly by the PCD
+                module, since the PCD and FM modules always run on the same core.
+                As for routines used by other modules (FM-Port), They will be called directly
+                in a single core environment. In a multicore environment, some of the
+                other modules may be run by other cores and therefor these routines
+                may not be called directly and will be internally invoked using the
+                XX messeging mechanism.
+
+ @{
+*//***************************************************************************/
+
+/**************************************************************************//**
+ @Collection   Defines used for enabling/disabling FM interrupts
+
+ @{
+*//***************************************************************************/
+
+typedef uint32_t t_FmBlockErrIntrEnable;
+
+#define ERR_INTR_EN_DMA         0x00010000      /**< TBD */
+#define ERR_INTR_EN_FPM         0x80000000      /**< TBD */
+#define ERR_INTR_EN_BMI         0x00800000      /**< TBD */
+#define ERR_INTR_EN_QMI         0x00400000      /**< TBD */
+#define ERR_INTR_EN_PRS         0x00200000      /**< TBD */
+#define ERR_INTR_EN_KG          0x00100000      /**< TBD */
+#define ERR_INTR_EN_PLCR        0x00080000      /**< TBD */
+#define ERR_INTR_EN_MURAM       0x00040000      /**< TBD */
+#define ERR_INTR_EN_IRAM        0x00020000      /**< TBD */
+#define ERR_INTR_EN_10G_MAC0    0x00008000      /**< TBD */
+#define ERR_INTR_EN_1G_MAC0     0x00004000      /**< TBD */
+#define ERR_INTR_EN_1G_MAC1     0x00002000      /**< TBD */
+#define ERR_INTR_EN_1G_MAC2     0x00001000      /**< TBD */
+#define ERR_INTR_EN_1G_MAC3     0x00000800      /**< TBD */
+
+typedef uint32_t t_FmBlockIntrEnable;           /**< TBD */
+
+#define INTR_EN_BMI             0x80000000      /**< TBD */
+#define INTR_EN_QMI             0x40000000      /**< TBD */
+#define INTR_EN_PRS             0x20000000      /**< TBD */
+#define INTR_EN_KG              0x10000000      /**< TBD */
+#define INTR_EN_PLCR            0x08000000      /**< TBD */
+#define INTR_EN_REV0            0x00008000      /**< TBD */
+#define INTR_EN_REV1            0x00004000      /**< TBD */
+#define INTR_EN_REV2            0x00002000      /**< TBD */
+#define INTR_EN_REV3            0x00001000      /**< TBD */
+#define INTR_EN_BRK             0x00000080      /**< TBD */
+#define INTR_EN_TMR             0x01000000      /**< TBD */
+#define INTR_EN_1G_MAC0_TMR     0x00080000      /**< TBD */
+#define INTR_EN_1G_MAC1_TMR     0x00040000      /**< TBD */
+#define INTR_EN_1G_MAC2_TMR     0x00020000      /**< TBD */
+#define INTR_EN_1G_MAC3_TMR     0x00010000      /**< TBD */
+#define INTR_EN_1G_MAC1         0x00400000      /**< TBD */
+#define INTR_EN_1G_MAC2         0x00200000      /**< TBD */
+#define INTR_EN_1G_MAC3         0x00100000      /**< TBD */
+
+/* @} */
+
+
+/**************************************************************************//**
+ @Description   Enum for inter-module interrupts registration
+*//***************************************************************************/
+typedef enum e_FmInterModuleEvent {
+    e_FM_EV_PRS,                    /**< Parser event */
+    e_FM_EV_ERR_PRS,                /**< Parser error event */
+    e_FM_EV_KG,                     /**< Keygen event */
+    e_FM_EV_ERR_KG,                 /**< Keygen error event */
+    e_FM_EV_PLCR,                   /**< Policer event */
+    e_FM_EV_ERR_PLCR,               /**< Policer error event */
+    e_FM_EV_ERR_10G_MAC0,           /**< 10G MAC 0 error event */
+    e_FM_EV_ERR_1G_MAC0,            /**< 1G MAC 0 error event */
+    e_FM_EV_ERR_1G_MAC1,            /**< 1G MAC 1 error event */
+    e_FM_EV_ERR_1G_MAC2,            /**< 1G MAC 2 error event */
+    e_FM_EV_ERR_1G_MAC3,            /**< 1G MAC 3 error event */
+    e_FM_EV_TMR,                    /**< Timer event */
+    e_FM_EV_1G_MAC1,                /**< 1G MAC 1 event */
+    e_FM_EV_1G_MAC2,                /**< 1G MAC 2 event */
+    e_FM_EV_1G_MAC3,                /**< 1G MAC 3 event */
+    e_FM_EV_1G_MAC0_TMR,            /**< 1G MAC 0 Timer event */
+    e_FM_EV_1G_MAC1_TMR,            /**< 1G MAC 1 Timer event */
+    e_FM_EV_1G_MAC2_TMR,            /**< 1G MAC 2 Timer event */
+    e_FM_EV_1G_MAC3_TMR,            /**< 1G MAC 3 Timer event */
+    e_FM_EV_DUMMY_LAST
+} e_FmInterModuleEvent;
+
+/**************************************************************************//**
+ @Description   enum for defining MAC types
+*//***************************************************************************/
+typedef enum e_FmMacType {
+    e_FM_MAC_10G,               /**< 10G MAC */
+    e_FM_MAC_1G                 /**< 1G MAC */
+} e_FmMacType;
+
+/**************************************************************************//**
+ @Description   Structure for port-FM communication during FM_PORT_Init.
+                Fields commented 'IN' are passed by the port module to be used
+                by the FM module.
+                Fields commented 'OUT' will be filled by FM before returning to port.
+                Some fields are optional (depending on configuration) and
+                will be analized by the port and FM modules accordingly.
+*//***************************************************************************/
+typedef struct t_FmInterModulePortInitParams {
+    uint8_t             hardwarePortId;       /**< IN. port Id */
+    e_FmPortType        portType;           /**< IN. Port type */
+    uint32_t            timeStampPeriod;    /**< OUT. Time stamp period in NanoSec */
+    bool                independentMode;    /**< IN. TRUE if FM Port operates in independent mode */
+    uint8_t             portPartition;      /**< IN. Port's requested resource */
+    uint8_t             numOfTasks;         /**< IN. Port's requested resource */
+    uint8_t             numOfExtraTasks;    /**< IN. Port's requested resource */
+    uint8_t             numOfOpenDmas;      /**< IN. Port's requested resource */
+    uint8_t             numOfExtraOpenDmas; /**< IN. Port's requested resource */
+    uint32_t            sizeOfFifo;         /**< IN. Port's requested resource */
+    uint32_t            extraSizeOfFifo;    /**< IN. Port's requested resource */
+    uint8_t             deqPipelineDepth;   /**< IN. Port's requested resource */
+    t_FmPhysAddr        fmMuramPhysBaseAddr;/**< OUT. FM-MURAM physical address*/
+} t_FmInterModulePortInitParams;
+
+/**************************************************************************//**
+ @Description   Structure for port-FM communication during FM_PORT_Free.
+*//***************************************************************************/
+typedef struct t_FmInterModulePortFreeParams {
+    uint8_t             hardwarePortId;     /**< IN. port Id */
+    e_FmPortType        portType;           /**< IN. Port type */
+    uint8_t             deqPipelineDepth;   /**< IN. Port's requested resource */
+} t_FmInterModulePortFreeParams;
+
+/**************************************************************************//**
+ @Function      FmRegisterIntr
+
+ @Description   Used to register an inter-module event handler to be processed by FM
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+ @Param[in]     event           Event selector
+ @Param[in]     f_Isr           The interrupt service routine.
+ @Param[in]     h_Arg           Argument to be passed to f_Isr.
+
+ @Return        None.
+*//***************************************************************************/
+void FmRegisterIntr(t_Handle               h_Fm,
+                     e_FmInterModuleEvent   event,
+                     void                   (*f_Isr) (t_Handle h_Arg),
+                     t_Handle               h_Arg);
+
+/**************************************************************************//**
+ @Function      FmRegisterFmCtlIntr
+
+ @Description   Used to register to one of the fmCtl events in the FM module
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+ @Param[in]     eventRegId      FmCtl event id (0-7).
+ @Param[in]     f_Isr           The interrupt service routine.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+void  FmRegisterFmCtlIntr(t_Handle h_Fm, uint8_t eventRegId, void (*f_Isr) (t_Handle h_Fm, uint32_t event));
+
+/**************************************************************************//**
+ @Function      FmGetPcdPrsBaseAddr
+
+ @Description   Get the base address of the Parser from the FM module
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+
+ @Return        Base address.
+*//***************************************************************************/
+uint64_t FmGetPcdPrsBaseAddr(t_Handle h_Fm);
+
+/**************************************************************************//**
+ @Function      FmGetPcdKgBaseAddr
+
+ @Description   Get the base address of the Keygen from the FM module
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+
+ @Return        Base address.
+*//***************************************************************************/
+uint64_t FmGetPcdKgBaseAddr(t_Handle h_Fm);
+
+/**************************************************************************//**
+ @Function      FmGetPcdPlcrBaseAddr
+
+ @Description   Get the base address of the Policer from the FM module
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+
+ @Return        Base address.
+*//***************************************************************************/
+uint64_t FmGetPcdPlcrBaseAddr(t_Handle h_Fm);
+
+/**************************************************************************//**
+ @Function      FmGetMuramHandle
+
+ @Description   Get the handle of the MURAM from the FM module
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+
+ @Return        MURAM module handle.
+*//***************************************************************************/
+t_Handle FmGetMuramHandle(t_Handle h_Fm);
+
+/**************************************************************************//**
+ @Function      FmGetPhysicalMuramBase
+
+ @Description   Get the physical base address of the MURAM from the FM module
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+ @Param[in]     fmPhysAddr      Physical MURAM base
+
+ @Return        Physical base address.
+*//***************************************************************************/
+t_Error FmGetPhysicalMuramBase(t_Handle h_Fm, t_FmPhysAddr *fmPhysAddr);
+
+/**************************************************************************//**
+ @Function      FmGetTimeStampPeriod
+
+ @Description   Used internally by other modules in order to get the timeStamp
+                period as requested by the application.
+
+ @Param[in]     h_Fm                    A handle to an FM Module.
+
+ @Return        TimeStamp period in nanoseconds.
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+uint32_t    FmGetTimeStampPeriod(t_Handle h_Fm);
+
+/**************************************************************************//**
+ @Function      FmResumeStalledPort
+
+ @Description   Used internally by FM port to release a stalled port.
+
+ @Param[in]     h_Fm                            A handle to an FM Module.
+ @Param[in]     hardwarePortId                    HW port id.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+t_Error FmResumeStalledPort(t_Handle h_Fm, uint8_t hardwarePortId);
+
+/**************************************************************************//**
+ @Function      FmIsPortStalled
+
+ @Description   Used internally by FM port to read the port's status.
+
+ @Param[in]     h_Fm                            A handle to an FM Module.
+ @Param[in]     hardwarePortId                    HW port id.
+
+ @Return        TRUE if port is stalled, FALSE otherwize
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+bool FmIsPortStalled(t_Handle h_Fm, uint8_t hardwarePortId);
+
+/**************************************************************************//**
+ @Function      FmResetMac
+
+ @Description   Used by MAC driver to reset the MAC registers
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+ @Param[in]     type            MAC type.
+ @Param[in]     macId           MAC id - according to type.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+t_Error FmResetMac(t_Handle h_Fm, e_FmMacType type, uint8_t macId);
+
+/**************************************************************************//**
+ @Function      FmGetId
+
+ @Description   Used by PCD driver to read rhe FM id
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+uint8_t FmGetId(t_Handle h_Fm);
+
+/**************************************************************************//**
+ @Function      FmGetSetPortParams
+
+ @Description   Used by FM-PORT driver to pass and receive parameters between
+                PORT and FM modules.
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+ @Param[in,out] p_PortParams    A structure of FM Port parameters.
+
+ @Return        E_OK on success; Error code otherwise.
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+t_Error FmGetSetPortParams(t_Handle h_Fm,t_FmInterModulePortInitParams *p_PortParams);
+
+/**************************************************************************//**
+ @Function      FmFreePortParams
+
+ @Description   Used by FM-PORT driver to free port's resources within the FM.
+
+ @Param[in]     h_Fm            A handle to an FM Module.
+ @Param[in,out] p_PortParams    A structure of FM Port parameters.
+
+ @Return        None.
+
+ @Cautions      Allowed only following FM_Init().
+*//***************************************************************************/
+void FmFreePortParams(t_Handle h_Fm,t_FmInterModulePortFreeParams *p_PortParams);
+
+#if (defined(CONFIG_MULTI_PARTITION_SUPPORT) && !defined(CONFIG_GUEST_PARTITION))
+t_Error     FmHandleIpcMsg(t_Handle h_Fm, uint32_t msgId, uint8_t msgBody[MSG_BODY_SIZE]);
+#endif /* (defined(CONFIG_MULTI_PARTITION_SUPPORT) && ... */
+void        FmRegisterPcd(t_Handle h_Fm, t_Handle h_FmPcd);
+t_Handle    FmGetPcdHandle(t_Handle h_Fm);
+bool        FmRamsEccIsExternalCtl(t_Handle h_Fm);
+
+
+/** @} */ /* end of FM_lib_grp group */
+
+#endif /* ! DOXYGEN_ONLY */
+
+#endif /* __FM_EXT */
