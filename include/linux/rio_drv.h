@@ -4,6 +4,8 @@
  * Copyright 2005 MontaVista Software, Inc.
  * Matt Porter <mporter@kernel.crashing.org>
  *
+ * Copyright (C) 2008-2009 Freescale Semiconductor, Inc.
+ *
  * This program is free software; you can redistribute  it and/or modify it
  * under  the terms of  the GNU General  Public License as published by the
  * Free Software Foundation;  either version 2 of the  License, or (at your
@@ -332,6 +334,16 @@ static inline void rio_init_dbell_res(struct resource *res, u16 start, u16 end)
 	res->flags = RIO_RESOURCE_DOORBELL;
 }
 
+static inline void rio_init_io_res(struct resource *res, resource_size_t start,
+		resource_size_t size, const char *name, unsigned long flag)
+{
+	memset(res, 0, sizeof(struct resource));
+	res->start = start;
+	res->end = start + size - 1;
+	res->name = name;
+	res->flags = flag;
+}
+
 /**
  * RIO_DEVICE - macro used to describe a specific RIO device
  * @dev: the 16 bit RIO device ID
@@ -406,12 +418,13 @@ extern int rio_release_inb_dbell(struct rio_mport *, u16, u16);
 extern struct resource *rio_request_outb_dbell(struct rio_dev *, u16, u16);
 extern int rio_release_outb_dbell(struct rio_dev *, struct resource *);
 
-/* Memory region management */
-int rio_claim_resource(struct rio_dev *, int);
-int rio_request_regions(struct rio_dev *, char *);
-void rio_release_regions(struct rio_dev *);
-int rio_request_region(struct rio_dev *, int, char *);
-void rio_release_region(struct rio_dev *, int);
+/* Memory low-level mapping functions */
+extern int rio_map_inb_region(struct rio_mport *, struct resource *,
+				dma_addr_t, u32);
+extern int rio_map_outb_region(struct rio_mport *, u16, struct resource *,
+				phys_addr_t, u32);
+extern void rio_unmap_inb_region(struct rio_mport *, dma_addr_t);
+extern void rio_unmap_outb_region(struct rio_mport *, phys_addr_t);
 
 /* LDM support */
 int rio_register_driver(struct rio_driver *);
@@ -461,5 +474,6 @@ extern u16 rio_local_get_device_id(struct rio_mport *port);
 extern struct rio_dev *rio_get_device(u16 vid, u16 did, struct rio_dev *from);
 extern struct rio_dev *rio_get_asm(u16 vid, u16 did, u16 asm_vid, u16 asm_did,
 				   struct rio_dev *from);
+extern u32 rio_get_mport_id(struct rio_mport *);
 
 #endif				/* LINUX_RIO_DRV_H */
