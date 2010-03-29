@@ -1737,6 +1737,7 @@
 		ranges = <0 0 0 0xa0000000 0 0x10000000>;
 		interrupt-parent = <&mpic>;
 		interrupts = <
+			16 2 1 11 /* err_irq */
 			56 2 0 0  /* bell_outb_irq */
 			57 2 0 0  /* bell_inb_irq */
 			60 2 0 0  /* msg1_tx_irq */
