@@ -942,6 +942,7 @@
 			clock-frequency = <0>;
 			interrupts = <36 2>;
 			interrupt-parent = <&mpic>;
+			current-speed = <115200>;
 		};
 
 		serial1: serial@11c600 {
