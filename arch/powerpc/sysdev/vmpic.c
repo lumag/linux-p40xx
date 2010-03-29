@@ -81,7 +81,7 @@ static inline u32 vmpic_physmask(u32 cpumask)
 	return mask;
 }
 
-void vmpic_set_affinity(unsigned int irq, const struct cpumask *dest)
+int vmpic_set_affinity(unsigned int irq, const struct cpumask *dest)
 {
 	unsigned int src = virq_to_hw(irq);
 	unsigned int config, prio, cpu_dest;
@@ -94,6 +94,8 @@ void vmpic_set_affinity(unsigned int irq, const struct cpumask *dest)
 	fh_vmpic_get_int_config(src, &config, &prio, &cpu_dest);
 	fh_vmpic_set_int_config(src,config, prio, vmpic_physmask(cpus_addr(tmp)[0]));
 	spin_unlock_irqrestore(&vmpic_lock, flags);
+
+	return 0;
 }
 
 static unsigned int vmpic_type_to_vecpri(unsigned int type)
@@ -124,7 +126,7 @@ static unsigned int vmpic_type_to_vecpri(unsigned int type)
 int vmpic_set_irq_type(unsigned int virq, unsigned int flow_type)
 {
 	unsigned int src = virq_to_hw(virq);
-	struct irq_desc *desc = get_irq_desc(virq);
+	struct irq_desc *desc = irq_to_desc(virq);
 	unsigned int vecpri, vold, vnew, prio, cpu_dest;
 	unsigned long flags;
 
@@ -230,7 +232,7 @@ static int vmpic_host_map(struct irq_host *h, unsigned int virq,
 }
 
 static int vmpic_host_xlate(struct irq_host *h, struct device_node *ct,
-			   u32 *intspec, unsigned int intsize,
+			   const u32 *intspec, unsigned int intsize,
 			   irq_hw_number_t *out_hwirq, unsigned int *out_flags)
 
 {
