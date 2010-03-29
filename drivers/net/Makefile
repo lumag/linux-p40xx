@@ -26,6 +26,7 @@ obj-$(CONFIG_ATL2) += atlx/
 obj-$(CONFIG_ATL1E) += atl1e/
 obj-$(CONFIG_ATL1C) += atl1c/
 obj-$(CONFIG_GIANFAR) += gianfar_driver.o
+obj-$(if $(CONFIG_DPA),y) += dpa/
 obj-$(CONFIG_TEHUTI) += tehuti.o
 obj-$(CONFIG_ENIC) += enic/
 obj-$(CONFIG_JME) += jme.o
@@ -40,6 +41,11 @@ obj-$(CONFIG_UCC_GETH) += ucc_geth_driver.o
 ucc_geth_driver-objs := ucc_geth.o ucc_geth_ethtool.o
 
 obj-$(CONFIG_FSL_PQ_MDIO) += fsl_pq_mdio.o
+
+ifeq ($(CONFIG_PPC_85xx),y)
+  obj-$(CONFIG_BOARDNET) += cardnet/
+  obj-$(CONFIG_CARDNET) += cardnet/
+endif
 
 #
 # link order important here
