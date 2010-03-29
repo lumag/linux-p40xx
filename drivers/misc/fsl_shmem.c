@@ -86,8 +86,7 @@ static int __init add_region(struct device_node *node, unsigned long prot)
 	if (!region)
 		return -ENOMEM;
 
-	pr_info("fsl-shmem: registering address range %x->%x\n",
-	       res.start, res.end);
+	pr_info("fsl-shmem: registering address range %pR\n", &res);
 
 	region->start = res.start;
 	region->end = res.end;
