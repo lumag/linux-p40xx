@@ -252,7 +252,7 @@ static int build_protocol_desc_ipsec_encap(struct caam_ctx *ctx,
 	struct device *dev = ctx->dev;
 	struct crypto_async_request *req_base = &areq->base;
 	struct sk_buff *skb = req_base->data;
-	struct dst_entry *dst = skb->dst;
+	struct dst_entry *dst = skb_dst(skb);
 	struct xfrm_state *x = dst->xfrm;
 	struct ipsec_encap_pdb *sh_desc;
 	int endidx;
