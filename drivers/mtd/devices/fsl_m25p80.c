@@ -650,7 +650,7 @@ static struct flash_info *__devinit jedec_probe(struct spi_device *spi)
  * parse_flash_partition - Parse the flash partition on the SPI bus
  * @spi:	Pointer to spi_device device
  */
-void parse_flash_partition(struct spi_device *spi)
+void __devinit parse_flash_partition(struct spi_device *spi)
 {
 	struct mtd_partition *parts;
 	struct flash_platform_data *spi_pdata;
