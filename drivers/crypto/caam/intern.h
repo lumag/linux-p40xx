@@ -2,7 +2,7 @@
  * CAAM/SEC 4.x driver backend
  * Private/internal definitions between modules
  *
- * Copyright (c) 2008, 2009, Freescale Semiconductor, Inc.
+ * Copyright (c) 2008-2010 Freescale Semiconductor, Inc.
  * All Rights Reserved
  *
  * Redistribution and use in source and binary forms, with or without
@@ -114,7 +114,8 @@ struct caam_drv_private {
 	int secvio_irq;		/* Security violation interrupt number */
 
 	/* which jq allocated to scatterlist crypto */
-	struct device *algapi_jq;
+	int num_jqs_for_algapi;
+	struct device **algapi_jq;
 	/* list of registered crypto algorithms (mk generic context handle?) */
 	struct list_head alg_list;
 
