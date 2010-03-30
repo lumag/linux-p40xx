@@ -113,6 +113,7 @@ static const char rtx[][3] = {
 
 struct dpa_bp {
 	struct bman_pool		*pool;
+	bool				kernel_pool;
 	union {
 		struct list_head	list;
 		uint8_t			bpid;
@@ -206,6 +207,8 @@ _dpa_bp_alloc(struct net_device *net_dev, struct list_head *list,
 			goto _return_bman_free_pool;
 		}
 
+		dpa_bp->kernel_pool = true;
+
 		dpa_bp->paddr = dma_map_single(net_dev->dev.parent,
 						dpa_bp->vaddr,
 						dpa_bp->size * dpa_bp->count,
@@ -230,6 +233,7 @@ _dpa_bp_alloc(struct net_device *net_dev, struct list_head *list,
 			}
 		}
 	} else {
+		dpa_bp->kernel_pool = false;
 		devm_request_mem_region(net_dev->dev.parent, dpa_bp->paddr,
 					dpa_bp->size * dpa_bp->count,
 					KBUILD_MODNAME);
@@ -274,10 +278,16 @@ static void __cold __attribute__((nonnull))
 _dpa_bp_free(struct device *dev, struct dpa_bp *dpa_bp)
 {
 	uint8_t	bpid;
+	struct bm_buffer bmb[8];
 
-	dma_unmap_single(dev, dpa_bp->paddr,
+	if (dpa_bp->kernel_pool) {
+		while (bman_acquire(dpa_bp->pool, bmb, 8, 0) == 8)
+			;
+
+		dma_unmap_single(dev, dpa_bp->paddr,
 			dpa_bp->size * dpa_bp->count, DMA_BIDIRECTIONAL);
-	free_pages_exact(dpa_bp->vaddr, dpa_bp->size * dpa_bp->count);
+		free_pages_exact(dpa_bp->vaddr, dpa_bp->size * dpa_bp->count);
+	}
 	bpid = dpa_pool2bpid(dpa_bp);
 	dpa_bp_array[bpid] = 0;
 	bman_free_pool(dpa_bp->pool);
