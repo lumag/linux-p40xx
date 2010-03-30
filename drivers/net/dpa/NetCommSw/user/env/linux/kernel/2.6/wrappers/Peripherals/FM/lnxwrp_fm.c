@@ -1572,6 +1572,26 @@ static t_Error InitFmPortDev(t_LnxWrpFmPortDev *p_LnxWrpFmPortDev)
              RETURN_ERROR(MAJOR, errCode, NO_MSG);
     }
 
+    {
+        t_FmPortRsrc    portRsrc;
+        t_Error         errCode;
+
+        if (p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_TX_10G)
+            portRsrc.num = 21504;
+        else if (p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_RX_10G)
+            portRsrc.num = 23040;
+        else if (p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_TX)
+            portRsrc.num = 10752;
+        else if (p_LnxWrpFmPortDev->settings.param.portType == e_FM_PORT_TYPE_RX)
+            portRsrc.num = 11520;
+        else /* Offline-Parsing port */
+            portRsrc.num = 10752;
+
+        portRsrc.extra = 0;
+
+        if ((errCode = FM_PORT_ConfigSizeOfFifo(p_LnxWrpFmPortDev->h_Dev, &portRsrc)) != E_OK)
+             RETURN_ERROR(MAJOR, errCode, NO_MSG);
+    }
     /* Call the driver's advanced configuration routines, if requested:
        Compare the function pointer of each entry to the available routines,
        and invoke the matching routine with proper casting of arguments. */
