@@ -125,7 +125,7 @@ struct dpa_bp {
 
 static const size_t dpa_bp_size[] __devinitconst = {
 	/* Keep these sorted */
-	DPA_BP_SIZE(1536)
+	DPA_BP_SIZE(9600)
 };
 
 static struct dpa_bp *dpa_bp_array[64];
@@ -805,6 +805,13 @@ dpa_get_stats(struct net_device *net_dev)
 	return &net_dev->stats;
 }
 
+static int dpa_change_mtu(struct net_device *net_dev, int new_mtu)
+{
+	net_dev->mtu = new_mtu;
+
+	return 0;
+}
+
 static void __cold dpa_change_rx_flags(struct net_device *net_dev, int flags)
 {
 	int			 _errno;
@@ -936,6 +943,11 @@ static void __hot _dpa_rx(struct net_device		*net_dev,
 
 	skb = NULL;
 	size = dpa_fd_length(&dpa_fd->fd);
+
+	if (size > net_dev->mtu) {
+		percpu_priv->stats.rx_dropped++;
+		goto _return_dpa_fd_release;
+	}
 
 	if (skb == NULL) {
 		skb = __netdev_alloc_skb(net_dev,
@@ -1822,6 +1834,7 @@ static const struct net_device_ops dpa_netdev_ops = {
 	.ndo_set_mac_address = eth_mac_addr,
 	.ndo_validate_addr = eth_validate_addr,
 	.ndo_select_queue = dpa_select_queue,
+	.ndo_change_mtu = dpa_change_mtu,
 };
 
 static int __devinit __cold __attribute__((nonnull))
