@@ -1302,16 +1302,6 @@ static const struct qman_fq _egress_fqs __devinitconst = {
 	.cb = {egress_dqrr, egress_ern, egress_dc_ern, egress_fqs}
 };
 
-static struct net_device_stats * __cold
-dpa_get_stats(struct net_device *net_dev)
-{
-	cpu_netdev_dbg(net_dev, "-> %s:%s()\n", __file__, __func__);
-
-	cpu_netdev_dbg(net_dev, "%s:%s() ->\n", __file__, __func__);
-
-	return &net_dev->stats;
-}
-
 static void __cold dpa_change_rx_flags(struct net_device *net_dev, int flags)
 {
 	int			 _errno;
@@ -2332,6 +2322,14 @@ static const struct file_operations dpa_debugfs_fops = {
 };
 #endif
 
+static struct net_device_ops dpa_ops = {
+	.ndo_open	= dpa_start,
+	.ndo_stop	= dpa_stop,
+	.ndo_start_xmit	= dpa_tx,
+	.ndo_tx_timeout	= dpa_timeout,
+	.ndo_change_rx_flags	 = dpa_change_rx_flags,
+};
+
 static int __devinit __cold __attribute__((nonnull))
 dpa_probe(struct of_device *_of_dev)
 {
@@ -2774,15 +2772,10 @@ dpa_probe(struct of_device *_of_dev)
 	}
 
 	net_dev->features		|= DPA_NETIF_FEATURES;
-	net_dev->get_stats		 = dpa_get_stats;
+	net_dev->netdev_ops		 = &dpa_ops;
 	SET_ETHTOOL_OPS(net_dev, &dpa_ethtool_ops);
 	net_dev->needed_headroom	 = DPA_BP_HEAD;
-	net_dev->hard_start_xmit	 = dpa_tx;
 	net_dev->watchdog_timeo		 = tx_timeout * HZ / 1000;
-	net_dev->open			 = dpa_start;
-	net_dev->stop			 = dpa_stop;
-	net_dev->tx_timeout		 = dpa_timeout;
-	net_dev->change_rx_flags	 = dpa_change_rx_flags;
 
 	_errno = register_netdev(net_dev);
 	if (unlikely(_errno < 0)) {
