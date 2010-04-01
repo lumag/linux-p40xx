@@ -39,7 +39,6 @@
 
 #include "lnxwrp_fm_ext.h"
 
-#include "fsl_pq_mdio.h"
 #include "mac.h"
 
 #define DTSEC_SUPPORTED \
