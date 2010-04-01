@@ -16,6 +16,7 @@
 #include <linux/delay.h>
 #include <linux/interrupt.h>
 #include <linux/phy.h>
+#include <linux/lmb.h>
 
 #include <asm/system.h>
 #include <asm/time.h>
@@ -25,6 +26,7 @@
 #include <asm/prom.h>
 #include <asm/udbg.h>
 #include <asm/mpic.h>
+#include <asm/swiotlb.h>
 
 #include <linux/of_platform.h>
 #include <sysdev/fsl_soc.h>
@@ -72,7 +74,9 @@ static void __init mpc85xx_ds_setup_arch(void)
 {
 #ifdef CONFIG_PCI
 	struct device_node *np;
+	struct pci_controller *hose;
 #endif
+	dma_addr_t max = 0xffffffff;
 
 	if (ppc_md.progress)
 		ppc_md.progress("mpc85xx_ds_setup_arch()", 0);
@@ -82,18 +86,27 @@ static void __init mpc85xx_ds_setup_arch(void)
 #endif
 
 #ifdef CONFIG_PCI
-	for_each_node_by_type(np, "pci") {
-		if (of_device_is_compatible(np, "fsl,p4080-pcie")) {
-			struct resource rsrc;
-			of_address_to_resource(np, 0, &rsrc);
-			if ((rsrc.start & 0xfffff) == primary_phb_addr)
-				fsl_add_bridge(np, 1);
-			else
-				fsl_add_bridge(np, 0);
-		}
+	for_each_compatible_node(np, "pci", "fsl,p4080-pcie") {
+		struct resource rsrc;
+		of_address_to_resource(np, 0, &rsrc);
+		if ((rsrc.start & 0xfffff) == primary_phb_addr)
+			fsl_add_bridge(np, 1);
+		else
+			fsl_add_bridge(np, 0);
+
+		hose = pci_find_hose_for_OF_device(np);
+		max = min(max, hose->dma_window_base_cur +
+				hose->dma_window_size);
 	}
 #endif
 
+#ifdef CONFIG_SWIOTLB
+	if (lmb_end_of_DRAM() > max) {
+		ppc_swiotlb_enable = 1;
+		set_pci_dma_ops(&swiotlb_dma_ops);
+		ppc_md.pci_dma_dev_setup = pci_dma_dev_setup_swiotlb;
+	}
+#endif
 	printk(KERN_INFO "P4080 DS board from Freescale Semiconductor\n");
 }
 
@@ -160,8 +173,10 @@ static int __init p4080_ds_probe(void)
 
 	if (of_flat_dt_is_compatible(root, "fsl,P4080DS")) {
 #ifdef CONFIG_PCI
-		/* xxx - galak */
-		primary_phb_addr = 0x8000;
+		/* treat PCIe1 as primary,
+		 * shouldn't matter as we have no ISA on the board
+		 */
+		primary_phb_addr = 0x0000;
 #endif
 		return 1;
 	} else {
@@ -210,3 +225,4 @@ define_machine(p4080_ds) {
 	.init_early		= p4080_init_early,
 };
 
+machine_arch_initcall(p4080_ds, swiotlb_setup_bus_notifier);
