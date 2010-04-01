@@ -74,9 +74,9 @@ static inline void *kmap(struct page *page)
 
 static inline void kunmap(struct page *page)
 {
-	BUG_ON(in_interrupt());
 	if (!PageHighMem(page))
 		return;
+	BUG_ON(in_interrupt());
 	kunmap_high(page);
 }
 
