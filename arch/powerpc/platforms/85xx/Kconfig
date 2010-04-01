@@ -168,7 +168,7 @@ config P4080_DS
 	select DEFAULT_UIMAGE
 	select PPC_FSL_BOOK3E
 	select PPC_E500MC
-	select PHYS_64BIT
+#	select PHYS_64BIT
 	select SWIOTLB
 	select MPC8xxx_GPIO
 	select HAS_RAPIDIO
