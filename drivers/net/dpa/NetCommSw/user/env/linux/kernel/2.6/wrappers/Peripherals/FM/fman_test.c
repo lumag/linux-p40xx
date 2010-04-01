@@ -244,7 +244,7 @@ static t_Error SetMacIntLoopback(t_FmTestPort *p_FmTestPort, bool en)
 
 static void EnqueueFrameToRxQ(t_FmTestPort *p_FmTestPort, t_FmTestFrame *p_FmTestFrame)
 {
-    uint32_t   intFlags;
+    unsigned long   intFlags;
 
     intFlags = XX_DisableAllIntr();
     LIST_AddToTail(&p_FmTestFrame->node, &p_FmTestPort->rxFrmsQ);
@@ -254,7 +254,7 @@ static void EnqueueFrameToRxQ(t_FmTestPort *p_FmTestPort, t_FmTestFrame *p_FmTes
 static t_FmTestFrame * DequeueFrameFromRxQ(t_FmTestPort *p_FmTestPort)
 {
     t_FmTestFrame   *p_FmTestFrame = NULL;
-    uint32_t        intFlags;
+    unsigned long        intFlags;
 
     intFlags = XX_DisableAllIntr();
     if (!LIST_IsEmpty(&p_FmTestPort->rxFrmsQ))

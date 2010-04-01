@@ -86,7 +86,7 @@ do {                                                                            
 
 #define TRY_LOCK                                                                \
 do {                                                                            \
-    uint32_t intFlags;                                                          \
+    unsigned long intFlags;                                                          \
     intFlags = XX_DisableAllIntr();                                             \
     if (p_FmHc->lock)                                                           \
     {                                                                           \
@@ -99,7 +99,7 @@ do {                                                                            
 
 #define TRY_LOCK_RETURN_NULL                                                    \
 do {                                                                            \
-    uint32_t intFlags;                                                          \
+    unsigned long intFlags;                                                          \
     intFlags = XX_DisableAllIntr();                                             \
     if (p_FmHc->lock)                                                           \
     {                                                                           \

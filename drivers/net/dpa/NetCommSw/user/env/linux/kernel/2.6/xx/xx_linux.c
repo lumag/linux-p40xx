@@ -139,7 +139,7 @@ static bool in_big_phys_area (uint32_t addr)
 void * xx_Malloc(uint32_t n)
 {
     void        *a;
-    uint32_t    flags;
+    unsigned long    flags;
 
     flags = XX_DisableAllIntr();
 #ifdef BIGPHYSAREA_ENABLE
@@ -363,16 +363,16 @@ void XX_EventById(uint32_t event, t_Handle appId, uint16_t flags, char *msg)
 #endif /* (defined(REPORT_EVENTS) && ... */
 
 
-uint32_t XX_DisableAllIntr(void)
+unsigned long XX_DisableAllIntr(void)
 {
     unsigned long flags;
 
     local_irq_save(flags);
 
-    return (uint32_t)flags;
+    return flags;
 }
 
-void XX_RestoreAllIntr(uint32_t flags)
+void XX_RestoreAllIntr(unsigned long flags)
 {
     local_irq_restore(flags);
 }
@@ -801,7 +801,7 @@ LIST(msgHndlrList);
 
 static void EnqueueMsgHndlr(t_MsgHndlr *p_MsgHndlr)
 {
-    uint32_t   intFlags;
+    unsigned long   intFlags;
 
     intFlags = XX_DisableAllIntr();
     LIST_AddToTail(&p_MsgHndlr->node, &msgHndlrList);
@@ -811,7 +811,7 @@ static void EnqueueMsgHndlr(t_MsgHndlr *p_MsgHndlr)
 static t_MsgHndlr * DequeueMsgHndlr(void)
 {
     t_MsgHndlr *p_MsgHndlr = NULL;
-    uint32_t   intFlags;
+    unsigned long   intFlags;
 
     intFlags = XX_DisableAllIntr();
     if (!LIST_IsEmpty(&msgHndlrList))

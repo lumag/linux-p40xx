@@ -234,7 +234,7 @@ t_Error XX_DisableIntr(int irq);
 
  @Return        intMASK a value that represent the interurupt mask before operation
 *//***************************************************************************/
-uint32_t XX_DisableAllIntr(void);
+unsigned long XX_DisableAllIntr(void);
 
 /**************************************************************************//**
  @Function      XX_RestoreAllIntr
@@ -245,7 +245,7 @@ uint32_t XX_DisableAllIntr(void);
 
  @Return        None.
 *//***************************************************************************/
-void XX_RestoreAllIntr(uint32_t flags);
+void XX_RestoreAllIntr(unsigned long flags);
 #endif /* !(defined(__MWERKS__) && defined(OPTIMIZED_FOR_SPEED)) */
 
 /**************************************************************************//**

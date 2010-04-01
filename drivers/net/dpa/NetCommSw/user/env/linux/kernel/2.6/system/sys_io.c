@@ -71,7 +71,7 @@ LIST(mapsList);
 
 static void EnqueueIoMap(t_IoMap *p_IoMap)
 {
-    uint32_t   intFlags;
+    unsigned long   intFlags;
 
     intFlags = XX_DisableAllIntr();
     LIST_AddToTail(&p_IoMap->node, &mapsList);
@@ -82,7 +82,7 @@ static void EnqueueIoMap(t_IoMap *p_IoMap)
 static t_IoMap * DequeueIoMap(void)
 {
     t_IoMap     *p_IoMap = NULL;
-    uint32_t    intFlags;
+    unsigned long    intFlags;
 
     intFlags = XX_DisableAllIntr();
     if (!LIST_IsEmpty(&mapsList))

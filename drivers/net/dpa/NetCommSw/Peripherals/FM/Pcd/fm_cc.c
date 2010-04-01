@@ -58,7 +58,7 @@ void FmPcdCcTreeReleaseLock(t_Handle h_FmPcdCcTree)
 
 static void EnqueueAdditionalInfoToRelevantLst(t_List *p_CcNode, t_CcNodeInfo *p_CcInfo)
 {
-    uint32_t   intFlags;
+    unsigned long   intFlags;
 
     intFlags = XX_DisableAllIntr();
     LIST_AddToTail(&p_CcInfo->h_Node, p_CcNode);
@@ -109,7 +109,7 @@ static t_CcNodeInfo * FindNodeInfoAccId(t_List *p_List, uint16_t indx)
 static t_CcNodeInfo * DequeueAdditionalInfoFromRelevantLst(t_List *p_List)
 {
     t_CcNodeInfo   *p_CcNodeInfo = NULL;
-    uint32_t        intFlags;
+    unsigned long        intFlags;
 
     intFlags = XX_DisableAllIntr();
     if (!LIST_IsEmpty(p_List))

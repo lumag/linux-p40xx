@@ -133,7 +133,7 @@ typedef struct {
 
 #define TRY_LOCK_RET_ERR(lock)                                  \
 do {                                                            \
-    uint32_t intFlags;                                          \
+    unsigned long intFlags;                                          \
     intFlags = XX_DisableAllIntr();                             \
     if (lock)                                                   \
     {                                                           \
@@ -146,7 +146,7 @@ do {                                                            \
 
 #define TRY_LOCK_RET_NULL(lock)                                 \
 do {                                                            \
-    uint32_t intFlags;                                          \
+    unsigned long intFlags;                                          \
     intFlags = XX_DisableAllIntr();                             \
     if (lock)                                                   \
     {                                                           \
