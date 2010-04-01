@@ -30,6 +30,7 @@ modules.builtin
 *.lzma
 *.patch
 *.gcno
+*.dtb
 
 #
 # Top-level generic files
@@ -37,6 +38,7 @@ modules.builtin
 tags
 TAGS
 vmlinux
+vmlinux.strip
 vmlinuz
 System.map
 Module.markers
