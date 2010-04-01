@@ -272,5 +272,5 @@ void p4080ds_mdio_exit(void)
 {
 	of_unregister_platform_driver(&p4080ds_mdio_driver);
 }
-subsys_initcall_sync(p4080ds_mdio_init);
+late_initcall_sync(p4080ds_mdio_init);
 module_exit(p4080ds_mdio_exit);
