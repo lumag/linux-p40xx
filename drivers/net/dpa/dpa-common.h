@@ -45,21 +45,53 @@
 #define __hot
 
 #define cpu_pr_emerg(format, arg...)	\
-	pr_emerg("cpu%d/%d: " format, hard_smp_processor_id(), smp_processor_id(), ##arg)
+	do {\
+		preempt_disable();\
+		pr_emerg("cpu%d/%d: " format, hard_smp_processor_id(), smp_processor_id(), ##arg);\
+		preempt_enable();\
+	} while (0)
 #define cpu_pr_alert(format, arg...)	\
-	pr_alert("cpu%d/%d: " format, hard_smp_processor_id(), smp_processor_id(), ##arg)
+	do {\
+		preempt_disable();\
+		pr_alert("cpu%d/%d: " format, hard_smp_processor_id(), smp_processor_id(), ##arg);\
+		preempt_enable();\
+	} while (0)
 #define cpu_pr_crit(format, arg...)	\
-	pr_crit("cpu%d/%d: " format, hard_smp_processor_id(), smp_processor_id(), ##arg)
+	do {\
+		preempt_disable();\
+		pr_crit("cpu%d/%d: " format, hard_smp_processor_id(), smp_processor_id(), ##arg);\
+		preempt_enable();\
+	} while (0)
 #define cpu_pr_err(format, arg...)	\
-	pr_err("cpu%d/%d: " format, hard_smp_processor_id(), smp_processor_id(), ##arg)
+	do {\
+		preempt_disable();\
+		pr_err("cpu%d/%d: " format, hard_smp_processor_id(), smp_processor_id(), ##arg);\
+		preempt_enable();\
+	} while (0)
 #define cpu_pr_warning(format, arg...)	\
-	pr_warning("cpu%d/%d: " format, hard_smp_processor_id(), smp_processor_id(), ##arg)
+	do {\
+		preempt_disable();\
+		pr_warning("cpu%d/%d: " format, hard_smp_processor_id(), smp_processor_id(), ##arg);\
+		preempt_enable();\
+	} while (0)
 #define cpu_pr_notice(format, arg...)	\
-	pr_notice("cpu%d/%d: " format, hard_smp_processor_id(), smp_processor_id(), ##arg)
+	do {\
+		preempt_disable();\
+		pr_notice("cpu%d/%d: " format, hard_smp_processor_id(), smp_processor_id(), ##arg);\
+		preempt_enable();\
+	} while (0)
 #define cpu_pr_info(format, arg...)	\
-	pr_info("cpu%d/%d: " format, hard_smp_processor_id(), smp_processor_id(), ##arg)
+	do {\
+		preempt_disable();\
+		pr_info("cpu%d/%d: " format, hard_smp_processor_id(), smp_processor_id(), ##arg);\
+		preempt_enable();\
+	} while (0)
 #define cpu_pr_debug(format, arg...)	\
-	pr_debug("cpu%d/%d: " format, hard_smp_processor_id(), smp_processor_id(), ##arg)
+	do {\
+		preempt_disable();\
+		pr_debug("cpu%d/%d: " format, hard_smp_processor_id(), smp_processor_id(), ##arg);\
+		preempt_enable();\
+	} while (0)
 
 /* Keep these in sync with the dev_*() definitions from linux/device.h */
 #define cpu_dev_emerg(dev, format, arg...)	\
