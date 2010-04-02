@@ -277,7 +277,7 @@ static int fsl_pq_mdio_probe(struct of_device *ofdev,
 	struct fsl_pq_mdio_priv *priv;
 	struct fsl_pq_mdio __iomem *regs = NULL;
 	void __iomem *map;
-	u32 __iomem *tbipa;
+	u32 __iomem *tbipa = NULL;
 	struct mii_bus *new_bus;
 	int tbiaddr = -1;
 	u64 addr = 0, size = 0;
@@ -385,9 +385,8 @@ static int fsl_pq_mdio_probe(struct of_device *ofdev,
 	}
 
 	if (tbiaddr == -1) {
-#ifndef CONFIG_FSL_FMAN
-		out_be32(tbipa, 0);
-#endif
+		if (tbipa)
+			out_be32(tbipa, 0);
 
 		tbiaddr = fsl_pq_mdio_find_free(new_bus);
 	}
@@ -402,9 +401,8 @@ static int fsl_pq_mdio_probe(struct of_device *ofdev,
 		goto err_free_irqs;
 	}
 
-#ifndef CONFIG_FSL_FMAN
-	out_be32(tbipa, tbiaddr);
-#endif
+	if (tbipa)
+		out_be32(tbipa, tbiaddr);
 
 	err = of_mdiobus_register(new_bus, np);
 	if (err) {
