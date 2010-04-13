@@ -1,7 +1,7 @@
 /*
  * Freescale eSPI controller driver.
  *
- * Copyright (C) 2008-2009 Freescale Semiconductor, Inc. All rights reserved.
+ * Copyright (C) 2008-2010 Freescale Semiconductor, Inc. All rights reserved.
  *
  * Author:
  * Jerry Huang <Chang-Ming.Huang@freescale.com>
@@ -66,7 +66,8 @@ struct fsl_espi_reg {
  * Default for SPI Mode:
  * 	SPI MODE 0 (inactive low, phase middle, MSB, 8-bit length, slow clk
  */
-#define CSMODE_INIT_VAL (CSMODE_POL_1 | CS_BEF(0) | CS_AFT(0) | CS_CG(1))
+#define CSMODE_INIT_VAL (CSMODE_POL_1 | CS_BEF(0) | CS_AFT(0) | CS_CG(1) \
+			| CSMODE_PM(1))
 
 #define SPMODE_INIT_VAL (SPIMODE_TXTHR(4) | SPIMODE_RXTHR(3))
 
