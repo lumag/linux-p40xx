@@ -456,6 +456,8 @@ int phy_attach_direct(struct net_device *dev, struct phy_device *phydev,
 	if (err < 0)
 		goto err;
 
+	return 0;
+
 err:
 	phy_detach(phydev);
 
