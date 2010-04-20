@@ -38,6 +38,9 @@
 
 #include "fsl_fman.h"		/* struct port_device */
 
+/* max frame size (to accomodate jumbo frames) */
+#define FSL_FMAN_PHY_MAXFRM	9600
+
 enum {DTSEC, XGMAC};
 
 struct mac_device {
