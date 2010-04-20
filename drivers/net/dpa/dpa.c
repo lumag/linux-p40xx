@@ -38,6 +38,7 @@
 #include <linux/io.h>
 #include <linux/etherdevice.h>
 #include <linux/if_arp.h>	/* arp_hdr_len() */
+#include <linux/if_vlan.h>	/* VLAN_HLEN */
 #include <linux/icmp.h>		/* struct icmphdr */
 #include <linux/ip.h>		/* struct iphdr */
 #include <linux/udp.h>		/* struct udphdr */
@@ -126,7 +127,7 @@ struct dpa_bp {
 
 static const size_t dpa_bp_size[] __devinitconst = {
 	/* Keep these sorted */
-	DPA_BP_SIZE(9600)
+	DPA_BP_SIZE(FSL_FMAN_PHY_MAXFRM)
 };
 
 static struct dpa_bp *dpa_bp_array[64];
@@ -815,9 +816,33 @@ dpa_get_stats(struct net_device *net_dev)
 	return &net_dev->stats;
 }
 
-static int dpa_change_mtu(struct net_device *net_dev, int new_mtu)
+static int __cold dpa_change_mtu(struct net_device *net_dev, int new_mtu)
 {
+	const struct dpa_priv_s	*priv;
+	const int max_mtu =
+		FSL_FMAN_PHY_MAXFRM - (VLAN_ETH_HLEN + ETH_FCS_LEN);
+	const int min_mtu = 64;
+
+	priv = netdev_priv(net_dev);
+
+	if (netif_msg_drv(priv))
+		cpu_netdev_dbg(net_dev, "-> %s:%s()\n", __file__, __func__);
+
+	/* Make sure we don't exceed the Ethernet controller's MAXFRM */
+	if (new_mtu < min_mtu || new_mtu > max_mtu) {
+		if (netif_msg_drv(priv))
+			cpu_netdev_err(net_dev,
+				"%s:%hu:%s():"
+				"Invalid L3 mtu %d "
+				"(must be between %d and %d).\n",
+				__file__, __LINE__, __func__,
+				new_mtu, min_mtu, max_mtu);
+		return -EINVAL;
+	}
 	net_dev->mtu = new_mtu;
+
+	if (netif_msg_drv(priv))
+		cpu_netdev_dbg(net_dev, "-> %s:%s()\n", __file__, __func__);
 
 	return 0;
 }
@@ -954,7 +979,13 @@ static void __hot _dpa_rx(struct net_device		*net_dev,
 	skb = NULL;
 	size = dpa_fd_length(&dpa_fd->fd);
 
-	if (size > net_dev->mtu) {
+	/* FMan has stripped off the FCS from the frame, don't count it in.
+	 *
+	 * Because we don't know whether this is an ETH or VLAN frame,
+	 * we'll restrict the VLAN frame's L3 PDU rather than letting a
+	 * larger ETH frame slip through and risk a buffer overflow.
+	 */
+	if (size - ETH_HLEN > net_dev->mtu) {
 		percpu_priv->stats.rx_dropped++;
 		goto _return_dpa_fd_release;
 	}

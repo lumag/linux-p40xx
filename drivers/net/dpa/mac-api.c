@@ -134,7 +134,7 @@ static int __devinit __cold init(struct mac_device *mac_dev)
 		goto _return;
 	}
 
-	err = FM_MAC_ConfigMaxFrameLength(priv->mac, 9600);
+	err = FM_MAC_ConfigMaxFrameLength(priv->mac, FSL_FMAN_PHY_MAXFRM);
 	_errno = -GET_ERROR_TYPE(err);
 	if (unlikely(_errno < 0)) {
 		cpu_dev_err(mac_dev->dev,
