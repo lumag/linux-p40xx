@@ -1172,6 +1172,50 @@ int pme_attr_get(enum pme_attr attr, u32 *val)
 		attr_val = pme_in(global_pme, SCBARL);
 		break;
 
+	case pme_attr_srrv0:
+		attr_val = pme_in(global_pme, SRRV0);
+		break;
+
+	case pme_attr_srrv1:
+		attr_val = pme_in(global_pme, SRRV1);
+		break;
+
+	case pme_attr_srrv2:
+		attr_val = pme_in(global_pme, SRRV2);
+		break;
+
+	case pme_attr_srrv3:
+		attr_val = pme_in(global_pme, SRRV3);
+		break;
+
+	case pme_attr_srrv4:
+		attr_val = pme_in(global_pme, SRRV4);
+		break;
+
+	case pme_attr_srrv5:
+		attr_val = pme_in(global_pme, SRRV5);
+		break;
+
+	case pme_attr_srrv6:
+		attr_val = pme_in(global_pme, SRRV6);
+		break;
+
+	case pme_attr_srrv7:
+		attr_val = pme_in(global_pme, SRRV7);
+		break;
+
+	case pme_attr_srrfi:
+		attr_val = pme_in(global_pme, SRRFI);
+		break;
+
+	case pme_attr_srri:
+		attr_val = pme_in(global_pme, SRRI);
+		break;
+
+	case pme_attr_srrwc:
+		attr_val = pme_in(global_pme, SRRWC);
+		break;
+
 	default:
 		pr_err("pme: Unknown attr %u\n", attr);
 		return -EINVAL;
