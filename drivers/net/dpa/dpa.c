@@ -2322,12 +2322,12 @@ static const struct file_operations dpa_debugfs_fops = {
 };
 #endif
 
-static struct net_device_ops dpa_ops = {
-	.ndo_open	= dpa_start,
+static const struct net_device_ops dpa_netdev_ops = {
+	.ndo_open = dpa_start,
+	.ndo_start_xmit = dpa_tx,
 	.ndo_stop	= dpa_stop,
-	.ndo_start_xmit	= dpa_tx,
-	.ndo_tx_timeout	= dpa_timeout,
 	.ndo_change_rx_flags	 = dpa_change_rx_flags,
+	.ndo_tx_timeout	= dpa_timeout,
 };
 
 static int __devinit __cold __attribute__((nonnull))
@@ -2772,7 +2772,7 @@ dpa_probe(struct of_device *_of_dev)
 	}
 
 	net_dev->features		|= DPA_NETIF_FEATURES;
-	net_dev->netdev_ops		 = &dpa_ops;
+	net_dev->netdev_ops		 = &dpa_netdev_ops;
 	SET_ETHTOOL_OPS(net_dev, &dpa_ethtool_ops);
 	net_dev->needed_headroom	 = DPA_BP_HEAD;
 	net_dev->watchdog_timeo		 = tx_timeout * HZ / 1000;
