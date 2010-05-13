@@ -2328,6 +2328,8 @@ static const struct net_device_ops dpa_netdev_ops = {
 	.ndo_stop	= dpa_stop,
 	.ndo_change_rx_flags	 = dpa_change_rx_flags,
 	.ndo_tx_timeout	= dpa_timeout,
+	.ndo_set_mac_address = eth_mac_addr,
+	.ndo_validate_addr = eth_validate_addr,
 };
 
 static int __devinit __cold __attribute__((nonnull))
