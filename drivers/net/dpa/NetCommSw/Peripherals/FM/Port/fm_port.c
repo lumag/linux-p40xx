@@ -1904,7 +1904,8 @@ t_Handle FM_PORT_Config(t_FmPortParams *p_FmPortParams)
     {
         t_FmRevisionInfo revInfo;
         FmGetRevision(p_FmPort->h_Fm, &revInfo);
-        if ((revInfo.majorRev == 1) && (revInfo.minorRev == 0) &&
+        if ((((revInfo.majorRev == 1) && (revInfo.minorRev == 0)) ||
+            ((revInfo.majorRev == 2) && (revInfo.minorRev == 0))) &&
             (p_FmPort->portType != e_FM_PORT_TYPE_OH_OFFLINE_PARSING))
                 p_FmPort->p_FmPortDriverParam->syncReq              = FALSE;
     }
@@ -2440,7 +2441,8 @@ t_Error FM_PORT_ConfigSyncReq(t_Handle h_FmPort, bool syncReq)
     {
         t_FmRevisionInfo revInfo;
         FmGetRevision(p_FmPort->h_Fm, &revInfo);
-        if ((revInfo.majorRev == 1) && (revInfo.minorRev == 0))
+        if (((revInfo.majorRev == 1) && (revInfo.minorRev == 0)) ||
+             ((revInfo.majorRev == 2) && (revInfo.minorRev == 0)))
             RETURN_ERROR(MINOR, E_NOT_SUPPORTED, ("port-sync!"));
     }
 #endif /* FM_PORT_SYNC_ERRATA_FMAN6 */
