@@ -114,7 +114,7 @@
 
 #define DEFAULT_PORT_numOfOpenDmas(type)                \
     (uint32_t)(((type == e_FM_PORT_TYPE_RX_10G) ||      \
-                (type == e_FM_PORT_TYPE_TX_10G)) ? 4 : 1)
+                (type == e_FM_PORT_TYPE_TX_10G)) ? 8 : 1)
 
 #define DEFAULT_PORT_extraNumOfOpenDmas(type)           \
     (uint32_t)(((type == e_FM_PORT_TYPE_RX_10G) ||      \

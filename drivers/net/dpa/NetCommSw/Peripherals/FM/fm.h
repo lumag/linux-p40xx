@@ -118,7 +118,7 @@
                                             FM_EX_NURAM_ECC                 )
 #define DEFAULT_totalNumOfTasks             96
 #define DEFAULT_totalFifoSize               (128*KILOBYTE)
-#define DEFAULT_maxNumOfOpenDmas            24
+#define DEFAULT_maxNumOfOpenDmas            BMI_MAX_NUM_OF_DMAS
 #define DEFAULT_eccEnable                   FALSE
 #define DEFAULT_dispLimit                   16
 #define DEFAULT_prsDispTh                   16
